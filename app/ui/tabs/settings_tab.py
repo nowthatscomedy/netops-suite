@@ -37,8 +37,8 @@ class SettingsTab(QWidget):
         update_layout = QVBoxLayout(update_group)
 
         summary_label = QLabel(
-            "공식 배포 채널에서 새 버전을 확인합니다. 설치 파일은 다운로드 후 SHA-256을 검증하고, "
-            "사용자가 확인한 경우에만 설치 프로그램을 실행합니다."
+            "공식 배포 채널에서 새 버전을 확인합니다. 설치 파일은 다운로드 후 SHA-256으로 무결성을 검증하고, "
+            "게시자 신뢰는 Windows 코드서명 정보로 확인합니다. 사용자가 확인한 경우에만 설치 프로그램을 실행합니다."
         )
         summary_label.setWordWrap(True)
         update_layout.addWidget(summary_label)

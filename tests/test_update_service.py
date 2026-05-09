@@ -6,6 +6,7 @@ import logging
 import pytest
 
 from app.models.update_models import ReleaseAsset
+from app.utils.file_utils import default_update_config
 from app.services import update_service as update_service_module
 from app.services.update_service import UpdateService
 
@@ -66,3 +67,30 @@ def test_update_service_selects_sha256sums_asset_for_installer():
     sums = ReleaseAsset(name="sha256sums.TXT", download_url="https://example.test/sums")
 
     assert service._select_checksum_asset([installer, sums], installer.name) is sums
+
+
+def test_update_service_labels_sha256_as_integrity_not_publisher_trust(monkeypatch):
+    service = UpdateService(logging.getLogger("test-update"))
+    release = {
+        "tag_name": "v1.0.2",
+        "prerelease": False,
+        "name": "NetOps Suite v1.0.2",
+        "html_url": "https://example.test/release",
+        "published_at": "2026-05-10T00:00:00Z",
+        "body": "",
+        "assets": [
+            {
+                "name": "NetOpsSuite-setup-1.0.2.exe",
+                "browser_download_url": "https://example.test/installer",
+                "size": 12,
+                "digest": "sha256:" + "a" * 64,
+            }
+        ],
+    }
+    monkeypatch.setattr(service, "_fetch_release", lambda repo, include_prerelease: release)
+
+    result = service.check_for_updates("1.0.1", default_update_config())
+
+    assert result.install_ready
+    assert "무결성" in result.details
+    assert "코드서명" in result.details

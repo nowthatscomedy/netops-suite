@@ -186,8 +186,8 @@ class InspectorTab(QWidget):
                     "connection_type": "ssh",
                     "port": 22,
                     "username": "admin",
-                    "password": "",
-                    "enable_password": "",
+                    "password": "CHANGE_ME_PASSWORD",
+                    "enable_password": "CHANGE_ME_ENABLE_PASSWORD",
                 }
             ]
         )
@@ -199,7 +199,8 @@ class InspectorTab(QWidget):
         try:
             profiles = self.service.supported_profile_templates()
         except Exception as exc:
-            self.supported_label.setText(f"지원 벤더 목록 로드 실패: {exc}")
+            self.supported_label.setText(self._inspector_error_message(exc))
+            self._log_inspector_exception("지원 벤더 목록 로드 실패", exc)
             return
         self.supported_label.setText(f"지원 벤더/모델/OS 조합: {len(profiles)}개")
         self.supported_table.setRowCount(len(profiles))
@@ -228,7 +229,8 @@ class InspectorTab(QWidget):
         try:
             devices = self.service.load_inventory(path, self.inventory_password_edit.text().strip() or None)
         except Exception as exc:
-            QMessageBox.warning(self, "검증 실패", str(exc))
+            self._log_inspector_exception("인벤토리 검증 실패", exc)
+            QMessageBox.warning(self, "검증 실패", self._inspector_error_message(exc))
             return
         self.summary_label.setText(f"검증 완료: 장비 {len(devices)}대")
         self.log_view.appendPlainText(f"[validate] {Path(path).name}: {len(devices)} devices")
@@ -287,7 +289,7 @@ class InspectorTab(QWidget):
     def _handle_error(self, text: str) -> None:
         self.run_button.setEnabled(True)
         self.summary_label.setText("장비 점검 실패")
-        QMessageBox.warning(self, "장비 점검 실패", text)
+        QMessageBox.warning(self, "장비 점검 실패", self._inspector_error_message(text))
 
     def _open_result(self) -> None:
         if self._last_result and self._last_result.result_excel:
@@ -305,7 +307,33 @@ class InspectorTab(QWidget):
         try:
             self._template_dialog = InspectorVendorTemplateDialog(self.service, self)
         except Exception as exc:
-            QMessageBox.warning(self, "장비 템플릿 관리 열기 실패", str(exc))
+            self._log_inspector_exception("장비 템플릿 관리 열기 실패", exc)
+            QMessageBox.warning(self, "장비 템플릿 관리 열기 실패", self._inspector_error_message(exc))
             return
         self._template_dialog.exec()
         self._load_supported_profiles()
+
+    def _inspector_error_message(self, error: Exception | str) -> str:
+        text = str(error)
+        lowered = text.lower()
+        dependency_markers = (
+            "no module named",
+            "telnetlib3 is required",
+            "msoffcrypto",
+            "netmiko",
+            "xlrd",
+        )
+        if any(marker in lowered for marker in dependency_markers):
+            return (
+                "장비 점검에 필요한 구성요소를 불러오지 못했습니다.\n\n"
+                "소스 실행이면 `python -m pip install -r requirements.txt`를 실행해 주세요.\n"
+                "설치본이면 최신 설치본으로 다시 설치한 뒤 실행해 주세요."
+            )
+        return text
+
+    def _log_inspector_exception(self, message: str, exc: Exception) -> None:
+        logger = getattr(self.state, "logger", None)
+        if logger:
+            logger.exception("%s: %s", message, exc)
+        else:
+            self.log_view.appendPlainText(f"[error] {message}: {exc}")

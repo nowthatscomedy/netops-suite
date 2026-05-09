@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
-try:
-    from telnetlib3 import telnetlib as _telnetlib
-except ImportError as exc:  # pragma: no cover - dependency guard.
-    raise ImportError(
-        "telnetlib3 is required for Telnet support. "
-        "Install dependencies with `python -m pip install -r requirements.txt`."
-    ) from exc
+import importlib
 
 
-Telnet = _telnetlib.Telnet
+def _load_telnet_class():
+    try:
+        telnetlib = importlib.import_module("telnetlib3.telnetlib")
+    except ImportError as exc:
+        raise RuntimeError(
+            "telnetlib3 is required for Telnet support. "
+            "Install dependencies with `python -m pip install -r requirements.txt`."
+        ) from exc
+    return telnetlib.Telnet
+
+
+def Telnet(*args, **kwargs):
+    return _load_telnet_class()(*args, **kwargs)
 
 __all__ = ["Telnet"]

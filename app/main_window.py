@@ -337,10 +337,16 @@ class MainWindow(QMainWindow):
         if result.asset:
             message_lines.append(f"설치 파일: {result.asset.name}")
         if result.verification_source == "github_release_digest":
-            message_lines.append("검증 방식: GitHub Releases digest")
+            message_lines.append("무결성 검증: GitHub Releases SHA-256 digest")
         elif result.verification_source == "checksum_asset":
-            message_lines.append("검증 방식: 체크섬 파일")
-        message_lines.extend(["", "다운로드 및 검증을 마치면 설치 프로그램을 실행할 수 있습니다."])
+            message_lines.append("무결성 검증: 릴리즈 체크섬 파일 SHA-256")
+        message_lines.extend(
+            [
+                "게시자 신뢰: 설치 프로그램 실행 전 Windows 코드서명 정보를 확인하세요.",
+                "",
+                "다운로드 및 검증을 마치면 설치 프로그램을 실행할 수 있습니다.",
+            ]
+        )
 
         if QMessageBox.question(self, "업데이트 발견", "\n".join(message_lines)) != QMessageBox.Yes:
             return
@@ -370,6 +376,7 @@ class MainWindow(QMainWindow):
         ]
         if downloaded.verification_source:
             details.append(f"검증: {downloaded.verification_source}")
+        details.append("게시자 신뢰: SHA-256은 파일 무결성 검증이며, 게시자 신원은 코드서명으로 별도 확인해야 합니다.")
 
         self.settings_tab.set_update_status("업데이트 파일 검증을 완료했습니다.", "\n".join(details))
         self.statusBar().showMessage("업데이트 파일 검증 완료")

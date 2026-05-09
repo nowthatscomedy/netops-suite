@@ -170,11 +170,11 @@ function Invoke-CodeSignFile {
     }
 }
 
-function Test-FileTransferRuntimeDependencies {
-    Write-Host "Verifying file transfer runtime dependencies..."
-    & python -c "import pyftpdlib, OpenSSL, paramiko, tftpy; print('File transfer runtime dependencies OK')"
+function Test-RuntimeDependencies {
+    Write-Host "Verifying NetOps Suite runtime dependencies..."
+    & python -c "import pyftpdlib, OpenSSL, paramiko, tftpy, netmiko, msoffcrypto, xlrd; from telnetlib3 import telnetlib; print('NetOps Suite runtime dependencies OK')"
     if ($LASTEXITCODE -ne 0) {
-        throw "File transfer runtime dependency smoke check failed."
+        throw "NetOps Suite runtime dependency smoke check failed."
     }
 }
 
@@ -227,6 +227,11 @@ $pyInstallerArgs = @(
     "--windowed",
     "--name", "NetOpsSuite",
     "--icon", (Join-Path $repoRoot "assets\icons\netops_toolkit.ico"),
+    "--collect-submodules=telnetlib3",
+    "--collect-all=netmiko",
+    "--collect-all=ntc_templates",
+    "--hidden-import=msoffcrypto",
+    "--hidden-import=xlrd",
     "--add-data=$(Format-PyInstallerBundleArg -Source $stagingConfigDir -Destination 'config')",
     "--add-data=$(Format-PyInstallerBundleArg -Source $stagingLogsDir -Destination 'logs')",
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'assets\icons') -Destination 'assets/icons')",
@@ -253,7 +258,7 @@ foreach ($binaryName in $optionalBinaries) {
 }
 
 Write-Host "Building PyInstaller bundle for version $normalizedVersion..."
-Test-FileTransferRuntimeDependencies
+Test-RuntimeDependencies
 & python @pyInstallerArgs
 if ($LASTEXITCODE -ne 0) {
     throw "PyInstaller build failed."

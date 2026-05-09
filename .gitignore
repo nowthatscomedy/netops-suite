@@ -6,6 +6,7 @@ __pycache__/
 venv/
 
 .codex/
+.codex_artifacts/
 
 build/
 dist/

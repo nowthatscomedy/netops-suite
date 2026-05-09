@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import builtins
+import importlib.util
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -73,6 +75,26 @@ def test_inspector_service_loads_supported_vendor_profiles():
     assert profiles["cisco"]
 
 
+def test_inspector_profile_listing_does_not_require_telnetlib3(monkeypatch, tmp_path: Path):
+    service = InspectorService(user_data_dir=tmp_path / "inspector")
+    service.reload_runtime_modules()
+    real_import = builtins.__import__
+
+    def guarded_import(name, *args, **kwargs):
+        if str(name).startswith("telnetlib3"):
+            raise ImportError("blocked telnetlib3 for profile listing")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+    try:
+        profiles = service.supported_profiles()
+    finally:
+        service.reload_runtime_modules()
+
+    assert "cisco" in profiles
+    assert profiles["cisco"]
+
+
 def test_inspector_inventory_validation_uses_runtime_core_and_vendors(tmp_path: Path):
     inventory_path = tmp_path / "inventory.xlsx"
     pd.DataFrame(
@@ -96,10 +118,48 @@ def test_inspector_inventory_validation_uses_runtime_core_and_vendors(tmp_path: 
     assert devices[0]["os"] == "ios"
 
 
+def test_inspector_sample_inventory_validates_without_manual_edits(qt_app, tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(QMessageBox, "information", lambda *args, **kwargs: QMessageBox.Ok)
+    state = SimpleNamespace(
+        thread_pool=QThreadPool.globalInstance(),
+        paths=SimpleNamespace(data_root=tmp_path / "data"),
+    )
+    tab = InspectorTab(state)
+    try:
+        tab._create_sample_inventory()
+
+        sample_path = tab.inventory_path_edit.text()
+        devices = tab.service.load_inventory(sample_path)
+
+        assert len(devices) == 1
+        assert devices[0]["password"] == "CHANGE_ME_PASSWORD"
+        assert devices[0]["enable_password"] == "CHANGE_ME_ENABLE_PASSWORD"
+    finally:
+        tab.close()
+
+
 def test_telnet_compat_uses_telnetlib3_not_deprecated_stdlib():
     from netops_suite.modules.inspector_runtime.core import telnet_compat
 
-    assert telnet_compat.Telnet.__module__.startswith("telnetlib3.")
+    assert telnet_compat._load_telnet_class().__module__.startswith("telnetlib3.")
+
+
+def test_telnet_compat_reports_missing_dependency_when_telnet_is_used(monkeypatch):
+    module_path = Path("netops_suite/modules/inspector_runtime/core/telnet_compat.py")
+    spec = importlib.util.spec_from_file_location("telnet_compat_missing_test", module_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    def missing_telnetlib3(name):
+        if name == "telnetlib3.telnetlib":
+            raise ImportError("blocked telnetlib3")
+        raise AssertionError(name)
+
+    monkeypatch.setattr(module.importlib, "import_module", missing_telnetlib3)
+
+    with pytest.raises(RuntimeError, match="telnetlib3 is required"):
+        module.Telnet("127.0.0.1")
 
 
 def test_inspector_reference_templates_load():
@@ -167,6 +227,26 @@ def test_vendor_template_dialog_uses_engineer_friendly_flow(qt_app, tmp_path: Pa
         assert "OS버전" in dialog.summary_preview.toPlainText()
     finally:
         dialog.close()
+
+
+def test_vendor_template_dialog_opens_without_telnetlib3(monkeypatch, qt_app, tmp_path: Path):
+    service = InspectorService(user_data_dir=tmp_path / "inspector")
+    service.reload_runtime_modules()
+    real_import = builtins.__import__
+
+    def guarded_import(name, *args, **kwargs):
+        if str(name).startswith("telnetlib3"):
+            raise ImportError("blocked telnetlib3 for template management")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+    dialog = InspectorVendorTemplateDialog(service)
+    try:
+        assert dialog.windowTitle() == "장비 점검 템플릿 만들기"
+        assert dialog.templates
+    finally:
+        dialog.close()
+        service.reload_runtime_modules()
 
 
 def test_python_parser_dialog_saves_function(qt_app, tmp_path: Path, monkeypatch):
@@ -336,13 +416,13 @@ def test_config_builder_tab_action_buttons_follow_workflow_state(qt_app, tmp_pat
     try:
         button = lambda name: tab.findChild(QPushButton, name)
 
-        assert button("configBuilderOpenDeviceValuesButton").text() == "장비값 열기"
+        assert button("configBuilderOpenDeviceValuesButton").text() == "장비값 파일 선택"
         assert button("configBuilderOpenDeviceValuesButton").property("actionKind") == ActionKind.BROWSE.value
         assert button("configBuilderRenderButton").text() == "CLI 생성"
         assert button("configBuilderRenderButton").property("actionKind") == ActionKind.PRIMARY.value
-        assert button("configBuilderEditProfileButton").text() == "선택 편집"
+        assert button("configBuilderEditProfileButton").text() == "선택 프로파일 편집"
         assert button("configBuilderEditProfileButton").property("actionKind") == ActionKind.EDIT.value
-        assert button("configBuilderFullEditorButton").text() == "고급 편집기"
+        assert button("configBuilderFullEditorButton").text() == "고급 편집기 열기"
         assert button("configBuilderCopyButton").text() == "선택 CLI 복사"
         assert button("configBuilderCopyButton").property("actionKind") == ActionKind.COPY.value
         assert button("configBuilderCopyNextButton").text() == "복사 후 다음"
@@ -463,9 +543,18 @@ def test_packaging_names_match_suite_release_contract():
     assert "SHA256SUMS.txt" in build_script
     assert "Get-FileHash" in build_script
     assert "ChecksumPath" in publish_script
+    assert "AllowAssetReplace" in publish_script
+    assert "Release asset already exists" in publish_script
     assert "SHA256SUMS.txt" in workflow
     assert "netops_suite\\modules\\inspector_runtime" in build_script
     assert "netops_suite/modules/inspector_runtime" in build_script
+    assert "--collect-submodules=telnetlib3" in build_script
+    assert "--collect-all=netmiko" in build_script
+    assert "--collect-all=ntc_templates" in build_script
+    assert "--hidden-import=msoffcrypto" in build_script
+    assert "--hidden-import=xlrd" in build_script
+    assert "allow_asset_replace" in workflow
+    assert "manual_replace_existing_release" in workflow
     assert "Invoke-CodeSignFile" in build_script
     assert "RequireCodeSigning" in build_script
     assert "workflow_dispatch" in workflow
@@ -495,6 +584,9 @@ def test_inspector_tab_buttons_use_clear_workflow_labels(qt_app, tmp_path: Path)
         assert tab.template_editor_button.text() == "장비 템플릿 관리"
         assert "지원 벤더" in tab.template_editor_button.toolTip()
         assert "지원 벤더 목록 로드 실패" not in tab.supported_label.text()
+        message = tab._inspector_error_message(ModuleNotFoundError("No module named 'vendors'"))
+        assert "No module named" not in message
+        assert "requirements.txt" in message
     finally:
         tab.close()
 

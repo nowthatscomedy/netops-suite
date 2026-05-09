@@ -8,7 +8,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$AssetPath,
     [string]$ChecksumPath = "",
-    [switch]$IsPrerelease
+    [switch]$IsPrerelease,
+    [switch]$AllowAssetReplace
 )
 
 $ErrorActionPreference = "Stop"
@@ -110,7 +111,11 @@ function Publish-ReleaseAsset {
     $assetName = Split-Path -Path $Path -Leaf
     $existingAsset = @($Release.assets | Where-Object { $_.name -eq $assetName }) | Select-Object -First 1
     if ($existingAsset) {
+        if (-not $AllowAssetReplace.IsPresent) {
+            throw "Release asset already exists: $assetName. Re-run with -AllowAssetReplace only when intentionally replacing release assets."
+        }
         Invoke-GitHubRest -Method DELETE -Uri "https://api.github.com/repos/$Repository/releases/assets/$($existingAsset.id)" | Out-Null
+        Write-Host "Deleted existing release asset before replacement: $assetName"
     }
 
     $escapedAssetName = [System.Uri]::EscapeDataString($assetName)

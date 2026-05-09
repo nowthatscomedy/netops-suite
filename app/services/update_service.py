@@ -86,14 +86,20 @@ class UpdateService:
             install_ready = True
             verification_source = "github_release_digest"
             message = f"새 버전 {latest_version}을 설치할 수 있습니다."
-            details = "GitHub Releases 자산 SHA-256 digest로 무결성을 검증합니다."
+            details = (
+                "GitHub Releases 자산 SHA-256 digest로 다운로드 파일의 무결성을 검증합니다. "
+                "게시자 신뢰는 설치 프로그램의 Windows 코드서명 정보로 별도 확인해야 합니다."
+            )
         else:
             checksum_asset = self._select_checksum_asset(assets, asset.name)
             if checksum_asset:
                 install_ready = True
                 verification_source = "checksum_asset"
                 message = f"새 버전 {latest_version}을 설치할 수 있습니다."
-                details = "릴리즈에 포함된 체크섬 파일로 무결성을 검증합니다."
+                details = (
+                    "릴리즈에 포함된 체크섬 파일로 다운로드 파일의 무결성을 검증합니다. "
+                    "게시자 신뢰는 설치 프로그램의 Windows 코드서명 정보로 별도 확인해야 합니다."
+                )
             else:
                 message = f"새 버전 {latest_version}이 있지만 검증 정보를 찾지 못했습니다."
                 details = (
@@ -135,12 +141,12 @@ class UpdateService:
 
         if check_result.asset.digest_sha256:
             expected_sha256 = check_result.asset.digest_sha256
-            verification_source = "GitHub Releases digest"
+            verification_source = "GitHub Releases SHA-256 digest"
         elif check_result.checksum_asset:
             checksum_path = temp_dir / check_result.checksum_asset.name
             self._download_file(check_result.checksum_asset, checksum_path, progress_callback)
             expected_sha256 = self._parse_expected_sha256(checksum_path, check_result.asset.name)
-            verification_source = "release checksum file"
+            verification_source = "release checksum file SHA-256"
         else:
             raise ValueError("검증 정보가 없어 다운로드한 설치 파일을 신뢰할 수 없습니다.")
 

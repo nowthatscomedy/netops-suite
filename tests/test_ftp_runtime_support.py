@@ -53,10 +53,17 @@ def test_release_pipeline_checks_ftp_runtime_dependencies():
     workflow = (project_root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
 
     assert "import pyftpdlib, OpenSSL, paramiko, tftpy" in build_script
+    assert "netmiko, msoffcrypto, xlrd" in build_script
+    assert "from telnetlib3 import telnetlib" in build_script
+    assert "--collect-submodules=telnetlib3" in build_script
+    assert "--collect-all=netmiko" in build_script
+    assert "--hidden-import=msoffcrypto" in build_script
     assert "--add-data=" in build_script
     assert "--add-binary=" in build_script
     assert ";$normalizedDestination" in build_script
     assert "ftp_profiles.json" in build_script
     assert "ftp_runtime.json" not in build_script
-    assert "Verify File Transfer Runtime Dependencies" in workflow
+    assert "Verify Runtime Dependencies" in workflow
     assert "import pyftpdlib, OpenSSL, paramiko, tftpy" in workflow
+    assert "netmiko, msoffcrypto, xlrd" in workflow
+    assert "from telnetlib3 import telnetlib" in workflow
