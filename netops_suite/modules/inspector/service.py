@@ -222,13 +222,7 @@ class InspectorService:
 
     def reload_runtime_modules(self) -> None:
         for module_name in list(sys.modules):
-            if module_name == "vendors" or module_name.startswith("vendors.") or module_name in {
-                "core.inspector",
-                "core.validator",
-                "core.file_handler",
-                "core.settings",
-                "core.path_utils",
-            }:
+            if module_name in {"core", "vendors"} or module_name.startswith(("core.", "vendors.")):
                 sys.modules.pop(module_name, None)
 
     def load_inventory(self, path: str, password: str | None = None) -> list[dict[str, Any]]:

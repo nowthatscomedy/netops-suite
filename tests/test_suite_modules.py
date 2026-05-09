@@ -8,9 +8,12 @@ from types import SimpleNamespace
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
+import pandas as pd
+from PySide6.QtCore import QThreadPool
 from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton
 
 from app.ui.dialogs.inspector_vendor_template_dialog import InspectorVendorTemplateDialog, PythonParserDialog
+from app.ui.tabs.inspector_tab import InspectorTab
 from app.ui.tabs.config_builder_tab import ConfigBuilderTab
 from app.utils.app_icon import load_app_icon
 from app.utils.file_utils import DEFAULT_UPDATE_ASSET_PATTERN, resolve_asset_path
@@ -68,6 +71,29 @@ def test_inspector_service_loads_supported_vendor_profiles():
     assert "cisco" in profiles
     assert "juniper" in profiles
     assert profiles["cisco"]
+
+
+def test_inspector_inventory_validation_uses_runtime_core_and_vendors(tmp_path: Path):
+    inventory_path = tmp_path / "inventory.xlsx"
+    pd.DataFrame(
+        [
+            {
+                "ip": "192.0.2.10",
+                "vendor": "cisco",
+                "os": "ios",
+                "connection_type": "ssh",
+                "port": 22,
+                "username": "admin",
+                "password": "test-password",
+            }
+        ]
+    ).to_excel(inventory_path, index=False)
+
+    devices = InspectorService(user_data_dir=tmp_path / "inspector").load_inventory(str(inventory_path))
+
+    assert len(devices) == 1
+    assert devices[0]["vendor"] == "cisco"
+    assert devices[0]["os"] == "ios"
 
 
 def test_telnet_compat_uses_telnetlib3_not_deprecated_stdlib():
@@ -438,7 +464,8 @@ def test_packaging_names_match_suite_release_contract():
     assert "Get-FileHash" in build_script
     assert "ChecksumPath" in publish_script
     assert "SHA256SUMS.txt" in workflow
-    assert "custom_parsers.example.py" in build_script
+    assert "netops_suite\\modules\\inspector_runtime" in build_script
+    assert "netops_suite/modules/inspector_runtime" in build_script
     assert "Invoke-CodeSignFile" in build_script
     assert "RequireCodeSigning" in build_script
     assert "workflow_dispatch" in workflow
@@ -454,6 +481,22 @@ def test_main_app_icon_loads(qt_app):
 
     assert not icon.isNull()
     assert icon.availableSizes()
+
+
+def test_inspector_tab_buttons_use_clear_workflow_labels(qt_app, tmp_path: Path):
+    state = SimpleNamespace(
+        thread_pool=QThreadPool.globalInstance(),
+        paths=SimpleNamespace(data_root=tmp_path / "data"),
+    )
+    tab = InspectorTab(state)
+    try:
+        assert tab.validate_button.text() == "인벤토리 검증"
+        assert tab.run_button.text() == "점검 실행"
+        assert tab.template_editor_button.text() == "장비 템플릿 관리"
+        assert "지원 벤더" in tab.template_editor_button.toolTip()
+        assert "지원 벤더 목록 로드 실패" not in tab.supported_label.text()
+    finally:
+        tab.close()
 
 
 def test_asset_path_resolves_pyinstaller_internal_assets(tmp_path: Path, monkeypatch):
