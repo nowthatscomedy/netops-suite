@@ -137,6 +137,18 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.
 
 Windows 설치 파일 빌드에는 Inno Setup 6가 필요합니다.
 
+공개 릴리즈용 Windows 설치 파일은 Authenticode 코드 서명이 필요합니다. GitHub Actions 릴리즈 빌드는
+`WINDOWS_CODESIGN_PFX_BASE64`, `WINDOWS_CODESIGN_PFX_PASSWORD` secrets가 없으면 unsigned 설치 파일을
+배포하지 않고 실패합니다.
+
+로컬에서 서명 빌드를 확인할 때는 다음처럼 실행합니다.
+
+```powershell
+$env:WINDOWS_CODESIGN_CERT_PATH = "C:\path\codesign.pfx"
+$env:WINDOWS_CODESIGN_CERT_PASSWORD = "<pfx password>"
+powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.0.0 -Clean -RequireCodeSigning
+```
+
 ## 프로젝트 구조
 
 ```text

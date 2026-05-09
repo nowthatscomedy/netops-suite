@@ -1,7 +1,13 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Version,
-    [switch]$Clean
+    [switch]$Clean,
+    [string]$SignToolPath = "",
+    [string]$CodeSigningCertPath = "",
+    [string]$CodeSigningCertPassword = "",
+    [string]$CodeSigningCertSha1 = "",
+    [string]$TimestampUrl = "",
+    [switch]$RequireCodeSigning
 )
 
 $ErrorActionPreference = "Stop"
@@ -34,6 +40,136 @@ function Resolve-IsccPath {
     throw "ISCC.exe from Inno Setup 6 was not found. Please install Inno Setup first."
 }
 
+function Test-IsTruthy {
+    param([string]$Value)
+
+    return $Value -match "^(1|true|yes|on)$"
+}
+
+function Resolve-SignToolPath {
+    param([string]$ExplicitPath)
+
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitPath)) {
+        if (Test-Path $ExplicitPath) {
+            return (Resolve-Path $ExplicitPath).Path
+        }
+        throw "SignTool was not found: $ExplicitPath"
+    }
+
+    $command = Get-Command "signtool.exe" -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+
+    $windowsKitsBin = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin"
+    if (Test-Path $windowsKitsBin) {
+        $candidate = Get-ChildItem -LiteralPath $windowsKitsBin -Recurse -Filter "signtool.exe" -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match "\\x64\\signtool\.exe$" } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+
+        if ($candidate) {
+            return $candidate.FullName
+        }
+    }
+
+    return $null
+}
+
+function New-CodeSigningConfig {
+    $certPath = $CodeSigningCertPath
+    if ([string]::IsNullOrWhiteSpace($certPath)) {
+        $certPath = $env:WINDOWS_CODESIGN_CERT_PATH
+    }
+
+    $certPassword = $CodeSigningCertPassword
+    if ([string]::IsNullOrWhiteSpace($certPassword)) {
+        $certPassword = $env:WINDOWS_CODESIGN_CERT_PASSWORD
+    }
+
+    $certSha1 = $CodeSigningCertSha1
+    if ([string]::IsNullOrWhiteSpace($certSha1)) {
+        $certSha1 = $env:WINDOWS_CODESIGN_CERT_SHA1
+    }
+
+    $timestamp = $TimestampUrl
+    if ([string]::IsNullOrWhiteSpace($timestamp)) {
+        $timestamp = $env:WINDOWS_CODESIGN_TIMESTAMP_URL
+    }
+    if ([string]::IsNullOrWhiteSpace($timestamp)) {
+        $timestamp = "http://timestamp.digicert.com"
+    }
+
+    $signingRequired = $RequireCodeSigning.IsPresent -or (Test-IsTruthy -Value $env:WINDOWS_CODESIGN_REQUIRED)
+    $hasSigningIdentity = -not [string]::IsNullOrWhiteSpace($certPath) -or -not [string]::IsNullOrWhiteSpace($certSha1)
+
+    if (-not $hasSigningIdentity) {
+        if ($signingRequired) {
+            throw "Code signing is required, but no signing certificate was provided."
+        }
+        Write-Host "Code signing certificate was not provided. Release binaries will be unsigned."
+        return $null
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($certPath) -and -not (Test-Path $certPath)) {
+        throw "Code signing certificate was not found: $certPath"
+    }
+
+    $requestedSignToolPath = $SignToolPath
+    if ([string]::IsNullOrWhiteSpace($requestedSignToolPath)) {
+        $requestedSignToolPath = $env:WINDOWS_SIGNTOOL_PATH
+    }
+
+    $resolvedSignTool = Resolve-SignToolPath -ExplicitPath $requestedSignToolPath
+    if (-not $resolvedSignTool) {
+        throw "signtool.exe was not found. Install Windows SDK or set -SignToolPath."
+    }
+
+    return [pscustomobject]@{
+        SignToolPath = $resolvedSignTool
+        CertPath     = $certPath
+        CertPassword = $certPassword
+        CertSha1     = $certSha1
+        TimestampUrl = $timestamp
+    }
+}
+
+function Invoke-CodeSignFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [object]$Config
+    )
+
+    if (-not $Config) {
+        return
+    }
+
+    if (-not (Test-Path $Path)) {
+        throw "File to sign was not found: $Path"
+    }
+
+    $signArgs = @("sign", "/fd", "SHA256", "/tr", $Config.TimestampUrl, "/td", "SHA256")
+
+    if (-not [string]::IsNullOrWhiteSpace($Config.CertPath)) {
+        $signArgs += @("/f", $Config.CertPath)
+        if (-not [string]::IsNullOrWhiteSpace($Config.CertPassword)) {
+            $signArgs += @("/p", $Config.CertPassword)
+        }
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($Config.CertSha1)) {
+        $signArgs += @("/sha1", $Config.CertSha1)
+    }
+
+    $signArgs += $Path
+
+    Write-Host "Signing $Path..."
+    & $Config.SignToolPath @signArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "Code signing failed for $Path."
+    }
+}
+
 function Test-FileTransferRuntimeDependencies {
     Write-Host "Verifying file transfer runtime dependencies..."
     & python -c "import pyftpdlib, OpenSSL, paramiko, tftpy; print('File transfer runtime dependencies OK')"
@@ -53,6 +189,8 @@ if ($normalizedVersion.StartsWith("v")) {
 if ([string]::IsNullOrWhiteSpace($normalizedVersion)) {
     throw "A valid version is required, for example 1.0.0 or v1.0.0."
 }
+
+$codeSigningConfig = New-CodeSigningConfig
 
 $buildDir = Join-Path $repoRoot "build"
 $distDir = Join-Path $repoRoot "dist"
@@ -131,6 +269,9 @@ if (-not (Test-Path $sourceDir)) {
     throw "PyInstaller output folder was not found: $sourceDir"
 }
 
+$appExePath = Join-Path $sourceDir "NetOpsSuite.exe"
+Invoke-CodeSignFile -Path $appExePath -Config $codeSigningConfig
+
 Write-Host "Building installer..."
 & $isccPath `
     "/DAppVersion=$normalizedVersion" `
@@ -141,6 +282,16 @@ Write-Host "Building installer..."
 if ($LASTEXITCODE -ne 0) {
     throw "Inno Setup build failed."
 }
+
+$installer = Get-ChildItem -LiteralPath $releaseDir -Filter "NetOpsSuite-setup-*.exe" |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
+
+if (-not $installer) {
+    throw "Installer was not found in release directory: $releaseDir"
+}
+
+Invoke-CodeSignFile -Path $installer.FullName -Config $codeSigningConfig
 
 Get-ChildItem -LiteralPath $releaseDir -Filter "NetOpsSuite-setup-*.exe" |
     Select-Object FullName, Length, LastWriteTime

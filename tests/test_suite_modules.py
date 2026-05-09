@@ -213,11 +213,15 @@ def test_config_builder_reference_device_values_render():
 
 def test_packaging_names_match_suite_release_contract():
     build_script = Path("scripts/build_release.ps1").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/release.yml").read_text(encoding="utf-8")
     installer_script = Path("installer/netops-suite.iss").read_text(encoding="utf-8")
 
     assert "NetOpsSuite" in build_script
     assert "NetOpsSuite-setup-*.exe" in build_script
     assert "custom_parsers.example.py" in build_script
+    assert "Invoke-CodeSignFile" in build_script
+    assert "RequireCodeSigning" in workflow
+    assert "WINDOWS_CODESIGN_PFX_BASE64" in workflow
     assert "NetOpsSuite-setup-{#AppVersion}" in installer_script
     assert "NetOpsSuite" in DEFAULT_UPDATE_ASSET_PATTERN
 

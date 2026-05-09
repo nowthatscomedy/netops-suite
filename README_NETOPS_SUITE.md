@@ -33,6 +33,15 @@ Current verification result:
 - `48 passed`
 - Telnet compatibility uses `telnetlib3`; no stdlib `telnetlib` deprecation warning is expected.
 
+## Release Signing
+
+Windows Smart App Control can block unsigned installers. Public release builds require an Authenticode signing certificate through these GitHub Actions secrets:
+
+- `WINDOWS_CODESIGN_PFX_BASE64`: base64-encoded `.pfx` code signing certificate.
+- `WINDOWS_CODESIGN_PFX_PASSWORD`: password for the `.pfx` certificate.
+
+The release script signs both `NetOpsSuite.exe` and `NetOpsSuite-setup-<version>.exe`.
+
 ## Notes
 
 - The `전송/성능` functions from the plan are preserved inside the existing `진단` tab as `파일 전송` and `iperf3` sub-tabs.
