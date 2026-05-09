@@ -29,6 +29,7 @@ from app.utils.file_utils import open_in_explorer, timestamped_export_path
 class TftpDiagnosticsMixin:
     def _build_tftp_client_page(self) -> QWidget:
         page = QWidget()
+        self._prepare_file_transfer_page(page)
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -36,8 +37,7 @@ class TftpDiagnosticsMixin:
         connection_layout = QVBoxLayout(connection_group)
 
         form = QGridLayout()
-        form.setColumnStretch(1, 1)
-        form.setColumnStretch(3, 1)
+        self._configure_transfer_form_grid(form)
 
         self.tftp_client_host_edit = QLineEdit()
         self.tftp_client_host_edit.setPlaceholderText("예: 192.168.0.10 또는 tftp.example.com")
@@ -55,6 +55,22 @@ class TftpDiagnosticsMixin:
         self.tftp_client_local_folder_edit = QLineEdit()
         self.tftp_client_local_folder_edit.setPlaceholderText("다운로드 저장 폴더. 예: C:\\Temp")
         self.tftp_client_local_browse_button = QPushButton("로컬 폴더")
+        self._set_transfer_field_min_width(
+            self.tftp_client_host_edit,
+            self.tftp_client_remote_path_edit,
+            self.tftp_client_upload_path_edit,
+            self.tftp_client_local_folder_edit,
+        )
+        self._set_transfer_field_min_width(
+            self.tftp_client_port_edit,
+            self.tftp_client_timeout_edit,
+            self.tftp_client_retries_edit,
+            width=96,
+        )
+        self._set_transfer_button_min_width(
+            self.tftp_client_upload_browse_button,
+            self.tftp_client_local_browse_button,
+        )
 
         form.addWidget(QLabel("호스트"), 0, 0)
         form.addWidget(self.tftp_client_host_edit, 0, 1)
@@ -86,6 +102,11 @@ class TftpDiagnosticsMixin:
         self.tftp_client_upload_button = QPushButton("업로드 실행")
         self.tftp_client_download_button = QPushButton("다운로드 실행")
         self.tftp_client_cancel_button = QPushButton("중지")
+        self._set_transfer_button_min_width(
+            self.tftp_client_upload_button,
+            self.tftp_client_download_button,
+            self.tftp_client_cancel_button,
+        )
         button_row.addWidget(self.tftp_client_upload_button)
         button_row.addWidget(self.tftp_client_download_button)
         button_row.addWidget(self.tftp_client_cancel_button)
@@ -116,6 +137,11 @@ class TftpDiagnosticsMixin:
         result_button_row = QHBoxLayout()
         self.tftp_transfer_export_button = QPushButton("전송 결과 CSV 저장")
         self.tftp_client_log_export_button = QPushButton("클라이언트 로그 TXT 저장")
+        self._set_transfer_button_min_width(
+            self.tftp_transfer_export_button,
+            self.tftp_client_log_export_button,
+            width=140,
+        )
         result_button_row.addWidget(self.tftp_transfer_export_button)
         result_button_row.addWidget(self.tftp_client_log_export_button)
         result_button_row.addStretch(1)

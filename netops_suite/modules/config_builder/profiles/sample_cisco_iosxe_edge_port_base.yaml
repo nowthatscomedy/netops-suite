@@ -1,4 +1,4 @@
-# Cisco 샘플 프로파일: 엣지 액세스 포트 템플릿
+# Cisco 샘플 프로파일: 엣지 액세스 포트 프로파일
 # 권장 사용 예:
 # - 사용자 단말이 연결되는 액세스 스위치 엣지 포트
 # - 액세스 VLAN
@@ -13,8 +13,8 @@ id: CISCO_IOSXE_EDGE_PORT_BASE
 vendor: CISCO
 model: Catalyst 9200 Edge
 firmware: IOS-XE 17.x
-description: 관리 SVI, 액세스 VLAN, 선택형 Voice VLAN, 선택형 Port-Security, 선택형 BPDU Guard를 포함한 Cisco IOS-XE 엣지 포트 기본 템플릿
-description_ko: 관리 SVI, 액세스 VLAN, 선택형 Voice VLAN, 선택형 Port-Security, 선택형 BPDU Guard를 포함한 Cisco IOS-XE 엣지 포트 기본 템플릿
+description: 관리 SVI, 액세스 VLAN, 선택형 Voice VLAN, 선택형 Port-Security, 선택형 BPDU Guard를 포함한 Cisco IOS-XE 엣지 포트 기본 프로파일
+description_ko: 관리 SVI, 액세스 VLAN, 선택형 Voice VLAN, 선택형 Port-Security, 선택형 BPDU Guard를 포함한 Cisco IOS-XE 엣지 포트 기본 프로파일
 
 variables:
   hostname:

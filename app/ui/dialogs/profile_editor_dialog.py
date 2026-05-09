@@ -25,11 +25,11 @@ class ProfileEditorDialog(QDialog):
     def __init__(self, parent=None, profile: IPProfile | None = None) -> None:
         super().__init__(parent)
         self._initial_profile = profile
-        self.setWindowTitle("IP 프로필 편집")
+        self.setWindowTitle("IP 프로파일 편집")
         self.resize(420, 360)
 
         self.name_edit = QLineEdit(profile.name if profile else "")
-        self.name_edit.setPlaceholderText("예: 현장 테스트 프로필")
+        self.name_edit.setPlaceholderText("예: 현장 테스트 프로파일")
         self.mode_combo = QComboBox()
         self.mode_combo.addItem("수동(static)", "static")
         self.mode_combo.addItem("자동(DHCP)", "dhcp")
@@ -49,7 +49,7 @@ class ProfileEditorDialog(QDialog):
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
-        form.addRow("프로필 이름", self.name_edit)
+        form.addRow("프로파일 이름", self.name_edit)
         form.addRow("모드", self.mode_combo)
         form.addRow("기본 인터페이스", self.interface_edit)
         form.addRow("로컬 IPv4", self.ip_edit)
@@ -84,7 +84,7 @@ class ProfileEditorDialog(QDialog):
     def profile_data(self) -> IPProfile:
         name = self.name_edit.text().strip()
         if not name:
-            raise ValidationError("프로필 이름을 입력해 주세요.")
+            raise ValidationError("프로파일 이름을 입력해 주세요.")
 
         mode = str(self.mode_combo.currentData())
         if mode == "static":

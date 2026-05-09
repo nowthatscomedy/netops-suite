@@ -79,7 +79,7 @@ class ProfileBuilderDialog(QDialog):
         self.preview_timer.setSingleShot(True)
         self.preview_timer.timeout.connect(self.refresh_preview)
 
-        self.setWindowTitle("템플릿 편집" if profile else "템플릿 작성")
+        self.setWindowTitle("프로파일 편집" if profile else "프로파일 작성")
         self.resize(1080, 820)
         self._build_ui()
         self._load_state_into_widgets()
@@ -91,8 +91,8 @@ class ProfileBuilderDialog(QDialog):
         layout.setSpacing(10)
 
         intro = QLabel(
-            "템플릿 ID는 장비 설정 정보 파일의 profile_id와 연결됩니다. "
-            "profile_id는 필수이고, device_id는 선택입니다. 아래 변수명이 장비 파일 컬럼으로 들어갑니다."
+            "프로파일 ID는 장비 설정 정보 파일의 profile_id 컬럼 값과 연결됩니다. "
+            "장비 파일에는 프로파일 ID(profile_id) 컬럼이 필수이고, device_id 컬럼은 선택입니다. 아래 변수명이 장비 파일 컬럼으로 들어갑니다."
         )
         intro.setWordWrap(True)
         layout.addWidget(intro)
@@ -109,7 +109,7 @@ class ProfileBuilderDialog(QDialog):
         actions.addStretch(1)
         refresh_button = QPushButton("검토 갱신")
         refresh_button.clicked.connect(self.refresh_preview)
-        self.save_button = QPushButton("템플릿 저장")
+        self.save_button = QPushButton("프로파일 저장")
         self.save_button.clicked.connect(self.save_profile)
         close_button = QPushButton("닫기")
         close_button.clicked.connect(self.reject)
@@ -121,7 +121,7 @@ class ProfileBuilderDialog(QDialog):
     def _build_basic_tab(self) -> None:
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        hint = QLabel("프로파일 ID는 공백 없이 작성하고, 장비 파일의 profile_id와 정확히 같아야 합니다.")
+        hint = QLabel("프로파일 ID는 공백 없이 작성하고, 장비 파일의 profile_id 컬럼 값과 정확히 같아야 합니다.")
         hint.setWordWrap(True)
         layout.addWidget(hint)
         example = QLabel("예: CISCO_IOS_L2_ACCESS_BASE / C9300_BRANCH_DISTRIBUTION")
@@ -139,8 +139,8 @@ class ProfileBuilderDialog(QDialog):
         self.firmware_edit.setPlaceholderText("예: IOS-XE 17.x")
         self.description_edit = QPlainTextEdit()
         self.description_edit.setFixedHeight(110)
-        self.description_edit.setPlaceholderText("이 템플릿이 어떤 장비/용도에 쓰이는지 설명")
-        form.addRow("템플릿 ID", self.profile_id_edit)
+        self.description_edit.setPlaceholderText("이 프로파일이 어떤 장비/용도에 쓰이는지 설명")
+        form.addRow("프로파일 ID", self.profile_id_edit)
         form.addRow("벤더", self.vendor_edit)
         form.addRow("모델", self.model_edit)
         form.addRow("펌웨어", self.firmware_edit)
@@ -260,7 +260,7 @@ class ProfileBuilderDialog(QDialog):
     def _build_review_tab(self) -> None:
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        hint = QLabel("왼쪽 탭에서 입력한 내용으로 YAML이 자동 생성됩니다. 오류가 없으면 바로 profiles 폴더에 저장됩니다.")
+        hint = QLabel("왼쪽 탭에서 입력한 내용으로 YAML이 자동 생성됩니다. 오류가 없으면 바로 프로파일 폴더에 저장됩니다.")
         hint.setWordWrap(True)
         layout.addWidget(hint)
         self.issue_list = QListWidget()
@@ -516,5 +516,5 @@ class ProfileBuilderDialog(QDialog):
         target_path, _ = save_profile_yaml_to_directory(profile_id, self.latest_yaml_text, self.profiles_dir)
         self.saved_profile_id = profile_id
         self.saved_path = target_path
-        QMessageBox.information(self, "템플릿 저장 완료", f"{target_path.name} 파일로 저장했습니다.")
+        QMessageBox.information(self, "프로파일 저장 완료", f"{target_path.name} 파일로 저장했습니다.")
         self.accept()

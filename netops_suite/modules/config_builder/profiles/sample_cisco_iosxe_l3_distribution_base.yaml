@@ -1,4 +1,4 @@
-# Cisco 샘플 프로파일: L3 디스트리뷰션 스위치 기본 템플릿
+# Cisco 샘플 프로파일: L3 디스트리뷰션 스위치 기본 프로파일
 # 권장 사용 예:
 # - ip routing을 사용하는 L3 스위치
 # - 관리 SVI
@@ -21,8 +21,8 @@ id: CISCO_IOSXE_L3_DISTRIBUTION_BASE
 vendor: CISCO
 model: Catalyst 9300 Distribution
 firmware: IOS-XE 17.x
-description: 라우팅, 관리 SVI, 기본 경로, 선택형 NTP, 선택형 DHCP Snooping을 포함한 Cisco IOS-XE L3 디스트리뷰션 스위치 기본 템플릿
-description_ko: 라우팅, 관리 SVI, 기본 경로, 선택형 NTP, 선택형 DHCP Snooping을 포함한 Cisco IOS-XE L3 디스트리뷰션 스위치 기본 템플릿
+description: 라우팅, 관리 SVI, 기본 경로, 선택형 NTP, 선택형 DHCP Snooping을 포함한 Cisco IOS-XE L3 디스트리뷰션 스위치 기본 프로파일
+description_ko: 라우팅, 관리 SVI, 기본 경로, 선택형 NTP, 선택형 DHCP Snooping을 포함한 Cisco IOS-XE L3 디스트리뷰션 스위치 기본 프로파일
 
 variables:
   hostname:
@@ -55,7 +55,7 @@ variables:
 
   domain_name:
     required: false
-    default: corp.local
+    default: example.net
     description: 장비 도메인명
     description_ko: 장비 도메인명
   local_admin:
@@ -90,7 +90,7 @@ variables:
     description_ko: NTP 설정 블록 출력 여부
   ntp_server:
     required: false
-    default: 192.168.254.10
+    default: 192.0.2.254
     description: NTP 서버 IP 또는 호스트명
     description_ko: NTP 서버 IP 또는 호스트명
 

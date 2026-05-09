@@ -88,7 +88,7 @@ class ConfigEngine:
                     ValidationIssue(
                         level="error",
                         scope="device",
-                        message="profile_id 값이 비어 있습니다.",
+                        message="프로파일 ID 값이 비어 있습니다.",
                         device_id=record.display_name,
                         row_number=record.row_number,
                     )
@@ -101,7 +101,7 @@ class ConfigEngine:
                     ValidationIssue(
                         level="error",
                         scope="device",
-                        message="profile_id에 해당하는 템플릿을 찾을 수 없습니다.",
+                        message="프로파일 ID에 해당하는 프로파일을 찾을 수 없습니다.",
                         profile_id=record.profile_id,
                         device_id=record.display_name,
                         row_number=record.row_number,
@@ -166,7 +166,7 @@ class ConfigEngine:
     ) -> RenderedConfig:
         profile = self._get_profile(record.profile_id)
         if not profile:
-            raise ValueError(f"템플릿을 찾을 수 없습니다: {record.profile_id}")
+            raise ValueError(f"프로파일을 찾을 수 없습니다: {record.profile_id}")
         context, issues = self.resolve_values(record, profile)
         error_messages = [issue.message for issue in issues if issue.level == "error"]
         if error_messages:
@@ -220,7 +220,7 @@ class ConfigEngine:
                 ValidationIssue(
                     level="error",
                     scope="profile",
-                    message=f"템플릿 문법 오류 ({block_name}): {exc.message}",
+                    message=f"프로파일 문법 오류 ({block_name}): {exc.message}",
                     source=profile.source,
                     profile_id=profile.id,
                 )

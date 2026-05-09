@@ -16,7 +16,7 @@ from app.utils.validators import ValidationError, parse_positive_int, validate_f
 class ScpProfileDialog(QDialog):
     def __init__(self, parent=None, profile: ScpProfile | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("SCP 프로필 편집")
+        self.setWindowTitle("SCP 프로파일 편집")
         self.resize(420, 220)
 
         self.name_edit = QLineEdit(profile.name if profile else "")
@@ -34,7 +34,7 @@ class ScpProfileDialog(QDialog):
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
-        form.addRow("프로필 이름", self.name_edit)
+        form.addRow("프로파일 이름", self.name_edit)
         form.addRow("호스트", self.host_edit)
         form.addRow("포트", self.port_edit)
         form.addRow("사용자명", self.username_edit)
@@ -58,7 +58,7 @@ class ScpProfileDialog(QDialog):
     def profile_data(self) -> ScpProfile:
         name = self.name_edit.text().strip()
         if not name:
-            raise ValidationError("프로필 이름을 입력해 주세요.")
+            raise ValidationError("프로파일 이름을 입력해 주세요.")
         return ScpProfile(
             name=name,
             host=validate_ftp_host(self.host_edit.text()),

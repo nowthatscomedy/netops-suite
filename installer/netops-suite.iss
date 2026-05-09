@@ -10,6 +10,8 @@
   #error OutputDir is not defined
 #endif
 
+#define AppUserModelID "NetOpsSuite.DesktopApp"
+
 [Setup]
 AppId={{E5B8B0F9-5B63-4A5F-BB0A-89F14E37E7B8}
 AppName=NetOps Suite
@@ -36,5 +38,5 @@ Name: "desktopicon"; Description: "바탕 화면 바로가기 만들기"; GroupD
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\NetOps Suite"; Filename: "{app}\NetOpsSuite.exe"
-Name: "{autodesktop}\NetOps Suite"; Filename: "{app}\NetOpsSuite.exe"; Tasks: desktopicon
+Name: "{autoprograms}\NetOps Suite"; Filename: "{app}\NetOpsSuite.exe"; IconFilename: "{app}\NetOpsSuite.exe"; AppUserModelID: "{#AppUserModelID}"
+Name: "{autodesktop}\NetOps Suite"; Filename: "{app}\NetOpsSuite.exe"; IconFilename: "{app}\NetOpsSuite.exe"; AppUserModelID: "{#AppUserModelID}"; Tasks: desktopicon

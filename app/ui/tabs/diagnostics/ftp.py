@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QPlainTextEdit,
+    QScrollArea,
     QSizePolicy,
     QSplitter,
     QStackedWidget,
@@ -79,10 +80,12 @@ class FtpDiagnosticsMixin:
         self.file_transfer_role_combo = QComboBox()
         self.file_transfer_role_combo.addItem("클라이언트", 0)
         self.file_transfer_role_combo.addItem("임시 서버", 1)
+        self.file_transfer_role_combo.setMinimumWidth(120)
         self.file_transfer_mode_combo = QComboBox()
         self.file_transfer_mode_combo.addItem("FTP/FTPS/SFTP", 0)
         self.file_transfer_mode_combo.addItem("SCP", 1)
         self.file_transfer_mode_combo.addItem("TFTP", 2)
+        self.file_transfer_mode_combo.setMinimumWidth(150)
 
         selector_layout.addWidget(QLabel("역할"))
         selector_layout.addWidget(self.file_transfer_role_combo)
@@ -101,9 +104,16 @@ class FtpDiagnosticsMixin:
         self.file_transfer_page_stack.addWidget(self._build_tftp_server_page())
 
         self.file_transfer_page_stack.setStyleSheet("background:#ffffff;")
-        self.file_transfer_page_stack.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
-        layout.addWidget(self.file_transfer_page_stack)
-        layout.addStretch(1)
+        self.file_transfer_page_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        self.file_transfer_scroll_area = QScrollArea()
+        self.file_transfer_scroll_area.setWidgetResizable(True)
+        self.file_transfer_scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.file_transfer_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.file_transfer_scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.file_transfer_scroll_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
+        self.file_transfer_scroll_area.setWidget(self.file_transfer_page_stack)
+        layout.addWidget(self.file_transfer_scroll_area, 1)
 
         self.file_transfer_role_combo.currentIndexChanged.connect(self._handle_file_transfer_role_changed)
         self.file_transfer_mode_combo.currentIndexChanged.connect(self._handle_file_transfer_mode_changed)
@@ -216,13 +226,47 @@ class FtpDiagnosticsMixin:
         page_index = role_index * self.file_transfer_mode_combo.count() + mode_index
         if 0 <= page_index < self.file_transfer_page_stack.count():
             self.file_transfer_page_stack.setCurrentIndex(page_index)
+            self._sync_file_transfer_page_minimum_size()
+
+    def _sync_file_transfer_page_minimum_size(self) -> None:
+        current_page = self.file_transfer_page_stack.currentWidget()
+        if current_page is None:
+            return
+
+        size_hint = current_page.sizeHint()
+        minimum_hint = current_page.minimumSizeHint()
+        minimum_width = max(current_page.minimumWidth(), minimum_hint.width(), size_hint.width())
+        minimum_height = max(current_page.minimumHeight(), minimum_hint.height(), size_hint.height())
+        current_page.setMinimumSize(minimum_width, minimum_height)
+        self.file_transfer_page_stack.setMinimumSize(minimum_width, minimum_height)
 
     def _set_compact_transfer_group(self, *widgets: QWidget) -> None:
         for widget in widgets:
-            widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+            widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+
+    def _prepare_file_transfer_page(self, page: QWidget, minimum_width: int = 760) -> None:
+        page.setMinimumWidth(minimum_width)
+        page.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+    def _configure_transfer_form_grid(self, form: QGridLayout, field_min_width: int = 160) -> None:
+        form.setColumnMinimumWidth(1, field_min_width)
+        form.setColumnMinimumWidth(3, field_min_width)
+        form.setColumnStretch(1, 1)
+        form.setColumnStretch(3, 1)
+
+    def _set_transfer_field_min_width(self, *widgets: QWidget, width: int = 160) -> None:
+        for widget in widgets:
+            widget.setMinimumWidth(width)
+            widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+    def _set_transfer_button_min_width(self, *buttons: QPushButton, width: int = 84) -> None:
+        for button in buttons:
+            button.setMinimumWidth(max(width, button.minimumSizeHint().width()))
+            button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
 
     def _build_ftp_client_page(self) -> QWidget:
         page = QWidget()
+        self._prepare_file_transfer_page(page)
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -234,7 +278,7 @@ class FtpDiagnosticsMixin:
         self.ftp_profile_add_button = QPushButton("추가")
         self.ftp_profile_edit_button = QPushButton("수정")
         self.ftp_profile_delete_button = QPushButton("삭제")
-        profile_row.addWidget(QLabel("프로필"))
+        profile_row.addWidget(QLabel("프로파일"))
         profile_row.addWidget(self.ftp_profile_combo, 1)
         profile_row.addWidget(self.ftp_profile_add_button)
         profile_row.addWidget(self.ftp_profile_edit_button)
@@ -242,8 +286,7 @@ class FtpDiagnosticsMixin:
         connection_layout.addLayout(profile_row)
 
         form = QGridLayout()
-        form.setColumnStretch(1, 1)
-        form.setColumnStretch(3, 1)
+        self._configure_transfer_form_grid(form)
 
         self.ftp_client_protocol_combo = QComboBox()
         self.ftp_client_protocol_combo.addItem("FTP", "ftp")
@@ -266,6 +309,22 @@ class FtpDiagnosticsMixin:
         self.ftp_client_local_folder_edit = QLineEdit()
         self.ftp_client_local_folder_edit.setPlaceholderText("예: C:\\Temp")
         self.ftp_client_local_browse_button = QPushButton("로컬 폴더")
+        self._set_transfer_field_min_width(
+            self.ftp_profile_combo,
+            self.ftp_client_protocol_combo,
+            self.ftp_client_host_edit,
+            self.ftp_client_username_edit,
+            self.ftp_client_password_edit,
+            self.ftp_client_remote_path_edit,
+            self.ftp_client_local_folder_edit,
+        )
+        self._set_transfer_field_min_width(self.ftp_client_port_edit, self.ftp_client_timeout_edit, width=96)
+        self._set_transfer_button_min_width(
+            self.ftp_profile_add_button,
+            self.ftp_profile_edit_button,
+            self.ftp_profile_delete_button,
+            self.ftp_client_local_browse_button,
+        )
 
         form.addWidget(QLabel("프로토콜"), 0, 0)
         form.addWidget(self.ftp_client_protocol_combo, 0, 1)
@@ -305,6 +364,17 @@ class FtpDiagnosticsMixin:
         self.ftp_client_rename_button = QPushButton("이름 변경")
         self.ftp_client_delete_button = QPushButton("삭제")
         self.ftp_client_cancel_button = QPushButton("취소")
+        self._set_transfer_button_min_width(
+            self.ftp_client_connect_button,
+            self.ftp_client_refresh_button,
+            self.ftp_client_disconnect_button,
+            self.ftp_client_upload_button,
+            self.ftp_client_download_button,
+            self.ftp_client_mkdir_button,
+            self.ftp_client_rename_button,
+            self.ftp_client_delete_button,
+            self.ftp_client_cancel_button,
+        )
         for button in (
             self.ftp_client_connect_button,
             self.ftp_client_refresh_button,
@@ -369,6 +439,11 @@ class FtpDiagnosticsMixin:
         result_button_row = QHBoxLayout()
         self.ftp_transfer_export_button = QPushButton("전송 결과 CSV 저장")
         self.ftp_client_log_export_button = QPushButton("클라이언트 로그 TXT 저장")
+        self._set_transfer_button_min_width(
+            self.ftp_transfer_export_button,
+            self.ftp_client_log_export_button,
+            width=140,
+        )
         result_button_row.addWidget(self.ftp_transfer_export_button)
         result_button_row.addWidget(self.ftp_client_log_export_button)
         result_button_row.addStretch(1)
@@ -514,7 +589,7 @@ class FtpDiagnosticsMixin:
         current_name = self.ftp_profile_combo.currentText().strip() if hasattr(self, "ftp_profile_combo") else ""
         self.ftp_profile_combo.blockSignals(True)
         self.ftp_profile_combo.clear()
-        self.ftp_profile_combo.addItem("프로필 선택", "")
+        self.ftp_profile_combo.addItem("프로파일 선택", "")
         for profile in self.state.ftp_profiles:
             self.ftp_profile_combo.addItem(profile.name, profile.name)
         index = self.ftp_profile_combo.findData(current_name)
@@ -563,7 +638,7 @@ class FtpDiagnosticsMixin:
         profile_name = str(self.ftp_profile_combo.currentData() or "").strip()
         profile = self._get_ftp_profile_by_name(profile_name)
         if profile is None:
-            QMessageBox.warning(self, "선택 필요", "수정할 FTP 프로필을 먼저 선택해 주세요.")
+            QMessageBox.warning(self, "선택 필요", "수정할 FTP 프로파일을 먼저 선택해 주세요.")
             return
         dialog = FtpProfileDialog(self, profile)
         if dialog.exec():
@@ -580,9 +655,9 @@ class FtpDiagnosticsMixin:
         profile_name = str(self.ftp_profile_combo.currentData() or "").strip()
         profile = self._get_ftp_profile_by_name(profile_name)
         if profile is None:
-            QMessageBox.warning(self, "선택 필요", "삭제할 FTP 프로필을 먼저 선택해 주세요.")
+            QMessageBox.warning(self, "선택 필요", "삭제할 FTP 프로파일을 먼저 선택해 주세요.")
             return
-        if QMessageBox.question(self, "프로필 삭제", f"'{profile.name}' 프로필을 삭제할까요?") != QMessageBox.Yes:
+        if QMessageBox.question(self, "프로파일 삭제", f"'{profile.name}' 프로파일을 삭제할까요?") != QMessageBox.Yes:
             return
         profiles = [item for item in self.state.ftp_profiles if item.name != profile.name]
         self.state.save_ftp_profiles(profiles)

@@ -272,6 +272,9 @@ if (-not (Test-Path $sourceDir)) {
 $appExePath = Join-Path $sourceDir "NetOpsSuite.exe"
 Invoke-CodeSignFile -Path $appExePath -Config $codeSigningConfig
 
+Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE") -Destination $sourceDir -Force
+Copy-Item -LiteralPath (Join-Path $repoRoot "THIRD_PARTY_NOTICES.md") -Destination $sourceDir -Force
+
 Write-Host "Building installer..."
 & $isccPath `
     "/DAppVersion=$normalizedVersion" `

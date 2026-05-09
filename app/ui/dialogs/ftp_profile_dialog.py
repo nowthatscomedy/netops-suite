@@ -27,7 +27,7 @@ class FtpProfileDialog(QDialog):
     def __init__(self, parent=None, profile: FtpProfile | None = None) -> None:
         super().__init__(parent)
         self._initial_profile = profile
-        self.setWindowTitle("FTP 프로필 편집")
+        self.setWindowTitle("FTP 프로파일 편집")
         self.resize(420, 280)
 
         self.name_edit = QLineEdit(profile.name if profile else "")
@@ -62,7 +62,7 @@ class FtpProfileDialog(QDialog):
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
-        form.addRow("프로필 이름", self.name_edit)
+        form.addRow("프로파일 이름", self.name_edit)
         form.addRow("프로토콜", self.protocol_combo)
         form.addRow("호스트", self.host_edit)
         form.addRow("포트", self.port_edit)
@@ -109,7 +109,7 @@ class FtpProfileDialog(QDialog):
     def profile_data(self) -> FtpProfile:
         name = self.name_edit.text().strip()
         if not name:
-            raise ValidationError("프로필 이름을 입력해 주세요.")
+            raise ValidationError("프로파일 이름을 입력해 주세요.")
 
         protocol = validate_ftp_protocol(str(self.protocol_combo.currentData() or "ftp"))
         host = validate_ftp_host(self.host_edit.text())

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
 from PySide6.QtCore import Qt
 
 from app.models.ftp_models import FtpProfile
@@ -316,6 +317,35 @@ def build_fake_state(tmp_path):
     return state
 
 
+def _show_compact_file_transfer_tab(tab: DiagnosticsTab, qapp) -> None:
+    tab.show()
+    tab.tab_widget.setCurrentIndex(5)
+    qapp.processEvents()
+
+    compact_width = max(640, tab.file_transfer_page_stack.minimumSizeHint().width())
+    tab.resize(compact_width, 640)
+    qapp.processEvents()
+
+
+def _assert_widget_readable(widget, tab: DiagnosticsTab) -> None:
+    assert widget.isVisibleTo(tab)
+    expected_height = widget.minimumHeight() or widget.sizeHint().height()
+    expected_height = min(expected_height, widget.maximumHeight())
+    assert widget.height() >= expected_height
+
+
+def _assert_current_file_transfer_page_readable(tab: DiagnosticsTab, expected_index: int) -> None:
+    stack = tab.file_transfer_page_stack
+    current_page = stack.currentWidget()
+    expected_height = current_page.sizeHint().height()
+
+    assert stack.currentIndex() == expected_index
+    assert current_page.isVisibleTo(tab)
+    assert stack.minimumHeight() >= expected_height
+    assert stack.height() >= expected_height
+    assert current_page.height() >= expected_height
+
+
 def test_diagnostics_state_save_and_restore_shape(qapp, tmp_path):
     state = build_fake_state(tmp_path)
     tab = DiagnosticsTab(state)
@@ -415,6 +445,101 @@ def test_diagnostics_state_save_and_restore_shape(qapp, tmp_path):
     restored_saved = tab.save_ui_state()
     assert restored_saved["tools"]["version"] == 2
     assert restored_saved["tools"]["oui_targets"] == "Legacy,AA:BB:CC:DD:EE:FF"
+
+
+@pytest.mark.parametrize(
+    ("mode_index", "protocol", "expected_stack_index", "representative_controls"),
+    [
+        (
+            0,
+            "ftp",
+            0,
+            (
+                "ftp_client_protocol_combo",
+                "ftp_client_host_edit",
+                "ftp_client_connect_button",
+                "ftp_remote_table",
+                "ftp_transfer_table",
+                "ftp_client_log_output",
+            ),
+        ),
+        (
+            0,
+            "ftps",
+            0,
+            (
+                "ftp_client_protocol_combo",
+                "ftp_client_host_edit",
+                "ftp_client_connect_button",
+                "ftp_remote_table",
+                "ftp_transfer_table",
+                "ftp_client_log_output",
+            ),
+        ),
+        (
+            0,
+            "sftp",
+            0,
+            (
+                "ftp_client_protocol_combo",
+                "ftp_client_host_edit",
+                "ftp_client_connect_button",
+                "ftp_remote_table",
+                "ftp_transfer_table",
+                "ftp_client_log_output",
+            ),
+        ),
+        (
+            1,
+            None,
+            1,
+            (
+                "scp_client_host_edit",
+                "scp_client_upload_button",
+                "scp_transfer_table",
+                "scp_client_log_output",
+            ),
+        ),
+        (
+            2,
+            None,
+            2,
+            (
+                "tftp_client_host_edit",
+                "tftp_client_upload_button",
+                "tftp_transfer_table",
+                "tftp_client_log_output",
+            ),
+        ),
+    ],
+)
+def test_file_transfer_client_pages_remain_readable_at_compact_size(
+    qapp,
+    tmp_path,
+    mode_index,
+    protocol,
+    expected_stack_index,
+    representative_controls,
+):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    _show_compact_file_transfer_tab(tab, qapp)
+
+    tab.file_transfer_role_combo.setCurrentIndex(0)
+    tab.file_transfer_mode_combo.setCurrentIndex(mode_index)
+    if protocol is not None:
+        protocol_index = tab.ftp_client_protocol_combo.findData(protocol)
+        assert protocol_index >= 0
+        tab.ftp_client_protocol_combo.setCurrentIndex(protocol_index)
+    qapp.processEvents()
+
+    assert tab.file_transfer_role_combo.currentData() == 0
+    assert tab.file_transfer_mode_combo.currentIndex() == mode_index
+    if protocol is not None:
+        assert tab.ftp_client_protocol_combo.currentData() == protocol
+
+    _assert_current_file_transfer_page_readable(tab, expected_stack_index)
+    for control_name in representative_controls:
+        _assert_widget_readable(getattr(tab, control_name), tab)
 
 
 def test_ping_table_sorts_numeric_columns_and_updates_sorted_rows(qapp, tmp_path):

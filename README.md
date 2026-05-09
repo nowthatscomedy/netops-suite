@@ -10,7 +10,7 @@ NetOps Suite는 Windows 현장 네트워크 작업을 한 앱에서 처리하기
 - Windows 네트워크 어댑터 조회
 - DHCP / 고정 IP 전환
 - 게이트웨이 / DNS 적용
-- IP 프로필 저장, 수정, 삭제, 재적용
+- IP 프로파일 저장, 수정, 삭제, 재적용
 
 ### 진단
 
@@ -33,7 +33,7 @@ NetOps Suite는 Windows 현장 네트워크 작업을 한 앱에서 처리하기
 
 - FTP / FTPS / SFTP / SCP / TFTP 클라이언트
 - FTP / SCP / TFTP 임시 서버
-- 전송 프로필 관리
+- 전송 프로파일 관리
 - iperf3 클라이언트 / 서버 모드
 - winget 기반 iperf3 설치 / 업데이트 보조
 - 공개 iperf3 서버 목록 캐시
@@ -50,7 +50,7 @@ NetOps Suite는 Windows 현장 네트워크 작업을 한 앱에서 처리하기
 
 ### 설정 생성
 
-- YAML 프로필 기반 Jinja2 설정 렌더링
+- YAML 프로파일 기반 Jinja2 설정 렌더링
 - CSV / XLSX 장비값 편집
 - 변수 검증, 블록 선택, CLI 미리보기
 - 선택 장비 CLI 복사, 복사+다음, 적용 완료 상태
@@ -69,7 +69,7 @@ NetOps Suite는 Windows 현장 네트워크 작업을 한 앱에서 처리하기
 
 - 장비 점검 참고 예시: `netops_suite/modules/inspector/vendor_templates/reference__inspection_examples.yaml`
 - Python 추출 함수 참고 예시: `netops_suite/modules/inspector_runtime/custom_parsers.example.py`
-- 설정 생성 참고 프로필: `netops_suite/modules/config_builder/profiles/sample_*.yaml`
+- 설정 생성 참고 프로파일: `netops_suite/modules/config_builder/profiles/sample_*.yaml`
 - 설정 생성 장비값 참고 CSV: `netops_suite/modules/config_builder/device_values/sample_*.csv`
 
 ## 실행 방법
@@ -137,9 +137,11 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.
 
 Windows 설치 파일 빌드에는 Inno Setup 6가 필요합니다.
 
-공개 릴리즈용 Windows 설치 파일은 Authenticode 코드 서명이 필요합니다. GitHub Actions 릴리즈 빌드는
-`WINDOWS_CODESIGN_PFX_BASE64`, `WINDOWS_CODESIGN_PFX_PASSWORD` secrets가 없으면 unsigned 설치 파일을
-배포하지 않고 실패합니다.
+GitHub Actions 릴리즈 빌드는 `workflow_dispatch`로 수동 실행하며, 저장소 공개 전환이나 `main` push와
+릴리즈 게시를 분리합니다.
+공개 설치 파일에는 `LICENSE`와 `THIRD_PARTY_NOTICES.md`를 포함해야 합니다.
+Windows 설치 파일 코드 서명은 선택 사항입니다. 서명이 필요할 때만 로컬에서 인증서 경로와 비밀번호를
+지정하고 `-RequireCodeSigning`을 함께 사용합니다.
 
 로컬에서 서명 빌드를 확인할 때는 다음처럼 실행합니다.
 

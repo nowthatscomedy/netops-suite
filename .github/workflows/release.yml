@@ -1,9 +1,6 @@
 name: Build And Release
 
 on:
-  push:
-    branches:
-      - "main"
   workflow_dispatch:
     inputs:
       tag_name:
@@ -150,40 +147,14 @@ jobs:
             throw "Tag version ($tagVersion) does not match app/version.py version ($appVersion)."
           }
 
-      - name: Prepare Code Signing Certificate
-        if: steps.release_guard.outputs.should_release == 'true'
-        id: codesign
-        shell: powershell
-        env:
-          WINDOWS_CODESIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CODESIGN_PFX_BASE64)) {
-            throw "WINDOWS_CODESIGN_PFX_BASE64 is required to publish Windows installers. Unsigned installers are blocked by Windows Smart App Control."
-          }
-
-          $certPath = Join-Path $env:RUNNER_TEMP "netops-suite-codesign.pfx"
-          [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WINDOWS_CODESIGN_PFX_BASE64))
-          "cert_path=$certPath" >> $env:GITHUB_OUTPUT
-
       - name: Build Installer
         if: steps.release_guard.outputs.should_release == 'true'
         shell: powershell
-        env:
-          WINDOWS_CODESIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
         run: |
           Set-ExecutionPolicy -Scope Process Bypass
           .\scripts\build_release.ps1 `
             -Version "${{ steps.meta.outputs.tag_name }}" `
-            -Clean `
-            -CodeSigningCertPath "${{ steps.codesign.outputs.cert_path }}" `
-            -CodeSigningCertPassword $env:WINDOWS_CODESIGN_CERT_PASSWORD `
-            -RequireCodeSigning
-
-      - name: Remove Code Signing Certificate
-        if: always() && steps.codesign.outputs.cert_path != ''
-        shell: powershell
-        run: |
-          Remove-Item -LiteralPath "${{ steps.codesign.outputs.cert_path }}" -Force -ErrorAction SilentlyContinue
+            -Clean
 
       - name: Upload Workflow Artifact
         if: steps.release_guard.outputs.should_release == 'true'

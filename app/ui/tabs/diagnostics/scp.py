@@ -33,6 +33,7 @@ from app.utils.file_utils import open_in_explorer, timestamped_export_path
 class ScpDiagnosticsMixin:
     def _build_scp_client_page(self) -> QWidget:
         page = QWidget()
+        self._prepare_file_transfer_page(page)
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -44,7 +45,7 @@ class ScpDiagnosticsMixin:
         self.scp_profile_add_button = QPushButton("추가")
         self.scp_profile_edit_button = QPushButton("수정")
         self.scp_profile_delete_button = QPushButton("삭제")
-        profile_row.addWidget(QLabel("프로필"))
+        profile_row.addWidget(QLabel("프로파일"))
         profile_row.addWidget(self.scp_profile_combo, 1)
         profile_row.addWidget(self.scp_profile_add_button)
         profile_row.addWidget(self.scp_profile_edit_button)
@@ -52,8 +53,7 @@ class ScpDiagnosticsMixin:
         connection_layout.addLayout(profile_row)
 
         form = QGridLayout()
-        form.setColumnStretch(1, 1)
-        form.setColumnStretch(3, 1)
+        self._configure_transfer_form_grid(form)
 
         self.scp_client_host_edit = QLineEdit()
         self.scp_client_host_edit.setPlaceholderText("예: 192.168.0.10 또는 scp.example.com")
@@ -71,6 +71,21 @@ class ScpDiagnosticsMixin:
         self.scp_client_local_folder_edit = QLineEdit()
         self.scp_client_local_folder_edit.setPlaceholderText("다운로드 저장 폴더. 예: C:\\Temp")
         self.scp_client_local_browse_button = QPushButton("로컬 폴더")
+        self._set_transfer_field_min_width(
+            self.scp_profile_combo,
+            self.scp_client_host_edit,
+            self.scp_client_username_edit,
+            self.scp_client_password_edit,
+            self.scp_client_remote_path_edit,
+            self.scp_client_local_folder_edit,
+        )
+        self._set_transfer_field_min_width(self.scp_client_port_edit, self.scp_client_timeout_edit, width=96)
+        self._set_transfer_button_min_width(
+            self.scp_profile_add_button,
+            self.scp_profile_edit_button,
+            self.scp_profile_delete_button,
+            self.scp_client_local_browse_button,
+        )
 
         form.addWidget(QLabel("호스트"), 0, 0)
         form.addWidget(self.scp_client_host_edit, 0, 1)
@@ -105,6 +120,11 @@ class ScpDiagnosticsMixin:
         self.scp_client_upload_button = QPushButton("업로드 실행")
         self.scp_client_download_button = QPushButton("다운로드 실행")
         self.scp_client_cancel_button = QPushButton("중지")
+        self._set_transfer_button_min_width(
+            self.scp_client_upload_button,
+            self.scp_client_download_button,
+            self.scp_client_cancel_button,
+        )
         button_row.addWidget(self.scp_client_upload_button)
         button_row.addWidget(self.scp_client_download_button)
         button_row.addWidget(self.scp_client_cancel_button)
@@ -139,6 +159,11 @@ class ScpDiagnosticsMixin:
         result_button_row = QHBoxLayout()
         self.scp_transfer_export_button = QPushButton("전송 결과 CSV 저장")
         self.scp_client_log_export_button = QPushButton("클라이언트 로그 TXT 저장")
+        self._set_transfer_button_min_width(
+            self.scp_transfer_export_button,
+            self.scp_client_log_export_button,
+            width=140,
+        )
         result_button_row.addWidget(self.scp_transfer_export_button)
         result_button_row.addWidget(self.scp_client_log_export_button)
         result_button_row.addStretch(1)
@@ -269,7 +294,7 @@ class ScpDiagnosticsMixin:
         current_name = self.scp_profile_combo.currentText().strip() if hasattr(self, "scp_profile_combo") else ""
         self.scp_profile_combo.blockSignals(True)
         self.scp_profile_combo.clear()
-        self.scp_profile_combo.addItem("프로필 선택", "")
+        self.scp_profile_combo.addItem("프로파일 선택", "")
         for profile in self.state.scp_profiles:
             self.scp_profile_combo.addItem(profile.name, profile.name)
         index = self.scp_profile_combo.findData(current_name)
@@ -310,7 +335,7 @@ class ScpDiagnosticsMixin:
         profile_name = str(self.scp_profile_combo.currentData() or "").strip()
         profile = self._get_scp_profile_by_name(profile_name)
         if profile is None:
-            QMessageBox.warning(self, "선택 필요", "수정할 SCP 프로필을 먼저 선택해 주세요.")
+            QMessageBox.warning(self, "선택 필요", "수정할 SCP 프로파일을 먼저 선택해 주세요.")
             return
         dialog = ScpProfileDialog(self, profile)
         if dialog.exec():
@@ -327,9 +352,9 @@ class ScpDiagnosticsMixin:
         profile_name = str(self.scp_profile_combo.currentData() or "").strip()
         profile = self._get_scp_profile_by_name(profile_name)
         if profile is None:
-            QMessageBox.warning(self, "선택 필요", "삭제할 SCP 프로필을 먼저 선택해 주세요.")
+            QMessageBox.warning(self, "선택 필요", "삭제할 SCP 프로파일을 먼저 선택해 주세요.")
             return
-        if QMessageBox.question(self, "프로필 삭제", f"'{profile.name}' 프로필을 삭제할까요?") != QMessageBox.Yes:
+        if QMessageBox.question(self, "프로파일 삭제", f"'{profile.name}' 프로파일을 삭제할까요?") != QMessageBox.Yes:
             return
         profiles = [item for item in self.state.scp_profiles if item.name != profile.name]
         self.state.save_scp_profiles(profiles)

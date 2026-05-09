@@ -1,4 +1,4 @@
-# Cisco 샘플 프로파일: L2 액세스 스위치 기본 템플릿
+# Cisco 샘플 프로파일: L2 액세스 스위치 기본 프로파일
 # 권장 사용 예:
 # - 액세스 계층 스위치
 # - 관리 SVI
@@ -21,8 +21,8 @@ id: CISCO_IOS_L2_ACCESS_BASE
 vendor: CISCO
 model: Catalyst 2960X Access
 firmware: IOS 15.2
-description: 관리 SVI, 로컬 관리자, 선택형 SSH, 선택형 NTP, PortFast 기본값을 포함한 Cisco IOS L2 액세스 스위치 기본 템플릿
-description_ko: 관리 SVI, 로컬 관리자, 선택형 SSH, 선택형 NTP, PortFast 기본값을 포함한 Cisco IOS L2 액세스 스위치 기본 템플릿
+description: 관리 SVI, 로컬 관리자, 선택형 SSH, 선택형 NTP, PortFast 기본값을 포함한 Cisco IOS L2 액세스 스위치 기본 프로파일
+description_ko: 관리 SVI, 로컬 관리자, 선택형 SSH, 선택형 NTP, PortFast 기본값을 포함한 Cisco IOS L2 액세스 스위치 기본 프로파일
 
 variables:
   # 필수 식별 정보
@@ -60,7 +60,7 @@ variables:
   # 로컬 관리자 / 권한 설정
   domain_name:
     required: false
-    default: corp.local
+    default: example.net
     description: SSH 키 생성에 사용하는 도메인명
     description_ko: SSH 키 생성에 사용하는 도메인명
   local_admin:
@@ -96,7 +96,7 @@ variables:
     description_ko: NTP 설정 블록 출력 여부
   ntp_server:
     required: false
-    default: 192.168.254.10
+    default: 192.0.2.254
     description: NTP 서버 IP 또는 호스트명
     description_ko: NTP 서버 IP 또는 호스트명
   enable_portfast_default:
@@ -131,7 +131,7 @@ blocks:
       - "ip default-gateway {{ mgmt_gw }}"
 
   # 선택형 SSH 블록 (블록 선택 패널에서 제어)
-  # crypto key 명령은 초기 구축 템플릿에서 자주 사용합니다.
+  # crypto key 명령은 초기 구축 프로파일에서 자주 사용합니다.
   - name: ssh
     lines:
       - "crypto key generate rsa modulus 2048"

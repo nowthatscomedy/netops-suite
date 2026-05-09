@@ -133,7 +133,7 @@ class InterfaceTab(QWidget):
         form_layout.addRow("", apply_row)
         right_layout.addWidget(form_group)
 
-        profile_group = QGroupBox("저장된 IP 프로필")
+        profile_group = QGroupBox("저장된 IP 프로파일")
         profile_layout = QVBoxLayout(profile_group)
         self.profile_list = QListWidget()
         profile_layout.addWidget(self.profile_list)
@@ -147,7 +147,7 @@ class InterfaceTab(QWidget):
         profile_layout.addLayout(detail_form)
 
         button_row = QHBoxLayout()
-        self.profile_apply_button = QPushButton("프로필 적용")
+        self.profile_apply_button = QPushButton("프로파일 적용")
         self.profile_add_button = QPushButton("추가")
         self.profile_edit_button = QPushButton("수정")
         self.profile_delete_button = QPushButton("삭제")
@@ -382,7 +382,7 @@ class InterfaceTab(QWidget):
         if dialog.exec():
             profile = dialog.profile_data()
             self._save_profile(profile)
-            self.status_message.emit(f"프로필을 저장했습니다: {profile.name}")
+            self.status_message.emit(f"프로파일을 저장했습니다: {profile.name}")
 
     def add_profile(self) -> None:
         try:
@@ -394,12 +394,12 @@ class InterfaceTab(QWidget):
         if dialog.exec():
             profile = dialog.profile_data()
             self._save_profile(profile)
-            self.status_message.emit(f"프로필을 추가했습니다: {profile.name}")
+            self.status_message.emit(f"프로파일을 추가했습니다: {profile.name}")
 
     def edit_selected_profile(self) -> None:
         profile = self._selected_profile()
         if not profile:
-            QMessageBox.warning(self, "선택 필요", "먼저 IP 프로필을 선택해 주세요.")
+            QMessageBox.warning(self, "선택 필요", "먼저 IP 프로파일을 선택해 주세요.")
             return
 
         dialog = ProfileEditorDialog(self, profile)
@@ -409,20 +409,20 @@ class InterfaceTab(QWidget):
             profiles[self.profile_list.currentRow()] = updated
             self.state.save_ip_profiles(profiles)
             self._select_profile_by_name(updated.name)
-            self.status_message.emit(f"프로필을 수정했습니다: {updated.name}")
+            self.status_message.emit(f"프로파일을 수정했습니다: {updated.name}")
 
     def apply_selected_profile(self) -> None:
         profile = self._selected_profile()
         adapter = self._selected_adapter()
         if not profile:
-            QMessageBox.warning(self, "선택 필요", "먼저 IP 프로필을 선택해 주세요.")
+            QMessageBox.warning(self, "선택 필요", "먼저 IP 프로파일을 선택해 주세요.")
             return
         if not self._ensure_admin():
             return
 
         interface_name = adapter.name if adapter else profile.interface_name
         if not interface_name:
-            QMessageBox.warning(self, "선택 필요", "프로필을 적용할 인터페이스를 선택해 주세요.")
+            QMessageBox.warning(self, "선택 필요", "프로파일을 적용할 인터페이스를 선택해 주세요.")
             return
 
         current_lines = self._adapter_summary_lines(adapter) if adapter else ["현재 정보: 인터페이스 선택 필요"]
@@ -431,7 +431,7 @@ class InterfaceTab(QWidget):
             if profile.mode == "dhcp"
             else self._static_target_summary_lines(profile.local_ip, profile.prefix, profile.gateway, profile.dns)
         )
-        if not self._confirm_apply("저장된 프로필 적용 확인", interface_name, current_lines, target_lines):
+        if not self._confirm_apply("저장된 프로파일 적용 확인", interface_name, current_lines, target_lines):
             return
 
         self._start_worker(
@@ -439,21 +439,21 @@ class InterfaceTab(QWidget):
             interface_name,
             profile,
             on_result=lambda result: self._handle_operation_result(result, refresh_after=True),
-            error_title="프로필 적용 실패",
+            error_title="프로파일 적용 실패",
         )
 
     def delete_selected_profile(self) -> None:
         profile = self._selected_profile()
         if not profile:
-            QMessageBox.warning(self, "선택 필요", "먼저 IP 프로필을 선택해 주세요.")
+            QMessageBox.warning(self, "선택 필요", "먼저 IP 프로파일을 선택해 주세요.")
             return
-        if QMessageBox.question(self, "프로필 삭제", f"'{profile.name}' 프로필을 삭제할까요?") != QMessageBox.Yes:
+        if QMessageBox.question(self, "프로파일 삭제", f"'{profile.name}' 프로파일을 삭제할까요?") != QMessageBox.Yes:
             return
 
         profiles = list(self.state.ip_profiles)
         profiles.pop(self.profile_list.currentRow())
         self.state.save_ip_profiles(profiles)
-        self.status_message.emit(f"프로필을 삭제했습니다: {profile.name}")
+        self.status_message.emit(f"프로파일을 삭제했습니다: {profile.name}")
 
     def _build_profile_seed_from_form(self) -> IPProfile:
         adapter = self._selected_adapter()
@@ -471,7 +471,7 @@ class InterfaceTab(QWidget):
             gateway = ""
             dns_servers = []
 
-        default_name = f"{adapter.name} 프로필" if adapter else ""
+        default_name = f"{adapter.name} 프로파일" if adapter else ""
         return IPProfile(
             name=default_name,
             mode=mode,

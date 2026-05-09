@@ -5,6 +5,7 @@ from typing import Callable
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
+    QApplication,
     QDockWidget,
     QLabel,
     QMainWindow,
@@ -28,6 +29,7 @@ from app.ui.tabs.interface_tab import InterfaceTab
 from app.ui.tabs.settings_tab import SettingsTab
 from app.ui.tabs.wireless_tab import WirelessTab
 from app.utils.admin import relaunch_as_admin
+from app.utils.app_icon import load_app_icon
 from app.version import __version__
 
 
@@ -40,6 +42,7 @@ class MainWindow(QMainWindow):
         self._update_busy = False
         self._startup_activated = False
         self.setWindowTitle("NetOps Suite")
+        self._apply_window_icon()
         self.resize(1120, 760)
         self.setDockOptions(
             QMainWindow.AnimatedDocks
@@ -52,6 +55,12 @@ class MainWindow(QMainWindow):
         self._connect_signals()
         self._restore_ui_state()
         QTimer.singleShot(1200, self._maybe_check_updates_on_startup)
+
+    def _apply_window_icon(self) -> None:
+        app = QApplication.instance()
+        icon = app.windowIcon() if app and not app.windowIcon().isNull() else load_app_icon()
+        if not icon.isNull():
+            self.setWindowIcon(icon)
 
     def _build_ui(self) -> None:
         self.tab_widget = QTabWidget()

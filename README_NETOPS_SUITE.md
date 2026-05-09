@@ -35,12 +35,9 @@ Current verification result:
 
 ## Release Signing
 
-Windows Smart App Control can block unsigned installers. Public release builds require an Authenticode signing certificate through these GitHub Actions secrets:
-
-- `WINDOWS_CODESIGN_PFX_BASE64`: base64-encoded `.pfx` code signing certificate.
-- `WINDOWS_CODESIGN_PFX_PASSWORD`: password for the `.pfx` certificate.
-
-The release script signs both `NetOpsSuite.exe` and `NetOpsSuite-setup-<version>.exe`.
+Windows installer code signing is optional. The release workflow can publish an
+unsigned installer, and local builds can require Authenticode signing by passing
+`-RequireCodeSigning` with a certificate path/password.
 
 ## Notes
 

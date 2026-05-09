@@ -126,7 +126,7 @@ class SettingsTab(QWidget):
         self.include_prerelease_check.setChecked(bool(update_config.get("include_prerelease", False)))
 
         self.config_dir_label.setText(f"Config 폴더: {self.state.paths.config_dir}")
-        self.ip_profile_label.setText(f"IP 프로필: {self.state.paths.ip_profiles}")
+        self.ip_profile_label.setText(f"IP 프로파일: {self.state.paths.ip_profiles}")
         self.log_dir_label.setText(f"로그 폴더: {self.state.paths.logs_dir}")
         self.version_label.setText(__version__)
         self.set_update_status("업데이트는 프로그램 내부에 고정된 공식 배포 채널을 사용합니다.")

@@ -855,7 +855,7 @@ class NetworkInspector:
         self.devices = devices
 
     def get_device_profiles(self) -> list[dict[str, object]]:
-        """대시보드에 전달할 장비 프로필(IP, 벤더, OS, 명령어 수)을 반환합니다."""
+        """대시보드에 전달할 장비 프로파일(IP, 벤더, OS, 명령어 수)을 반환합니다."""
         profiles: list[dict[str, object]] = []
         for device in self.devices:
             vendor = str(device.get("vendor", "")).strip()

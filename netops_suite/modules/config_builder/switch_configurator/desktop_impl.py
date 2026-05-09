@@ -563,7 +563,7 @@ class IncrementCopyDialog(QDialog):
         self.setWindowTitle("연속 값 복사")
         layout = QVBoxLayout(self)
 
-        description = QLabel("선택한 행을 복사하면서, 템플릿 변수에 지정된 연속 값 규칙을 적용합니다.")
+        description = QLabel("선택한 행을 복사하면서, 프로파일 변수에 지정된 연속 값 규칙을 적용합니다.")
         description.setWordWrap(True)
         layout.addWidget(description)
 
@@ -631,7 +631,7 @@ class InAppTutorialDialog(QDialog):
         self.status_label.setObjectName("GuideMeta")
         layout.addWidget(self.status_label)
 
-        hint_label = QLabel("이 창은 켜 둔 채로, 메인 화면과 템플릿 편집기를 직접 만지면서 단계별로 따라오면 됩니다.")
+        hint_label = QLabel("이 창은 켜 둔 채로, 메인 화면과 프로파일 편집기를 직접 만지면서 단계별로 따라오면 됩니다.")
         hint_label.setWordWrap(True)
         hint_label.setObjectName("GuideHint")
         layout.addWidget(hint_label)
@@ -699,12 +699,12 @@ class InAppTutorialDialog(QDialog):
 
     def _step_intro(self) -> dict[str, Any]:
         profile = self.host.tutorial_profile()
-        status = f"현재 튜토리얼 템플릿: {profile.id}" if profile is not None else "현재 튜토리얼 템플릿: 아직 저장되지 않음"
+        status = f"현재 튜토리얼 프로파일: {profile.id}" if profile is not None else "현재 튜토리얼 프로파일: 아직 저장되지 않음"
         return {
             "title": "실습 흐름 소개",
             "body": (
                 "이번 튜토리얼은 화면만 보는 방식이 아니라, 처음부터 직접 만들어 보는 실습입니다.\n\n"
-                "순서는 1) 템플릿 저장 2) 실습용 장비 파일 만들기 3) 첫 장비 값 입력 4) CLI 확인 5) CLI 복사입니다.\n"
+                "순서는 1) 프로파일 저장 2) 실습용 장비 파일 만들기 3) 첫 장비 값 입력 4) CLI 확인 5) CLI 복사입니다.\n"
                 "중간에 막히면 다시 이 창으로 돌아와 다음 안내를 확인하면 됩니다."
             ),
             "complete": True,
@@ -715,17 +715,17 @@ class InAppTutorialDialog(QDialog):
         profile = self.host.tutorial_profile()
         complete = self.host.tutorial_profile_ready()
         if profile is None:
-            status = "아직 저장된 튜토리얼 템플릿이 없습니다."
+            status = "아직 저장된 튜토리얼 프로파일이 없습니다."
         else:
             status = f"저장됨: {profile.id} / 변수 {len(profile.variables)}개 / 블록 {len(profile.blocks)}개"
         return {
-            "title": "1. 템플릿 작성",
+            "title": "1. 프로파일 작성",
             "body": (
-                "버튼을 누르면 튜토리얼용 템플릿 편집기가 열립니다. 기본 예제가 채워진 상태로 열리니, "
+                "버튼을 누르면 튜토리얼용 프로파일 편집기가 열립니다. 기본 예제가 채워진 상태로 열리니, "
                 "변수와 명령 블록이 어떻게 연결되는지 확인한 뒤 그대로 저장하거나 직접 조금 수정해 보세요.\n\n"
                 "권장 구성은 `hostname`, `mgmt_ip`, `mgmt_mask` 변수와 `base` 명령 블록 1개입니다."
             ),
-            "action_text": "템플릿 작성 열기" if profile is None else "템플릿 다시 열기",
+            "action_text": "프로파일 작성 열기" if profile is None else "프로파일 다시 열기",
             "action": self.host.open_tutorial_profile_dialog,
             "complete": complete,
             "status_text": status,
@@ -738,7 +738,7 @@ class InAppTutorialDialog(QDialog):
         return {
             "title": "2. 장비 파일 만들기",
             "body": (
-                "이 단계에서는 방금 저장한 템플릿으로 실습용 장비 파일을 엽니다.\n\n"
+                "이 단계에서는 방금 저장한 프로파일로 실습용 장비 파일을 엽니다.\n\n"
                 "버튼을 누르면 튜토리얼 작업 폴더에 CSV가 준비되고, 첫 번째 빈 행이 자동으로 선택됩니다. "
                 "이미 파일이 있다면 이어서 다시 열어 줍니다."
             ),
@@ -756,7 +756,7 @@ class InAppTutorialDialog(QDialog):
                 f"`device_id`: {TUTORIAL_DEVICE_ID}\n"
                 f"`hostname`: {TUTORIAL_HOSTNAME}\n"
                 f"`mgmt_ip`: {TUTORIAL_MGMT_IP}\n\n"
-                f"`profile_id`는 자동으로 채워지고, `mgmt_mask`는 비워 두면 기본값 `{TUTORIAL_MGMT_MASK}`가 사용됩니다."
+                f"프로파일 ID(profile_id)는 자동으로 채워지고, `mgmt_mask`는 비워 두면 기본값 `{TUTORIAL_MGMT_MASK}`가 사용됩니다."
             ),
             "action_text": "첫 행으로 이동",
             "action": lambda: self.host.focus_tutorial_workspace_row(detail_tab=0, column_name="device_id"),
@@ -794,7 +794,7 @@ class InAppTutorialDialog(QDialog):
         return {
             "title": "튜토리얼 완료",
             "body": (
-                "여기까지 하면 템플릿 작성부터 첫 장비 CLI 복사까지 한 번 끝낸 것입니다.\n\n"
+                "여기까지 하면 프로파일 작성부터 첫 장비 CLI 복사까지 한 번 끝낸 것입니다.\n\n"
                 "이제 같은 파일에서 `행 추가`, `선택 행 복사`, `연속 값 복사`를 눌러 장비를 늘려 보고, "
                 "`이슈` 탭으로 오류를 확인하는 연습까지 이어서 해보면 됩니다."
             ),
@@ -1106,7 +1106,7 @@ class DeviceTableModel(QAbstractTableModel):
         if role == Qt.EditRole:
             return value
         if role == Qt.ToolTipRole and not is_applicable:
-            return "현재 profile_id에서는 사용하지 않는 컬럼입니다."
+            return "현재 프로파일에서는 사용하지 않는 컬럼입니다."
         if role == Qt.ForegroundRole and not is_applicable:
             return QBrush(QColor("#7c838c"))
         if role == Qt.FontRole and not is_applicable:
@@ -1419,7 +1419,7 @@ class DeviceFilterProxyModel(QSortFilterProxyModel):
 
 
 class DesktopWindow(QMainWindow):
-    def __init__(self) -> None:
+    def __init__(self, profiles_dir: str | Path | None = None) -> None:
         super().__init__()
         app = QApplication.instance()
         self.setWindowIcon(app.windowIcon() if app and not app.windowIcon().isNull() else build_app_icon())
@@ -1429,6 +1429,7 @@ class DesktopWindow(QMainWindow):
         font.setPointSize(8)
         self.setFont(font)
         self.setStyleSheet(COMPACT_UI_STYLE)
+        self.profile_dir = Path(profiles_dir) if profiles_dir else PROFILE_DIR
         self.profiles: dict[str, Profile] = {}
         self.profile_issues: list[ValidationIssue] = []
         self.current_file_path: Path | None = None
@@ -1548,7 +1549,7 @@ class DesktopWindow(QMainWindow):
         main.setContentsMargins(10, 10, 10, 10)
         main.setSpacing(8)
 
-        self.summary_label = QLabel("템플릿과 장비 파일을 열면 바로 CLI를 확인할 수 있습니다.")
+        self.summary_label = QLabel("프로파일과 장비 파일을 열면 바로 CLI를 확인할 수 있습니다.")
         self.summary_label.setWordWrap(True)
 
         controls = QHBoxLayout()
@@ -1578,21 +1579,21 @@ class DesktopWindow(QMainWindow):
         self.add_profile_combo.currentTextChanged.connect(self.refresh_block_toggle_panel)
 
     def _build_template_group(self) -> QGroupBox:
-        group = QGroupBox("템플릿 작업")
+        group = QGroupBox("프로파일 작업")
         layout = QVBoxLayout(group)
         layout.setSpacing(8)
         layout.setContentsMargins(10, 14, 10, 10)
         self.add_profile_combo = QComboBox()
-        title_label = QLabel("기준 템플릿")
+        title_label = QLabel("기준 프로파일")
         reload_button = QPushButton("새로고침")
         reload_button.clicked.connect(self.reload_profiles)
-        new_button = QPushButton("새 템플릿")
+        new_button = QPushButton("새 프로파일")
         new_button.clicked.connect(self.open_new_profile_dialog)
-        clone_button = QPushButton("템플릿 복사")
+        clone_button = QPushButton("프로파일 복사")
         clone_button.clicked.connect(self.clone_current_profile_dialog)
-        edit_button = QPushButton("템플릿 편집")
+        edit_button = QPushButton("프로파일 편집")
         edit_button.clicked.connect(self.edit_current_profile_dialog)
-        delete_button = QPushButton("템플릿 삭제")
+        delete_button = QPushButton("프로파일 삭제")
         delete_button.clicked.connect(self.delete_current_profile_dialog)
 
         actions_widget = QWidget()
@@ -1730,7 +1731,7 @@ class DesktopWindow(QMainWindow):
         self.save_status_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         layout.addRow("", self.open_file_button)
         layout.addRow("현재 파일", self.file_path_label)
-        layout.addRow("템플릿 상태", self.profile_summary_label)
+        layout.addRow("프로파일 상태", self.profile_summary_label)
         layout.addRow("저장 방식", self.auto_save_check)
         layout.addRow("", self.allow_error_autosave_check)
         layout.addRow("저장 상태", self.save_status_label)
@@ -1761,7 +1762,7 @@ class DesktopWindow(QMainWindow):
         toolbar.addWidget(spacer)
 
         self.tutorial_button = QPushButton("튜토리얼")
-        self.tutorial_button.setToolTip("템플릿 작성부터 장비 값 입력, CLI 복사까지 직접 실습하는 튜토리얼을 시작합니다.")
+        self.tutorial_button.setToolTip("프로파일 작성부터 장비 값 입력, CLI 복사까지 직접 실습하는 튜토리얼을 시작합니다.")
         self.tutorial_button.clicked.connect(self.prompt_start_tutorial)
         self.tutorial_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         toolbar.addWidget(self.tutorial_button)
@@ -1919,7 +1920,7 @@ class DesktopWindow(QMainWindow):
         guide_layout = QVBoxLayout(guide_tab)
         guide_layout.setContentsMargins(4, 4, 4, 4)
         guide_layout.setSpacing(3)
-        self.profile_title_label = QLabel("템플릿")
+        self.profile_title_label = QLabel("프로파일")
         self.profile_title_label.setWordWrap(True)
         self.profile_title_label.setObjectName("GuideTitle")
         self.profile_meta_label = QLabel("-")
@@ -1928,7 +1929,7 @@ class DesktopWindow(QMainWindow):
         self.profile_description_label = QLabel("설명 없음")
         self.profile_description_label.setWordWrap(True)
         self.profile_description_label.setObjectName("GuideCard")
-        self.entry_rules_label = QLabel("규칙: profile_id 필수")
+        self.entry_rules_label = QLabel("규칙: 프로파일 ID 필수")
         self.entry_rules_label.setWordWrap(True)
         self.entry_rules_label.setObjectName("GuideHint")
         guide_layout.addWidget(self.profile_title_label)
@@ -2290,7 +2291,7 @@ class DesktopWindow(QMainWindow):
         profile_id = self.add_profile_combo.currentText() if hasattr(self, "add_profile_combo") else ""
         profile = self.profiles.get(profile_id) if profile_id else None
         if not profile or not profile.blocks:
-            hint = QLabel("템플릿을 선택하면 블록이 표시됩니다.")
+            hint = QLabel("프로파일을 선택하면 블록이 표시됩니다.")
             hint.setStyleSheet("color: #8a8070;")
             hint.setWordWrap(True)
             self.block_toggle_container_layout.addWidget(hint)
@@ -2321,10 +2322,10 @@ class DesktopWindow(QMainWindow):
         self.refresh_timer.start()
 
     def reload_profiles(self) -> None:
-        profiles, issues = load_profiles_from_directory(PROFILE_DIR)
+        profiles, issues = load_profiles_from_directory(self.profile_dir)
         self.profiles = profiles
         self.profile_issues = issues
-        self.profile_summary_label.setText(f"템플릿 {len(profiles)}개 / 오류 {len([i for i in issues if i.level == 'error'])}건")
+        self.profile_summary_label.setText(f"프로파일 {len(profiles)}개 / 오류 {len([i for i in issues if i.level == 'error'])}건")
         current = self.add_profile_combo.currentText()
         ids = sorted(self.profiles)
         self.add_profile_combo.blockSignals(True)
@@ -2378,7 +2379,7 @@ class DesktopWindow(QMainWindow):
         answer = QMessageBox.question(
             self,
             "튜토리얼",
-            "튜토리얼을 시작하시겠습니까?\n\n템플릿 작성부터 장비 값 입력, CLI 복사까지 직접 실습하는 흐름으로 안내합니다.",
+            "튜토리얼을 시작하시겠습니까?\n\n프로파일 작성부터 장비 값 입력, CLI 복사까지 직접 실습하는 흐름으로 안내합니다.",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.Yes,
         )
@@ -2447,7 +2448,7 @@ class DesktopWindow(QMainWindow):
             vendor="CISCO",
             model="TUTORIAL_SWITCH",
             firmware="IOS-XE",
-            description="프로그램 사용법을 익히기 위한 튜토리얼 실습용 템플릿입니다.",
+            description="프로그램 사용법을 익히기 위한 튜토리얼 실습용 프로파일입니다.",
             variables={
                 "hostname": VariableSpec(
                     name="hostname",
@@ -2483,8 +2484,8 @@ class DesktopWindow(QMainWindow):
 
     def open_tutorial_profile_dialog(self) -> bool:
         profile = self.tutorial_profile() or self._build_tutorial_starter_profile()
-        dialog = ProfileBuilderDialog(PROFILE_DIR, profile, self)
-        dialog.setWindowTitle("튜토리얼 템플릿 작성")
+        dialog = ProfileBuilderDialog(self.profile_dir, profile, self)
+        dialog.setWindowTitle("튜토리얼 프로파일 작성")
         if not dialog.exec():
             self._refresh_tutorial_dialog()
             return False
@@ -2498,7 +2499,7 @@ class DesktopWindow(QMainWindow):
     def prepare_tutorial_device_file(self) -> bool:
         profile = self.tutorial_profile()
         if profile is None or not self.tutorial_profile_ready():
-            QMessageBox.information(self, "튜토리얼", "먼저 튜토리얼 템플릿을 저장해 주세요.")
+            QMessageBox.information(self, "튜토리얼", "먼저 튜토리얼 프로파일을 저장해 주세요.")
             return False
         TUTORIAL_WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
         if not TUTORIAL_WORKSPACE_PATH.exists():
@@ -2959,10 +2960,10 @@ class DesktopWindow(QMainWindow):
                 QMessageBox.information(
                     self,
                     "컬럼 삭제",
-                    "템플릿 변수 컬럼은 삭제할 수 없습니다.\n표시 컬럼에서 숨기기만 가능합니다.",
+                    "프로파일 변수 컬럼은 삭제할 수 없습니다.\n표시 컬럼에서 숨기기만 가능합니다.",
                 )
             else:
-                QMessageBox.information(self, "컬럼 삭제", "profile_id는 필수 컬럼이라 삭제할 수 없습니다.")
+                QMessageBox.information(self, "컬럼 삭제", "프로파일 ID(profile_id) 컬럼은 필수라 삭제할 수 없습니다.")
             return
 
         filled_count = sum(
@@ -2978,7 +2979,7 @@ class DesktopWindow(QMainWindow):
         if blocked_required_headers:
             blocked_messages.append(f"필수 컬럼 제외: {', '.join(blocked_required_headers)}")
         if blocked_template_headers:
-            blocked_messages.append(f"템플릿 변수 컬럼 제외: {', '.join(blocked_template_headers)}")
+            blocked_messages.append(f"프로파일 변수 컬럼 제외: {', '.join(blocked_template_headers)}")
         if blocked_messages:
             message += "\n" + "\n".join(blocked_messages)
         if QMessageBox.question(self, "컬럼 삭제", message, QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
@@ -3198,7 +3199,7 @@ class DesktopWindow(QMainWindow):
             QMessageBox.information(
                 self,
                 "연속 값 복사",
-                "선택한 행의 템플릿 변수에 연속 값 규칙이 없습니다.\n템플릿 변수의 '연속 값 규칙'을 먼저 설정하세요.",
+                "선택한 행의 프로파일 변수에 연속 값 규칙이 없습니다.\n프로파일 변수의 '연속 값 규칙'을 먼저 설정하세요.",
             )
             return
         rules_text = "적용 대상: " + ", ".join(unique_increment_fields)
@@ -3323,7 +3324,7 @@ class DesktopWindow(QMainWindow):
         answer = QMessageBox.question(
             self,
             "불필요 컬럼 정리",
-            "현재 남아 있는 profile_id 기준으로 더 이상 사용하지 않는 템플릿 컬럼이 있습니다.\n"
+            "현재 남아 있는 프로파일 ID 기준으로 더 이상 사용하지 않는 프로파일 컬럼이 있습니다.\n"
             f"자동으로 삭제할까요?\n\n대상: {preview}",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.Yes,
@@ -3362,12 +3363,12 @@ class DesktopWindow(QMainWindow):
                 self.current_row_issues[row_index] = row_issues
                 continue
             if not record.profile_id:
-                row_issues.append(ValidationIssue(level="error", scope="device", message="profile_id 값이 비어 있습니다.", device_id=record.display_name, row_number=record.row_number))
+                row_issues.append(ValidationIssue(level="error", scope="device", message="프로파일 ID 값이 비어 있습니다.", device_id=record.display_name, row_number=record.row_number))
                 self.current_row_issues[row_index] = row_issues
                 continue
             profile = _find_profile(self.profiles, record.profile_id)
             if not profile:
-                row_issues.append(ValidationIssue(level="error", scope="device", message="profile_id에 해당하는 템플릿을 찾을 수 없습니다.", profile_id=record.profile_id, device_id=record.display_name, row_number=record.row_number))
+                row_issues.append(ValidationIssue(level="error", scope="device", message="프로파일 ID에 해당하는 프로파일을 찾을 수 없습니다.", profile_id=record.profile_id, device_id=record.display_name, row_number=record.row_number))
                 self.current_row_issues[row_index] = row_issues
                 continue
             _, device_issues = engine.resolve_values(record, profile)
@@ -3735,24 +3736,24 @@ class DesktopWindow(QMainWindow):
         self.profile_meta_label.setText(f"{profile.vendor} / {profile.model} / {profile.firmware}")
         self.profile_description_label.setText(profile.description_ko or profile.description or "설명 없음")
         increment_summary = ", ".join(profile_increment_fields(profile)) or "없음"
-        self.entry_rules_label.setText(f"규칙: profile_id 필수 · 연속 값 {increment_summary}")
+        self.entry_rules_label.setText(f"규칙: 프로파일 ID 필수 · 연속 값 {increment_summary}")
         blank_values = {"profile_id": profile.id, **{name: "" for name in profile.variables}}
         self._fill_profile_reference_table(profile, blank_values)
 
     def _clear_detail_tabs(self) -> None:
         self.profile_title_label.setText("선택 없음")
         self.profile_meta_label.setText("-")
-        self.profile_description_label.setText("장비를 선택하면 템플릿 안내가 표시됩니다.")
+        self.profile_description_label.setText("장비를 선택하면 프로파일 안내가 표시됩니다.")
         self.entry_rules_label.setText("")
         self.profile_reference_table.setRowCount(0)
 
     def _update_profile_reference(self, row: dict[str, str]) -> None:
         profile = _find_profile(self.profiles, row.get("profile_id", ""))
         if not profile:
-            self.profile_title_label.setText("템플릿 확인 필요")
-            self.profile_meta_label.setText(f"profile_id: {row.get('profile_id', '-') or '-'}")
-            self.profile_description_label.setText("해당 profile_id의 템플릿을 찾을 수 없습니다.")
-            self.entry_rules_label.setText("규칙: 올바른 profile_id 필요")
+            self.profile_title_label.setText("프로파일 확인 필요")
+            self.profile_meta_label.setText(f"프로파일 ID: {row.get('profile_id', '-') or '-'}")
+            self.profile_description_label.setText("해당 프로파일 ID의 프로파일을 찾을 수 없습니다.")
+            self.entry_rules_label.setText("규칙: 올바른 프로파일 ID 필요")
             self.profile_reference_table.setRowCount(0)
             return
         self.profile_title_label.setText(profile.id)
@@ -3971,14 +3972,14 @@ class DesktopWindow(QMainWindow):
         return f"{profile_part}_row_{row_number}.txt"
 
     def open_new_profile_dialog(self) -> None:
-        dialog = ProfileBuilderDialog(PROFILE_DIR, None, self)
+        dialog = ProfileBuilderDialog(self.profile_dir, None, self)
         if dialog.exec():
             self._reload_after_profile_save(dialog.saved_profile_id)
 
     def clone_current_profile_dialog(self) -> None:
         profile = self._selected_template_profile()
         if not profile:
-            QMessageBox.information(self, "템플릿 복사", "복사할 템플릿을 먼저 선택하세요.")
+            QMessageBox.information(self, "프로파일 복사", "복사할 프로파일을 먼저 선택하세요.")
             return
         cloned = Profile(
             id=f"{profile.id}_COPY",
@@ -3991,32 +3992,32 @@ class DesktopWindow(QMainWindow):
             blocks=list(profile.blocks),
             source="",
         )
-        dialog = ProfileBuilderDialog(PROFILE_DIR, cloned, self)
-        dialog.setWindowTitle("템플릿 복사")
+        dialog = ProfileBuilderDialog(self.profile_dir, cloned, self)
+        dialog.setWindowTitle("프로파일 복사")
         if dialog.exec():
             self._reload_after_profile_save(dialog.saved_profile_id)
 
     def edit_current_profile_dialog(self) -> None:
         profile = self._selected_template_profile()
         if not profile:
-            QMessageBox.information(self, "템플릿 편집", "편집할 템플릿을 먼저 선택하세요.")
+            QMessageBox.information(self, "프로파일 편집", "편집할 프로파일을 먼저 선택하세요.")
             return
-        dialog = ProfileBuilderDialog(PROFILE_DIR, profile, self)
+        dialog = ProfileBuilderDialog(self.profile_dir, profile, self)
         if dialog.exec():
             self._reload_after_profile_save(dialog.saved_profile_id or profile.id)
 
     def delete_current_profile_dialog(self) -> None:
         profile = self._selected_template_profile()
         if not profile:
-            QMessageBox.information(self, "템플릿 삭제", "삭제할 템플릿을 먼저 선택하세요.")
+            QMessageBox.information(self, "프로파일 삭제", "삭제할 프로파일을 먼저 선택하세요.")
             return
         profile_path = Path(profile.source).resolve() if profile.source else None
-        profile_root = PROFILE_DIR.resolve()
+        profile_root = self.profile_dir.resolve()
         if profile_path is None or not profile_path.exists():
-            QMessageBox.warning(self, "템플릿 삭제", "선택한 템플릿 파일을 찾을 수 없습니다.")
+            QMessageBox.warning(self, "프로파일 삭제", "선택한 프로파일 파일을 찾을 수 없습니다.")
             return
         if profile_root not in profile_path.parents:
-            QMessageBox.warning(self, "템플릿 삭제", "profiles 폴더에 있는 템플릿만 삭제할 수 있습니다.")
+            QMessageBox.warning(self, "프로파일 삭제", "프로파일 폴더에 있는 프로파일만 삭제할 수 있습니다.")
             return
         referenced_rows = [
             row_display_name(row, row_index + 2)
@@ -4026,13 +4027,13 @@ class DesktopWindow(QMainWindow):
         reference_note = ""
         if referenced_rows:
             reference_note = (
-                f"\n\n현재 장비 설정 정보에서 {len(referenced_rows)}개 행이 이 템플릿을 참조합니다."
+                f"\n\n현재 장비 설정 정보에서 {len(referenced_rows)}개 행이 이 프로파일을 참조합니다."
                 f"\n예: {', '.join(referenced_rows[:5])}"
             )
         confirmed = QMessageBox.question(
             self,
-            "템플릿 삭제",
-            f"{profile.id} 템플릿을 삭제하시겠습니까?\n파일: {profile_path.name}{reference_note}",
+            "프로파일 삭제",
+            f"{profile.id} 프로파일을 삭제하시겠습니까?\n파일: {profile_path.name}{reference_note}",
         )
         if confirmed != QMessageBox.Yes:
             return
@@ -4040,8 +4041,8 @@ class DesktopWindow(QMainWindow):
         self.reload_profiles()
         self.refresh_render_state()
         self.refresh_selected_preview()
-        self._append_activity_log(f"템플릿 삭제: {profile.id}")
-        self.statusBar().showMessage(f"{profile_path.name} 템플릿 삭제 완료", 3000)
+        self._append_activity_log(f"프로파일 삭제: {profile.id}")
+        self.statusBar().showMessage(f"{profile_path.name} 프로파일 삭제 완료", 3000)
 
     def _reload_after_profile_save(self, profile_id: str) -> None:
         self.reload_profiles()
@@ -4051,7 +4052,7 @@ class DesktopWindow(QMainWindow):
         self.refresh_selected_preview()
         self._refresh_tutorial_dialog()
         if profile_id:
-            self._append_activity_log(f"템플릿 저장/갱신: {profile_id}")
+            self._append_activity_log(f"프로파일 저장/갱신: {profile_id}")
 
     def _selected_template_profile(self) -> Profile | None:
         return self.profiles.get(self.add_profile_combo.currentText())
@@ -4359,7 +4360,7 @@ class DesktopWindow(QMainWindow):
         save_mode = "실시간 저장" if self.auto_save_check.isChecked() and self.current_file_path else "수동 저장"
         dirty = " / 저장 필요" if self.is_dirty else ""
         self.summary_label.setText(
-            f"템플릿 {len(self.profiles)}개 / 전체 {total_rows}행 / 필터 결과 {visible_rows}행 / CLI 생성 가능 {ready_count}행 / 확인 필요 {issue_rows}행 / 복사 완료 {copied_count}행 / 적용 완료 {done_count}행 / {save_mode}{dirty}"
+            f"프로파일 {len(self.profiles)}개 / 전체 {total_rows}행 / 필터 결과 {visible_rows}행 / CLI 생성 가능 {ready_count}행 / 확인 필요 {issue_rows}행 / 복사 완료 {copied_count}행 / 적용 완료 {done_count}행 / {save_mode}{dirty}"
         )
         self._update_save_status_label()
         self._update_navigation_buttons()

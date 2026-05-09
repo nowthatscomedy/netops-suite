@@ -1,14 +1,14 @@
-# 종합 참고용 샘플 템플릿
+# 종합 참고용 샘플 프로파일
 # 이 파일은 "실무에서 자주 쓰는 조건"을 한 번에 보여주기 위한 참고용 예시입니다.
 # 바로 사용해도 되지만, 보통은 이 파일을 복사해서 필요한 항목만 남기는 방식이 가장 편합니다.
 #
-# 이 템플릿에서 볼 수 있는 것:
+# 이 프로파일에서 볼 수 있는 것:
 # 1. 필수값(required: true)
 # 2. 기본값(default)
 # 3. 타입 검증(string / ipv4 / bool / int)
 # 4. 시크릿 성격 변수(enable_secret, local_admin_secret)
 # 5. 블록 선택 패널
-# 6. 장비 파일(CSV/XLSX) 컬럼명과 템플릿 변수명의 연결 방식
+# 6. 장비 파일(CSV/XLSX) 컬럼명과 프로파일 변수명의 연결 방식
 # 7. 장비 파일에 선언되지 않은 추가 컬럼이 있어도 무시되는 구조
 #
 # 장비 파일 작성 규칙:
@@ -36,8 +36,8 @@ id: SAMPLE_COMPREHENSIVE_REFERENCE
 vendor: CISCO
 model: Reference Template
 firmware: IOS / IOS-XE
-description: 필수값, 기본값, 타입 검증, 시크릿 값, 블록 선택 패널을 한 번에 참고할 수 있는 종합 템플릿
-description_ko: 필수값, 기본값, 타입 검증, 시크릿 값, 블록 선택 패널을 한 번에 참고할 수 있는 종합 템플릿
+description: 필수값, 기본값, 타입 검증, 시크릿 값, 블록 선택 패널을 한 번에 참고할 수 있는 종합 프로파일
+description_ko: 필수값, 기본값, 타입 검증, 시크릿 값, 블록 선택 패널을 한 번에 참고할 수 있는 종합 프로파일
 
 variables:
   # 장비 기본 식별 정보
@@ -94,7 +94,7 @@ variables:
   domain_name:
     required: false
     type: string
-    default: corp.local
+    default: example.net
     description: 도메인명
     description_ko: 도메인명
 
@@ -165,7 +165,7 @@ variables:
   ntp_server:
     required: false
     type: string
-    default: 192.168.254.10
+    default: 192.0.2.254
     description: NTP 서버 IP 또는 호스트명
     description_ko: NTP 서버 IP 또는 호스트명
 
