@@ -1,0 +1,4 @@
+sample_case,expected_result,device_id,profile_id,hostname,mgmt_vlan,mgmt_ip,mgmt_mask,mgmt_gw,access_interface,access_vlan,enable_voice_vlan,voice_vlan,enable_port_security,enable_bpduguard,note
+REF_EDGE_PORT_BASIC,참고용 정상 생성,SW-EDGE-01,CISCO_IOSXE_EDGE_PORT_BASE,SW-EDGE-01,99,192.0.2.21,255.255.255.0,192.0.2.1,GigabitEthernet1/0/10,10,true,20,true,true,액세스 포트와 Voice VLAN 블록 구조를 보여주는 참고 행입니다.
+REF_EDGE_PORT_DATA_ONLY,참고용 정상 생성,SW-EDGE-02,CISCO_IOSXE_EDGE_PORT_BASE,SW-EDGE-02,99,192.0.2.22,255.255.255.0,192.0.2.1,GigabitEthernet1/0/11,30,false,20,false,true,데이터 VLAN만 사용할 때 참고하는 더미 행입니다.
+

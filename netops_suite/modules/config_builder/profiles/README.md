@@ -1,32 +1,21 @@
-# Cisco 템플릿 예시
+# 설정 생성 참고용 프로필
 
-기본 템플릿은 Cisco 장비 기준으로 작성되어 있습니다.
+이 폴더의 `sample_*.yaml` 파일은 운영 표준 설정이 아니라 프로필 작성법을 보여주는 참고 예시입니다.
+실제 장비에 그대로 반영하지 말고, 현장 표준과 장비 OS 버전에 맞게 복사해서 수정하세요.
 
-포함된 예시:
+포함 예시:
 
-- `CISCO_IOS_L2_ACCESS_BASE`
-- `CISCO_IOSXE_L3_DISTRIBUTION_BASE`
-- `CISCO_IOSXE_EDGE_PORT_BASE`
-- `SAMPLE_COMPREHENSIVE_REFERENCE`
+- `CISCO_IOS_L2_ACCESS_BASE`: L2 Access 스위치 기본 구조
+- `CISCO_IOSXE_L3_DISTRIBUTION_BASE`: L3 Distribution 스위치 기본 구조
+- `CISCO_IOSXE_EDGE_PORT_BASE`: Edge access port 블록 구조
+- `SAMPLE_COMPREHENSIVE_REFERENCE`: 변수 타입, 기본값, 필수값, block skip, 시크릿 변수, 검증 오류를 한 번에 보기 위한 종합 참고 예시
 
-이 예시들은 아래 내용을 참고할 수 있도록 구성되어 있습니다.
+참고 포인트:
 
-- 필수값
-- 선택값
-- 기본값
-- 블록 선택 패널로 제어되는 블록
-- 정수 형식 검증
-- IPv4 형식 검증
-- `profile_id` 불일치 동작
-- 한국어 설명 필드 작성 예시
+- 변수 타입: `string`, `ipv4`, `bool`, `int`
+- 필수값: `required: true`
+- 기본값: `default`
+- 자동 증가: `auto_increment`
+- 블록 선택: UI에서 블록별 출력 여부를 제어
+- 시크릿 성격 변수: `secret`, `password`, `key`, `community`가 들어간 컬럼은 UI에서 마스킹될 수 있음
 
-새 템플릿을 만들 때는 이 파일들을 기준 예시로 사용하면 됩니다.
-
-특히 `sample_comprehensive_reference.yaml`은 아래를 한 파일에서 함께 볼 수 있도록 만든 종합 참고용 샘플입니다.
-
-- 필수값 / 선택값
-- 기본값 적용
-- `string / ipv4 / bool / int` 타입
-- 블록 선택 패널
-- 시크릿 성격 변수(`*_secret`, `*password*`)
-- 장비 설정 정보 파일 컬럼명과 템플릿 변수명의 연결 방식

@@ -62,6 +62,16 @@ NetOps Suite는 Windows 현장 네트워크 작업을 한 앱에서 처리하기
 - 파일 열기, 폴더 열기, 경로 복사
 - 운영 민감 데이터 저장 위치 표시
 
+## 참고용 예시 템플릿
+
+이 저장소의 예시 템플릿은 운영용 정답이 아니라 사용자가 구조를 보고 자기 환경에 맞게 복사/수정하기 위한 참고 자료입니다.
+실제 장비 모델, OS, OS 버전에 따라 명령어와 출력 형식이 다르므로 그대로 운영 반영하지 마세요.
+
+- 장비 점검 참고 예시: `netops_suite/modules/inspector/vendor_templates/reference__inspection_examples.yaml`
+- Python 추출 함수 참고 예시: `netops_suite/modules/inspector_runtime/custom_parsers.example.py`
+- 설정 생성 참고 프로필: `netops_suite/modules/config_builder/profiles/sample_*.yaml`
+- 설정 생성 장비값 참고 CSV: `netops_suite/modules/config_builder/device_values/sample_*.csv`
+
 ## 실행 방법
 
 ```powershell

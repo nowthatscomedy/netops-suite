@@ -132,7 +132,7 @@ class InspectorTab(QWidget):
         layout.addWidget(self.supported_label)
         self.supported_table = QTableWidget(0, 8)
         self.supported_table.setHorizontalHeaderLabels(
-            ["벤더", "OS", "device_type", "명령", "백업", "파싱", "출력 컬럼", "custom"]
+            ["벤더", "OS", "device_type", "명령", "백업", "파싱", "출력 컬럼", "구분"]
         )
         self.supported_table.horizontalHeader().setStretchLastSection(True)
         self.supported_table.setMaximumHeight(190)
@@ -192,7 +192,7 @@ class InspectorTab(QWidget):
                 profile["backup_command"] or "-",
                 str(profile["parse_rule_count"]),
                 ", ".join(profile["output_columns"][:8]),
-                "Y" if profile.get("is_custom") else "",
+                "참고용" if profile.get("is_reference") else ("사용자" if profile.get("is_custom") else ""),
             ]
             for column, value in enumerate(values):
                 self.supported_table.setItem(row, column, QTableWidgetItem(str(value)))

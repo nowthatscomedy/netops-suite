@@ -84,6 +84,7 @@ class InspectorService:
             )
 
             templates: list[dict[str, Any]] = []
+            custom_parsers = sorted(CUSTOM_PARSERS.keys())
             for vendor, os_map in sorted(INSPECTION_COMMANDS.items()):
                 for os_name, commands in sorted(os_map.items()):
                     command_list = list(commands or [])
@@ -108,10 +109,15 @@ class InspectorService:
                             "output_columns": output_columns,
                             "connection_overrides": dict(connection) if isinstance(connection, dict) else {},
                             "handler_overrides": dict(handler) if isinstance(handler, dict) else {},
-                            "custom_parsers": sorted(CUSTOM_PARSERS.keys()),
+                            "custom_parsers": custom_parsers,
                             "is_custom": is_custom_rule_pair(vendor, os_name),
+                            "is_reference": False,
+                            "display_name": f"{vendor} / {os_name}",
+                            "source": "runtime",
                         }
                     )
+            existing_keys = {str(template["key"]) for template in templates}
+            templates.extend(self._load_reference_template_files(existing_keys, custom_parsers))
             return templates
 
     def build_vendor_template_yaml(self, vendor: str, os_name: str) -> str:
@@ -383,6 +389,89 @@ class InspectorService:
             if isinstance(process, dict):
                 add(process.get("output_column"))
         return columns
+
+    def _load_reference_template_files(
+        self,
+        existing_keys: set[str],
+        custom_parsers: list[str],
+    ) -> list[dict[str, Any]]:
+        templates: list[dict[str, Any]] = []
+        if not self.vendor_templates_dir.exists():
+            return templates
+
+        for path in sorted([*self.vendor_templates_dir.glob("*.yaml"), *self.vendor_templates_dir.glob("*.yml")]):
+            try:
+                data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            except Exception:
+                continue
+            if not isinstance(data, dict):
+                continue
+
+            inspection_commands = data.get("inspection_commands", {})
+            if not isinstance(inspection_commands, dict):
+                continue
+            backup_commands = data.get("backup_commands", {})
+            parsing_rules = data.get("parsing_rules", {})
+            connection_overrides = data.get("connection_overrides", {})
+            handler_overrides = data.get("handler_overrides", {})
+            profile_metadata = data.get("profile_metadata", {})
+
+            for vendor_key, os_map in inspection_commands.items():
+                vendor = self._normalize_key(vendor_key)
+                if not vendor or not isinstance(os_map, dict):
+                    continue
+                for os_key, commands in os_map.items():
+                    os_name = self._normalize_key(os_key)
+                    key = f"{vendor}|{os_name}"
+                    if not os_name or key in existing_keys or not isinstance(commands, list):
+                        continue
+
+                    command_list = [str(command).strip() for command in commands if str(command).strip()]
+                    if not command_list:
+                        continue
+
+                    vendor_backup = backup_commands.get(vendor_key, {}) if isinstance(backup_commands, dict) else {}
+                    vendor_rules = parsing_rules.get(vendor_key, {}) if isinstance(parsing_rules, dict) else {}
+                    vendor_connection = connection_overrides.get(vendor_key, {}) if isinstance(connection_overrides, dict) else {}
+                    vendor_handler = handler_overrides.get(vendor_key, {}) if isinstance(handler_overrides, dict) else {}
+                    vendor_metadata = profile_metadata.get(vendor_key, {}) if isinstance(profile_metadata, dict) else {}
+
+                    backup_command = vendor_backup.get(os_key, "") if isinstance(vendor_backup, dict) else ""
+                    parse_rules = vendor_rules.get(os_key, {}) if isinstance(vendor_rules, dict) else {}
+                    connection = vendor_connection.get(os_key, {}) if isinstance(vendor_connection, dict) else {}
+                    handler = vendor_handler.get(os_key, {}) if isinstance(vendor_handler, dict) else {}
+                    metadata = vendor_metadata.get(os_key, {}) if isinstance(vendor_metadata, dict) else {}
+                    if not isinstance(metadata, dict):
+                        metadata = {}
+                    output_columns = metadata.get("output_columns")
+                    if not isinstance(output_columns, list):
+                        output_columns = self._collect_output_columns(parse_rules)
+
+                    templates.append(
+                        {
+                            "vendor": vendor,
+                            "model": str(metadata.get("model", "")),
+                            "os": os_name,
+                            "os_version": str(metadata.get("os_version", "")),
+                            "key": key,
+                            "command_count": len(command_list),
+                            "commands": command_list,
+                            "backup_command": backup_command,
+                            "has_backup": bool(backup_command),
+                            "parse_rule_count": len(parse_rules) if isinstance(parse_rules, dict) else 0,
+                            "parsing_rules": parse_rules if isinstance(parse_rules, dict) else {},
+                            "output_columns": [str(column) for column in output_columns],
+                            "connection_overrides": dict(connection) if isinstance(connection, dict) else {},
+                            "handler_overrides": dict(handler) if isinstance(handler, dict) else {},
+                            "custom_parsers": custom_parsers,
+                            "is_custom": False,
+                            "is_reference": bool(metadata.get("reference", path.name.startswith(("reference", "example")))),
+                            "display_name": str(metadata.get("display_name") or f"{vendor} / {os_name}"),
+                            "source": str(path),
+                        }
+                    )
+                    existing_keys.add(key)
+        return templates
 
     def available_custom_parsers(self) -> list[str]:
         with self._runtime_import_path():

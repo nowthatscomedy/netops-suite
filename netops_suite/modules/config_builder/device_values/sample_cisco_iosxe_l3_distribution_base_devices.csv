@@ -1,0 +1,4 @@
+sample_case,expected_result,device_id,profile_id,hostname,mgmt_vlan,mgmt_ip,mgmt_mask,default_route_next_hop,domain_name,local_admin,local_admin_secret,enable_secret,snmp_location,stp_priority,enable_ntp,ntp_server,enable_dhcp_snooping,dhcp_snooping_vlans,note
+REF_L3_DIST_BASIC,참고용 정상 생성,SW-L3-01,CISCO_IOSXE_L3_DISTRIBUTION_BASE,SW-L3-01,10,192.0.2.31,255.255.255.0,192.0.2.1,example.local,netadmin,CHANGE_ME_LOCAL_SECRET,CHANGE_ME_ENABLE_SECRET,HQ-MDF,4096,true,192.0.2.254,true,"10,20,30",L3 라우팅과 DHCP Snooping 블록 구조를 보여주는 참고 행입니다.
+REF_L3_DIST_NO_SNOOPING,참고용 정상 생성,SW-L3-02,CISCO_IOSXE_L3_DISTRIBUTION_BASE,SW-L3-02,10,192.0.2.32,255.255.255.0,192.0.2.1,example.local,netadmin,CHANGE_ME_LOCAL_SECRET,CHANGE_ME_ENABLE_SECRET,BR-MDF,8192,true,192.0.2.254,false,,DHCP Snooping을 끄는 참고용 더미 행입니다.
+

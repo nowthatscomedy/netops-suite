@@ -1,0 +1,171 @@
+# 장비 점검 참고용 템플릿 모음
+# 이 파일은 운영용 기본값이 아니라 템플릿 작성 방법을 보여주는 예시입니다.
+# 실제 장비 모델/OS/버전에 맞게 명령어와 파싱 위치를 확인한 뒤 복사해서 사용하세요.
+inspection_commands:
+  reference-cisco:
+    ios-xe-basic:
+      - show version
+      - show processes cpu
+      - show memory statistics
+      - show environment all
+  reference-juniper:
+    junos-basic:
+      - show version
+      - show chassis hardware
+  reference-aruba:
+    aos-basic:
+      - show system
+      - show cpu
+  reference-ruckus:
+    icx-basic:
+      - show version
+      - show chassis
+
+backup_commands:
+  reference-cisco:
+    ios-xe-basic: show running-config
+  reference-juniper:
+    junos-basic: show configuration
+  reference-aruba:
+    aos-basic: show running-config
+  reference-ruckus:
+    icx-basic: show running-config
+
+parsing_rules:
+  reference-cisco:
+    ios-xe-basic:
+      show version:
+        patterns:
+          - parser_type: split_fields
+            output_column: OS버전
+            line_number: 1
+            start_field: 6
+            end_field: 6
+            delimiter: whitespace
+          - parser_type: keyword_after
+            output_column: 시리얼번호
+            keyword: Processor board ID
+          - parser_type: line_text
+            output_column: 모델 후보 줄
+            line_number: 2
+          - pattern: 'Version\s+([0-9A-Za-z_.()]+)'
+            output_column: OS버전(정규식 예시)
+            first_match_only: true
+      show processes cpu:
+        parser_type: keyword_after
+        output_column: CPU 사용률
+        keyword: CPU utilization for five seconds
+      show memory statistics:
+        parser_type: line_text
+        output_column: 메모리 요약 줄
+        line_number: 1
+      show environment all:
+        custom_parser: parsing_reference_environment_summary
+        output_column: 환경 상태 요약
+  reference-juniper:
+    junos-basic:
+      show version:
+        patterns:
+          - parser_type: keyword_after
+            output_column: 모델명
+            keyword: Model
+          - parser_type: keyword_after
+            output_column: Junos 버전
+            keyword: Junos
+      show chassis hardware:
+        pattern: 'Chassis\s+(\S+)'
+        output_column: 섀시 시리얼
+        first_match_only: true
+  reference-aruba:
+    aos-basic:
+      show system:
+        patterns:
+          - parser_type: keyword_after
+            output_column: 장비명
+            keyword: Name
+          - parser_type: keyword_after
+            output_column: 모델명
+            keyword: Product
+      show cpu:
+        parser_type: split_fields
+        output_column: CPU 사용률
+        line_number: 1
+        start_field: 3
+        end_field: 4
+        delimiter: whitespace
+  reference-ruckus:
+    icx-basic:
+      show version:
+        patterns:
+          - parser_type: keyword_after
+            output_column: SW 버전
+            keyword: SW
+          - parser_type: keyword_after
+            output_column: 시리얼번호
+            keyword: Serial
+      show chassis:
+        parser_type: line_text
+        output_column: 섀시 상태 요약
+        line_number: 1
+
+connection_overrides:
+  reference-cisco:
+    ios-xe-basic:
+      default: cisco_ios
+      ssh: cisco_ios
+      telnet: cisco_ios_telnet
+  reference-juniper:
+    junos-basic:
+      default: juniper_junos
+  reference-aruba:
+    aos-basic:
+      default: aruba_os
+  reference-ruckus:
+    icx-basic:
+      default: ruckus_fastiron
+
+profile_metadata:
+  reference-cisco:
+    ios-xe-basic:
+      reference: true
+      display_name: "참고용 Cisco IOS-XE 기본 점검"
+      model: "Catalyst 9K 예시"
+      os_version: "17.x 예시"
+      output_columns:
+        - OS버전
+        - 시리얼번호
+        - 모델 후보 줄
+        - CPU 사용률
+        - 메모리 요약 줄
+        - 환경 상태 요약
+  reference-juniper:
+    junos-basic:
+      reference: true
+      display_name: "참고용 Juniper Junos 기본 점검"
+      model: "EX/QFX 예시"
+      os_version: "21.x 예시"
+      output_columns:
+        - 모델명
+        - Junos 버전
+        - 섀시 시리얼
+  reference-aruba:
+    aos-basic:
+      reference: true
+      display_name: "참고용 Aruba AOS 기본 점검"
+      model: "Aruba Switch 예시"
+      os_version: "AOS 예시"
+      output_columns:
+        - 장비명
+        - 모델명
+        - CPU 사용률
+  reference-ruckus:
+    icx-basic:
+      reference: true
+      display_name: "참고용 Ruckus ICX 기본 점검"
+      model: "ICX 예시"
+      os_version: "FastIron 예시"
+      output_columns:
+        - SW 버전
+        - 시리얼번호
+        - 섀시 상태 요약
+

@@ -1,0 +1,4 @@
+sample_case,expected_result,device_id,profile_id,hostname,mgmt_vlan,mgmt_ip,mgmt_mask,mgmt_gw,domain_name,local_admin,local_admin_secret,enable_secret,snmp_location,enable_ssh,enable_ntp,ntp_server,enable_portfast_default,note
+REF_L2_ACCESS_BASIC,참고용 정상 생성,SW-L2-01,CISCO_IOS_L2_ACCESS_BASE,SW-L2-01,99,192.0.2.11,255.255.255.0,192.0.2.1,example.local,netadmin,CHANGE_ME_LOCAL_SECRET,CHANGE_ME_ENABLE_SECRET,HQ-IDF-A,true,true,192.0.2.254,true,참고용 더미 값입니다. 실제 운영값으로 그대로 사용하지 마세요.
+REF_L2_ACCESS_DEFAULTS,기본값 참고,SW-L2-02,CISCO_IOS_L2_ACCESS_BASE,SW-L2-02,,192.0.2.12,255.255.255.0,192.0.2.1,,netadmin,CHANGE_ME_LOCAL_SECRET,CHANGE_ME_ENABLE_SECRET,,true,false,,true,빈 값과 기본값 동작을 확인하기 위한 참고 행입니다.
+

@@ -94,6 +94,7 @@ $pyInstallerArgs = @(
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'assets\icons') -Destination 'assets/icons')",
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'netops_suite\modules\inspector\vendor_templates') -Destination 'netops_suite/modules/inspector/vendor_templates')",
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'netops_suite\modules\inspector_runtime\custom_rules.example.yaml') -Destination 'netops_suite/modules/inspector_runtime')",
+    "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'netops_suite\modules\inspector_runtime\custom_parsers.example.py') -Destination 'netops_suite/modules/inspector_runtime')",
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'netops_suite\modules\inspector_runtime\locales') -Destination 'netops_suite/modules/inspector_runtime/locales')",
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'netops_suite\modules\config_builder\profiles') -Destination 'netops_suite/modules/config_builder/profiles')",
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'netops_suite\modules\config_builder\device_values') -Destination 'netops_suite/modules/config_builder/device_values')",

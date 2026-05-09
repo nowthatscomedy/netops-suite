@@ -64,6 +64,19 @@ def test_inspector_service_loads_supported_vendor_profiles():
     assert profiles["cisco"]
 
 
+def test_inspector_reference_templates_load():
+    templates = InspectorService().supported_profile_templates()
+    reference_templates = [template for template in templates if template.get("is_reference")]
+    cisco_reference = next(
+        template for template in reference_templates if template["vendor"] == "reference-cisco"
+    )
+
+    assert cisco_reference["display_name"] == "참고용 Cisco IOS-XE 기본 점검"
+    assert "show version" in cisco_reference["commands"]
+    assert "OS버전" in cisco_reference["output_columns"]
+    assert cisco_reference["parsing_rules"]["show version"]["patterns"][0]["parser_type"] == "split_fields"
+
+
 def test_inspector_custom_rules_use_user_data_root(tmp_path: Path):
     service = InspectorService(user_data_dir=tmp_path / "inspector")
     path = service.save_custom_rules_text(
@@ -176,12 +189,29 @@ def test_multiple_excel_columns_from_same_command_are_preserved(tmp_path: Path):
     assert "시리얼번호" in yaml_text
 
 
+def test_config_builder_reference_device_values_render():
+    service = ConfigBuilderService()
+    sample_names = [
+        "sample_cisco_ios_l2_access_base_devices.csv",
+        "sample_cisco_iosxe_edge_port_base_devices.csv",
+        "sample_cisco_iosxe_l3_distribution_base_devices.csv",
+    ]
+
+    for sample_name in sample_names:
+        result = service.render_file(service.device_values_dir / sample_name)
+        assert not result.profile_issues
+        assert not result.device_issues
+        assert len(result.rendered) == 2
+        assert "hostname" in result.bundle_text
+
+
 def test_packaging_names_match_suite_release_contract():
     build_script = Path("scripts/build_release.ps1").read_text(encoding="utf-8")
     installer_script = Path("installer/netops-suite.iss").read_text(encoding="utf-8")
 
     assert "NetOpsSuite" in build_script
     assert "NetOpsSuite-setup-*.exe" in build_script
+    assert "custom_parsers.example.py" in build_script
     assert "NetOpsSuite-setup-{#AppVersion}" in installer_script
     assert "NetOpsSuite" in DEFAULT_UPDATE_ASSET_PATTERN
 

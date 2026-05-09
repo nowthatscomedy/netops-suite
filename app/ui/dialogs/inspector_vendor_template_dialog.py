@@ -416,7 +416,10 @@ class InspectorVendorTemplateDialog(QDialog):
         self.copy_template_combo.clear()
         self.copy_template_combo.addItem("새 템플릿", None)
         for template in self.templates:
-            self.copy_template_combo.addItem(f"{template['vendor']} / {template['os']}", template)
+            label = template.get("display_name") or f"{template['vendor']} / {template['os']}"
+            if template.get("is_reference") and "참고용" not in label:
+                label = f"{label} (참고용)"
+            self.copy_template_combo.addItem(label, template)
         self.copy_template_combo.blockSignals(False)
         self._refresh_python_parser_choices()
 
