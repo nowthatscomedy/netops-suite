@@ -1,0 +1,61 @@
+inspection_commands:
+  alcatel-lucent:
+    aos8:
+    - show configuration snapshot
+    - show temperature
+    - show fan
+    - show power
+    - show system
+    - show stack status
+    - show health all cpu
+    - show health all memory
+    - show chassis
+backup_commands:
+  alcatel-lucent:
+    aos8: show configuration snapshot
+parsing_rules:
+  alcatel-lucent:
+    aos8:
+      show configuration snapshot:
+        pattern: session prompt default "(\S+)>"
+        output_column: Hostname
+        first_match_only: true
+      show temperature:
+        custom_parser: parsing_alcatel_temperature
+        output_column: Temperature
+      show fan:
+        custom_parser: parsing_alcatel_fan
+        output_column: Fan Status
+      show power:
+        custom_parser: parsing_alcatel_power
+        output_column: Power Status
+      show system:
+        patterns:
+        - pattern: \s+Up\s+Time:\s+(\S+\s\S+\s\S+\s\S+)
+          output_column: Uptime
+          first_match_only: true
+        - custom_parser: parsing_alcatel_version
+          output_column: Version
+      show stack status:
+        pattern: Redundant cable status\s+:\s+(\S+)
+        output_column: Stack Status
+        first_match_only: true
+      show health all cpu:
+        custom_parser: parsing_alcatel_cpu
+        output_column: CPU Usage
+      show health all memory:
+        custom_parser: parsing_alcatel_memory
+        output_column: Memory Usage
+      show chassis:
+        patterns:
+        - pattern: Model Name:\s+([^,]+),?
+          output_column: Model
+          first_match_only: true
+        - pattern: Serial Number:\s+([^,]+),?
+          output_column: Serial Number
+connection_overrides:
+  alcatel-lucent:
+    aos8: {}
+handler_overrides:
+  alcatel-lucent:
+    aos8: {}

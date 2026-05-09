@@ -1,0 +1,69 @@
+inspection_commands:
+  ubiquoss:
+    e4020:
+    - show running-config
+    - show system
+    - show cpu usage
+    - show memory usage
+    - show environment temperature
+    - show environment cooling
+    - show environment power
+    - show uptime
+backup_commands:
+  ubiquoss:
+    e4020: show running-config
+parsing_rules:
+  ubiquoss:
+    e4020:
+      show running-config:
+        pattern: ^\s*hostname\s+(\S+)
+        output_column: Hostname
+        first_match_only: true
+      show system:
+        patterns:
+        - pattern: ^\s*Model Name\s*:\s*(\S+)
+          output_column: Model
+          first_match_only: true
+        - pattern: ^\s*Serial Number\s*:\s*(\S+)
+          output_column: Serial Number
+          first_match_only: true
+        - pattern: ^\s*S/W Version\s*:\s*(\S+)
+          output_column: Version
+          first_match_only: true
+      show cpu usage:
+        custom_parser: parsing_ubiquoss_cpu_usage
+        output_column: CPU Usage
+      show memory usage:
+        patterns:
+        - pattern: (\d+K)\s+total,\s*(\d+K)\s+used,\s*(\d+K)\s+free,\s*(\d+\.\d+)%\s+available
+          output_columns:
+          - Memory Total
+          - Memory Used
+          - Memory Free
+          - Memory Available %
+          first_match_only: true
+          process:
+            type: calculate_usage_from_available
+            input_column: Memory Available %
+            output_column: Memory Usage
+      show environment temperature:
+        pattern: ^\s*current\s*:\s*(.+)
+        output_column: System Temperature
+        first_match_only: true
+      show environment cooling:
+        custom_parser: parsing_ubiquoss_fan_status
+        output_column: Fan Status
+      show environment power:
+        custom_parser: parsing_ubiquoss_power_status
+        output_column: Power Status
+      show uptime:
+        pattern: ((?:\d+\s+days,\s+)?(?:\d+\s+hours,\s+)?(?:\d+\s+mins,\s+)?\d+\s+secs)\s+since
+          boot
+        output_column: Uptime
+        first_match_only: true
+connection_overrides:
+  ubiquoss:
+    e4020: {}
+handler_overrides:
+  ubiquoss:
+    e4020: {}

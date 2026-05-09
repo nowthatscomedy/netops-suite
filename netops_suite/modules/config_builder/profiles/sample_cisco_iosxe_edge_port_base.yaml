@@ -1,0 +1,117 @@
+# Cisco 샘플 프로파일: 엣지 액세스 포트 템플릿
+# 권장 사용 예:
+# - 사용자 단말이 연결되는 액세스 스위치 엣지 포트
+# - 액세스 VLAN
+# - 선택형 Voice VLAN
+# - 선택형 Port-Security
+# - 선택형 BPDU Guard
+#
+# 이 프로파일은 같은 인터페이스를 여러 블록에서 반복해서 사용합니다.
+# 블록 선택 패널에서 어떤 기능이 제어되는지 쉽게 볼 수 있도록 의도한 구성입니다.
+# description_ko는 프로파일과 각 변수에 모두 둘 수 있습니다.
+id: CISCO_IOSXE_EDGE_PORT_BASE
+vendor: CISCO
+model: Catalyst 9200 Edge
+firmware: IOS-XE 17.x
+description: 관리 SVI, 액세스 VLAN, 선택형 Voice VLAN, 선택형 Port-Security, 선택형 BPDU Guard를 포함한 Cisco IOS-XE 엣지 포트 기본 템플릿
+description_ko: 관리 SVI, 액세스 VLAN, 선택형 Voice VLAN, 선택형 Port-Security, 선택형 BPDU Guard를 포함한 Cisco IOS-XE 엣지 포트 기본 템플릿
+
+variables:
+  hostname:
+    required: true
+    description: 장비 호스트명
+    description_ko: 장비 호스트명
+    auto_increment: suffix_number
+  mgmt_vlan:
+    required: false
+    type: int
+    default: 99
+    description: 관리 VLAN 번호
+    description_ko: 관리 VLAN 번호
+  mgmt_ip:
+    required: true
+    type: ipv4
+    description: 관리 SVI IP 주소
+    description_ko: 관리 SVI IP 주소
+    auto_increment: ipv4
+  mgmt_mask:
+    required: true
+    type: ipv4
+    description: 관리 SVI 서브넷 마스크
+    description_ko: 관리 SVI 서브넷 마스크
+  mgmt_gw:
+    required: true
+    type: ipv4
+    description: 관리용 기본 게이트웨이
+    description_ko: 관리용 기본 게이트웨이
+
+  # 인터페이스별 값
+  access_interface:
+    required: true
+    description: 사용자 단말이 연결되는 액세스 인터페이스 이름
+    description_ko: 사용자 단말이 연결되는 액세스 인터페이스 이름
+  access_vlan:
+    required: false
+    type: int
+    default: 10
+    description: 액세스 VLAN 번호
+    description_ko: 액세스 VLAN 번호
+  enable_voice_vlan:
+    required: false
+    type: bool
+    default: true
+    description: Voice VLAN 설정 블록 출력 여부
+    description_ko: Voice VLAN 설정 블록 출력 여부
+  voice_vlan:
+    required: false
+    type: int
+    default: 20
+    description: Voice VLAN 번호
+    description_ko: Voice VLAN 번호
+  enable_port_security:
+    required: false
+    type: bool
+    default: true
+    description: Port-Security 설정 블록 출력 여부
+    description_ko: Port-Security 설정 블록 출력 여부
+  enable_bpduguard:
+    required: false
+    type: bool
+    default: true
+    description: BPDU Guard 설정 블록 출력 여부
+    description_ko: BPDU Guard 설정 블록 출력 여부
+
+blocks:
+  - name: base
+    lines:
+      - "hostname {{ hostname }}"
+      - "interface vlan {{ mgmt_vlan }}"
+      - " ip address {{ mgmt_ip }} {{ mgmt_mask }}"
+      - " no shutdown"
+      - "exit"
+      - "ip default-gateway {{ mgmt_gw }}"
+
+  - name: access_port
+    lines:
+      - "interface {{ access_interface }}"
+      - " switchport mode access"
+      - " switchport access vlan {{ access_vlan }}"
+      - " spanning-tree portfast"
+      - " no shutdown"
+
+  - name: voice_vlan
+    lines:
+      - "interface {{ access_interface }}"
+      - " switchport voice vlan {{ voice_vlan }}"
+
+  - name: port_security
+    lines:
+      - "interface {{ access_interface }}"
+      - " switchport port-security"
+      - " switchport port-security maximum 2"
+      - " switchport port-security violation restrict"
+
+  - name: bpduguard
+    lines:
+      - "interface {{ access_interface }}"
+      - " spanning-tree bpduguard enable"

@@ -1,0 +1,51 @@
+inspection_commands:
+  ruckus:
+    icx:
+    - show running-config
+    - show chassis
+    - show version
+    - show cpu-utilization
+    - show memory
+backup_commands:
+  ruckus:
+    icx: show running-config
+parsing_rules:
+  ruckus:
+    icx:
+      show running-config:
+        pattern: hostname\s+(\S+)
+        output_column: Hostname
+        first_match_only: true
+      show chassis:
+        patterns:
+        - custom_parser: parsing_ruckus_power
+          output_column: Power Status
+        - custom_parser: parsing_ruckus_fan
+          output_column: Fan Status
+        - custom_parser: parsing_ruckus_temp
+          output_column: System Temperature
+      show version:
+        patterns:
+        - pattern: 'SW: Version\s+(\S+)'
+          output_column: Version
+          first_match_only: true
+        - pattern: 'HW: Stackable\s+(.*)'
+          output_column: Model
+          first_match_only: true
+        - pattern: system uptime is\s+(.+)
+          output_column: Uptime
+          first_match_only: true
+        - pattern: Serial\s+#:(\S+)
+          output_column: Serial Number
+          first_match_only: true
+      show cpu-utilization:
+        custom_parser: parsing_ruckus_cpu
+        output_column: CPU Usage
+      show memory:
+        custom_parser: parsing_ruckus_memory
+connection_overrides:
+  ruckus:
+    icx: {}
+handler_overrides:
+  ruckus:
+    icx: {}

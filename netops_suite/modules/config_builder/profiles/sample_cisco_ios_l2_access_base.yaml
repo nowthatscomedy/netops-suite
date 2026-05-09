@@ -1,0 +1,151 @@
+# Cisco 샘플 프로파일: L2 액세스 스위치 기본 템플릿
+# 권장 사용 예:
+# - 액세스 계층 스위치
+# - 관리 SVI
+# - 로컬 관리자 계정 + enable secret
+# - 선택형 SSH / NTP / PortFast 기본 설정
+#
+# 사용자 참고 규칙:
+# 1. required: true
+#    CSV/XLSX 값이 비어 있으면 장비 상태가 "확인 필요"가 됩니다.
+# 2. type: ipv4 / bool / int / string
+#    형식이 잘못되어도 장비 상태가 "확인 필요"가 됩니다.
+# 3. default:
+#    CSV/XLSX 셀이 비어 있을 때 사용합니다.
+# 4. 블록 선택 패널:
+#    UI의 블록 선택 패널에서 해당 블록의 출력 여부를 제어합니다.
+# 5. 여기 선언되지 않은 추가 CSV/XLSX 컬럼은 무시됩니다.
+# 6. description_ko:
+#    UI에 표시할 한국어 설명입니다. description과 같은 값으로 둘 수 있습니다.
+id: CISCO_IOS_L2_ACCESS_BASE
+vendor: CISCO
+model: Catalyst 2960X Access
+firmware: IOS 15.2
+description: 관리 SVI, 로컬 관리자, 선택형 SSH, 선택형 NTP, PortFast 기본값을 포함한 Cisco IOS L2 액세스 스위치 기본 템플릿
+description_ko: 관리 SVI, 로컬 관리자, 선택형 SSH, 선택형 NTP, PortFast 기본값을 포함한 Cisco IOS L2 액세스 스위치 기본 템플릿
+
+variables:
+  # 필수 식별 정보
+  hostname:
+    required: true
+    description: 장비 호스트명
+    description_ko: 장비 호스트명
+    auto_increment: suffix_number
+
+  # 관리 SVI
+  # mgmt_vlan을 비워 두면 VLAN 99를 기본으로 사용합니다.
+  mgmt_vlan:
+    required: false
+    type: int
+    default: 99
+    description: 관리 VLAN 번호
+    description_ko: 관리 VLAN 번호
+  mgmt_ip:
+    required: true
+    type: ipv4
+    description: 관리 SVI IP 주소
+    description_ko: 관리 SVI IP 주소
+    auto_increment: ipv4
+  mgmt_mask:
+    required: true
+    type: ipv4
+    description: 관리 SVI 서브넷 마스크
+    description_ko: 관리 SVI 서브넷 마스크
+  mgmt_gw:
+    required: true
+    type: ipv4
+    description: L2 스위치용 기본 게이트웨이
+    description_ko: L2 스위치용 기본 게이트웨이
+
+  # 로컬 관리자 / 권한 설정
+  domain_name:
+    required: false
+    default: corp.local
+    description: SSH 키 생성에 사용하는 도메인명
+    description_ko: SSH 키 생성에 사용하는 도메인명
+  local_admin:
+    required: true
+    description: 로컬 관리자 계정명
+    description_ko: 로컬 관리자 계정명
+  local_admin_secret:
+    required: true
+    description: 로컬 관리자 비밀번호
+    description_ko: 로컬 관리자 비밀번호
+  enable_secret:
+    required: true
+    description: Enable 모드 비밀번호
+    description_ko: Enable 모드 비밀번호
+
+  # 공통 선택 운영값
+  snmp_location:
+    required: false
+    default: HQ-IDF
+    description: SNMP 위치 정보 문자열
+    description_ko: SNMP 위치 정보 문자열
+  enable_ssh:
+    required: false
+    type: bool
+    default: true
+    description: SSH 설정 블록 출력 여부
+    description_ko: SSH 설정 블록 출력 여부
+  enable_ntp:
+    required: false
+    type: bool
+    default: true
+    description: NTP 설정 블록 출력 여부
+    description_ko: NTP 설정 블록 출력 여부
+  ntp_server:
+    required: false
+    default: 192.168.254.10
+    description: NTP 서버 IP 또는 호스트명
+    description_ko: NTP 서버 IP 또는 호스트명
+  enable_portfast_default:
+    required: false
+    type: bool
+    default: true
+    description: 전역 PortFast / BPDU Guard 기본 설정 출력 여부
+    description_ko: 전역 PortFast / BPDU Guard 기본 설정 출력 여부
+
+blocks:
+  # 기본 전역 설정
+  - name: base
+    lines:
+      - "service timestamps log datetime msec"
+      - "no ip domain-lookup"
+      - "hostname {{ hostname }}"
+      - "service password-encryption"
+      - "enable secret {{ enable_secret }}"
+      - "username {{ local_admin }} privilege 15 secret {{ local_admin_secret }}"
+      - "ip domain-name {{ domain_name }}"
+      - "snmp-server location {{ snmp_location }}"
+
+  # L2 스위치 관리 인터페이스
+  - name: management_svi
+    lines:
+      - "vlan {{ mgmt_vlan }}"
+      - " name MGMT"
+      - "interface vlan {{ mgmt_vlan }}"
+      - " ip address {{ mgmt_ip }} {{ mgmt_mask }}"
+      - " no shutdown"
+      - "exit"
+      - "ip default-gateway {{ mgmt_gw }}"
+
+  # 선택형 SSH 블록 (블록 선택 패널에서 제어)
+  # crypto key 명령은 초기 구축 템플릿에서 자주 사용합니다.
+  - name: ssh
+    lines:
+      - "crypto key generate rsa modulus 2048"
+      - "ip ssh version 2"
+      - "line vty 0 4"
+      - " login local"
+      - " transport input ssh"
+      - "exit"
+
+  - name: ntp
+    lines:
+      - "ntp server {{ ntp_server }}"
+
+  - name: stp_defaults
+    lines:
+      - "spanning-tree portfast default"
+      - "spanning-tree bpduguard default"

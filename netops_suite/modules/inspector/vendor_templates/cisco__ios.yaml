@@ -1,0 +1,41 @@
+inspection_commands:
+  cisco:
+    ios:
+    - show running-config
+    - show env all
+    - show version | include uptime
+    - show process cpu | include CPU utilization
+    - show process memory | include Processor Pool
+backup_commands:
+  cisco:
+    ios: show running-config
+parsing_rules:
+  cisco:
+    ios:
+      show running-config:
+        custom_parser: parsing_cisco_hostname
+        output_column: Hostname
+      show env all:
+        patterns:
+        - custom_parser: parsing_cisco_fan_status
+          output_column: Fan Status
+        - custom_parser: parsing_cisco_temperature
+          output_column: System Temperature
+      show version | include uptime:
+        pattern: uptime is (.+)
+        output_column: Uptime
+        first_match_only: true
+      show process cpu | include CPU utilization:
+        pattern: CPU utilization for five seconds:\s+(\d+)%/\d+%;
+        output_column: CPU Usage
+        first_match_only: true
+      show process memory | include Processor Pool:
+        pattern: Used:\s*(\d+)
+        output_column: Memory Usage
+        first_match_only: true
+connection_overrides:
+  cisco:
+    ios: {}
+handler_overrides:
+  cisco:
+    ios: {}

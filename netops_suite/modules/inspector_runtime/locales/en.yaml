@@ -1,0 +1,181 @@
+﻿app:
+  title: "NetOps Inspector"
+
+cli:
+  path:
+    excel_message: "Device Excel file path:"
+    command_message: "Command file path (txt/xlsx):"
+    long_instruction: "Tab: autocomplete / Enter: confirm / Ctrl+C: cancel"
+    invalid_path: "Please enter a valid file path."
+  warning:
+    file_not_found: "Input file does not exist: {path}"
+    unsupported_excel_extension: "Unsupported file extension (xlsx/xls/xlsm only): {suffix}"
+    unsupported_command_extension: "Unsupported file extension (txt/xlsx/xls/xlsm only): {suffix}"
+
+ui:
+  encrypted_excel_password: "Password for encrypted file:"
+
+excel:
+  columns:
+    connection_status: "Connection Status"
+    error_message: "Error Message"
+  status:
+    success: "Success"
+    failed: "Failed"
+  sheet:
+    inspection_results: "Inspection Results"
+
+file_handler:
+  error:
+    unsupported_extension: "Unsupported file format: {suffix}"
+    command_file_read_failed: "Failed to read command file: {filepath}, error: {error}"
+    excel_read_failed: "Failed to read Excel file: {filepath}, error: {error}"
+    encrypted_excel_dependency: "Install 'msoffcrypto-tool' to read encrypted Excel files."
+    excel_save_failed: "Error while saving result file: {error}"
+  info:
+    encrypted_excel_decrypted: "Encrypted file decrypted successfully: {filepath}"
+    selected_file: "Selected file: {filepath}"
+    result_save_started: "Saving results: {filepath}"
+    result_saved: "Result file saved: {filepath}"
+  warning:
+    no_results: "No results to save."
+
+validator:
+  required_field_missing: "Required field missing or empty: '{field}' (IP: {ip})"
+  invalid_ip: "Invalid IP address: {ip}"
+  invalid_connection_type: "Invalid connection type: {connection_type} (IP: {ip})"
+  invalid_port: "Invalid port number: {port} (IP: {ip})"
+  duplicate_columns: "Duplicate columns after normalization: {columns}"
+  unsupported_vendor: "Unsupported vendor: {vendor} (IP: {ip})"
+  unsupported_os: "Unsupported OS model: {os_model} (vendor: {vendor}, IP: {ip})"
+  empty_excel: "Excel file is empty."
+  missing_columns: "Missing required columns: {columns}"
+  duplicate_ips: "Duplicate IP addresses found: {ips}"
+  device_info_errors: "Errors found in device information:\n{errors}"
+
+main:
+  modes:
+    custom_commands: "Custom Command Run"
+    inspection: "Inspection"
+    backup: "Backup"
+    inspection_backup: "Inspection+Backup"
+  run_summary:
+    title: "Run Summary"
+    item: "Item"
+    value: "Value"
+    mode: "Mode"
+    devices: "Devices"
+    file: "File"
+    timeout: "Timeout"
+    max_retries: "Max Retries"
+    max_workers: "Concurrency"
+    log_file: "Log File"
+  result:
+    completed: "Job completed."
+    no_results: "No processed results. Result file was not saved."
+    result_file: "Result File"
+    backup_dir: "Backup Directory"
+    session_log: "Session Log"
+    log_file: "Log File"
+  confirm:
+    run_now: "Run now?"
+    mixed_vendor_os: "Different vendor/OS pairs are mixed. Continue?"
+  info:
+    mode_log_prefix: "MODE    : {mode}"
+    custom_commands_cancelled: "Custom command run was cancelled."
+    job_cancelled: "Job was cancelled."
+    dashboard_completed_note: "Job complete (review summary)"
+  warning:
+    password_not_entered: "Password was not entered."
+    encrypted_excel_read_failed: "Failed to read encrypted Excel file: {error}"
+    input_path_missing: "File path was not provided."
+    command_path_missing: "Command file path was not provided."
+    command_file_read_failed: "Failed to read command file: {error}"
+    command_list_empty: "No executable commands found in command file."
+    no_order_columns: "No inspection items available for ordering."
+  shutdown: "Program terminated."
+  errors:
+    app_error: "Application error: {error}"
+    unexpected: "Unexpected error: {error}"
+  prompts:
+    return_main_menu: "Press Enter to return to the main menu."
+
+dashboard:
+  default_completed_note: "Job complete"
+  status:
+    completed: "Completed"
+    in_progress: "In Progress"
+    preparing: "Preparing"
+  labels:
+    success: "success"
+    failed: "failed"
+    mode: "Mode"
+    status: "Status"
+    elapsed: "Elapsed"
+    progress: "Progress"
+    success_fail: "Success/Fail"
+    remaining: "Remaining"
+    throughput: "Throughput"
+    last_updated: "Last Updated"
+  units:
+    devices_per_min: "devices/min"
+  titles:
+    dashboard: "Live Dashboard"
+    recent_events: "Recent Events"
+  no_events: "No events yet."
+
+menu:
+  main:
+    prompt: "Select a task:"
+    start: "Start Job (Inspection/Backup)"
+    custom_commands: "Run Command File"
+    settings: "Settings"
+    netmiko_types: "Show Netmiko device_type List"
+    exit: "Exit"
+  action:
+    title: "Task Selection"
+    description: "Select the task to execute."
+    prompt: "Action:"
+    inspect_only: "Inspection only (no backup)"
+    backup_only: "Backup only (no inspection)"
+    inspect_and_backup: "Inspection + Backup (both)"
+    back: "Back"
+  netmiko:
+    list_fetch_failed: "Failed to load device_type list: {error}"
+    no_device_types: "No device_type available."
+    search_prompt: "Search device_type (ESC=back):"
+    selected: "Selected device_type: {device_type}"
+  settings:
+    title: "Current Settings"
+    item: "Item"
+    value: "Value"
+    console_log_level: "Console Log Level"
+    max_retries: "Max Retries"
+    timeout: "Timeout"
+    max_workers: "Concurrency"
+    language: "Language"
+    excludes: "Inspection Excludes"
+    options_prompt: "Settings:"
+    change_log_level: "Change Console Log Level"
+    change_retries: "Change Max Retries"
+    change_timeout: "Change Timeout"
+    change_workers: "Change Concurrency"
+    change_language: "Change Language"
+    manage_excludes: "Manage Inspection Excludes"
+    back: "Back"
+    keep_current_hint: "Enter to keep current value"
+    enter_number: "Please enter a number."
+    enter_range: "Enter a value between {min_val} and {max_val}."
+    select_log_level_title: "Console Log Level"
+    select_log_level_desc: "Current: {current_level}\nWARNING is recommended for most users."
+    retries_title: "Max Retries"
+    retries_desc: "Current: {current}\nMaximum retry count for failed device connections."
+    timeout_title: "Connection Timeout"
+    timeout_desc: "Current: {current}s\nMaximum wait time for initial connection."
+    workers_title: "Concurrency"
+    workers_desc: "Current: {current}\nNumber of devices processed in parallel."
+    language_title: "Language"
+    language_desc: "Current: {current}\nUI language for prompts and result labels."
+  prompts:
+    press_enter_back: "Press Enter to go back."
+

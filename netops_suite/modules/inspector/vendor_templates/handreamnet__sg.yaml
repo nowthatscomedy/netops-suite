@@ -1,0 +1,57 @@
+inspection_commands:
+  handreamnet:
+    sg:
+    - show running-config | include hostname
+    - show system fan
+    - show system temperature
+    - show system system-info
+    - show system uptime
+    - show system cpu-load
+    - show system memory
+backup_commands:
+  handreamnet:
+    sg: show running-config
+parsing_rules:
+  handreamnet:
+    sg:
+      show running-config | include hostname:
+        pattern: hostname\s+(\S+)
+        output_column: Hostname
+        first_match_only: true
+      show system fan:
+        pattern: Status\s*:\s*(\w+)
+        output_column: Fan Status
+        first_match_only: true
+      show system temperature:
+        pattern: M/B\s+Temp\s*:\s*(.+)
+        output_column: System Temperature
+        first_match_only: true
+      show system system-info:
+        patterns:
+        - pattern: Model\s*:\s*(\S+)
+          output_column: Model
+          first_match_only: true
+        - pattern: Serial No\s*:\s*(\S+)
+          output_column: Serial Number
+          first_match_only: true
+        - pattern: OS Version\s*:\s*(\S+)
+          output_column: Version
+          first_match_only: true
+      show system uptime:
+        pattern: up\s+(.+?),
+        output_column: Uptime
+        first_match_only: true
+      show system cpu-load:
+        pattern: 5 sec\s*:\s*([\d\.]+\s*%)
+        output_column: CPU Usage
+        first_match_only: true
+      show system memory:
+        pattern: Used\s*:\s*(\d+)\s*kB
+        output_column: Memory Usage
+        first_match_only: true
+connection_overrides:
+  handreamnet:
+    sg: {}
+handler_overrides:
+  handreamnet:
+    sg: {}

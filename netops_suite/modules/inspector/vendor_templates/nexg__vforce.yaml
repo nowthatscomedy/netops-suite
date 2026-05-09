@@ -1,0 +1,29 @@
+inspection_commands:
+  nexg:
+    vforce:
+    - show version
+    - show running-config
+backup_commands:
+  nexg:
+    vforce: show running-config
+parsing_rules:
+  nexg:
+    vforce:
+      show version:
+        patterns:
+        - pattern: Version\s+:\s+([\d\.]+)
+          output_column: Version
+        - pattern: Hostname\s+:\s+(\S+)
+          output_column: Hostname
+        - pattern: Uptime\s+:\s+(.*)
+          output_column: Uptime
+        - pattern: Model\s+:\s+(\S+)
+          output_column: Model
+        - pattern: Serial Number\s+:\s+(\S+)
+          output_column: Serial Number
+connection_overrides:
+  nexg:
+    vforce: {}
+handler_overrides:
+  nexg:
+    vforce: {}

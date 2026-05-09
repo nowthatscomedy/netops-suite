@@ -1,0 +1,67 @@
+# 점검 명령어 (벤더/OS별)
+# 기존 벤더에 명령어를 추가하거나, 새로운 벤더/OS 조합을 정의할 수 있습니다.
+inspection_commands:
+  cisco:
+    ios:
+      - "show inventory"
+  user-custom:
+    custom-os:
+      - "show version"
+      - "show system"
+
+# 백업 명령어 (벤더/OS별)
+backup_commands:
+  user-custom:
+    custom-os: "show running-config"
+
+# 파싱 규칙 (벤더/OS/명령어별)
+# YAML에서는 정규식을 싱글쿼트로 감싸면 이중 이스케이프가 필요 없습니다.
+#   JSON: "pattern": "hostname\\s+(\\S+)"
+#   YAML: pattern: 'hostname\s+(\S+)'
+parsing_rules:
+  cisco:
+    ios:
+      "show inventory":
+        pattern: 'NAME:\s+\"(.*?)\"'
+        output_column: Inventory Name
+        first_match_only: true
+  user-custom:
+    custom-os:
+      "show version":
+        pattern: 'Version\s*[:=]\s*(\S+)'
+        output_column: Version
+        first_match_only: true
+      "show system":
+        patterns:
+          - pattern: 'Hostname\s*[:=]\s*(\S+)'
+            output_column: Hostname
+            first_match_only: true
+          - pattern: 'Uptime\s*[:=]\s*(.*)'
+            output_column: Uptime
+            first_match_only: true
+
+# Netmiko device_type 매핑 (벤더/OS별)
+# ssh/telnet을 별도 지정하거나, default로 공통 지정 가능
+# 사용 가능한 device_type은 메인 메뉴의 "Netmiko device_type 목록 보기"에서 확인
+connection_overrides:
+  user-custom:
+    custom-os:
+      default: cisco_ios
+      telnet: cisco_ios_telnet
+
+# Paramiko 공용 핸들러 동작 커스터마이징 (벤더/OS별)
+# 필요한 항목만 지정하면 나머지는 기본값 적용
+handler_overrides:
+  user-custom:
+    custom-os:
+      enable_command: enable
+      disable_paging_command: "terminal length 0"
+      prompt_pattern: '[>#]\s*$'
+      initial_delay: 1.0
+      command_delay: 2.0
+      read_delay: 0.2
+      more_pattern: "--More--"
+      more_response: " "
+      shell_width: 200
+      shell_height: 1000
+      skip_enable: false

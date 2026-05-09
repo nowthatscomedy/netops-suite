@@ -1,0 +1,50 @@
+inspection_commands:
+  dayou:
+    dsw:
+    - show version
+    - show cpu
+    - show memory static | include total
+    - show poe power
+    - show interface brief
+backup_commands:
+  dayou:
+    dsw: show running-config
+parsing_rules:
+  dayou:
+    dsw:
+      show version:
+        patterns:
+        - pattern: ^(DSW\S+)\s+Series Software
+          output_column: Model
+          first_match_only: true
+        - pattern: ^(\S+)\s+uptime is
+          output_column: Hostname
+          first_match_only: true
+        - pattern: Version\s+([\d\.]+[A-Z]?)
+          output_column: Version
+          first_match_only: true
+        - pattern: uptime is\s+([\d:]+)
+          output_column: Uptime
+          first_match_only: true
+        - pattern: Serial num:([^,]+)
+          output_column: Serial Number
+          first_match_only: true
+      show cpu:
+        pattern: one minute:\s*(\d+%)
+        output_column: CPU Usage
+        first_match_only: true
+      show memory static | include total:
+        custom_parser: parsing_dayou_memory_usage
+        output_column: Memory Usage
+      show poe power:
+        custom_parser: parsing_dayou_poe_count
+        output_column: PoE Port Count
+      show interface brief:
+        custom_parser: parsing_dayou_up_port_count
+        output_column: UP Port Count
+connection_overrides:
+  dayou:
+    dsw: {}
+handler_overrides:
+  dayou:
+    dsw: {}

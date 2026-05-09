@@ -1,0 +1,253 @@
+# 종합 참고용 샘플 템플릿
+# 이 파일은 "실무에서 자주 쓰는 조건"을 한 번에 보여주기 위한 참고용 예시입니다.
+# 바로 사용해도 되지만, 보통은 이 파일을 복사해서 필요한 항목만 남기는 방식이 가장 편합니다.
+#
+# 이 템플릿에서 볼 수 있는 것:
+# 1. 필수값(required: true)
+# 2. 기본값(default)
+# 3. 타입 검증(string / ipv4 / bool / int)
+# 4. 시크릿 성격 변수(enable_secret, local_admin_secret)
+# 5. 블록 선택 패널
+# 6. 장비 파일(CSV/XLSX) 컬럼명과 템플릿 변수명의 연결 방식
+# 7. 장비 파일에 선언되지 않은 추가 컬럼이 있어도 무시되는 구조
+#
+# 장비 파일 작성 규칙:
+# - device_id: 장비 식별자
+# - profile_id: 아래 id 값과 정확히 같아야 함
+# - 나머지 컬럼명: 아래 variables에 정의한 변수명과 같아야 함
+#
+# 변수명 규칙:
+# - 공백 금지
+# - 영문/숫자/언더바(_)만 사용
+# - 예: hostname, mgmt_ip, enable_ntp, local_admin_secret
+#
+# 기본값 동작:
+# - 장비 파일 셀이 비어 있으면 default 값을 사용
+# - default도 없고 required: true 이면 "확인 필요" 상태가 됨
+#
+# 블록 선택 패널:
+# - UI의 블록 선택 패널에서 해당 블록의 출력 여부를 제어합니다.
+#
+# 시크릿 변수 참고:
+# - 변수명에 secret / password / key / community 같은 단어가 들어가면
+#   데스크톱 표와 우측 안내에서는 마스킹 처리됨
+
+id: SAMPLE_COMPREHENSIVE_REFERENCE
+vendor: CISCO
+model: Reference Template
+firmware: IOS / IOS-XE
+description: 필수값, 기본값, 타입 검증, 시크릿 값, 블록 선택 패널을 한 번에 참고할 수 있는 종합 템플릿
+description_ko: 필수값, 기본값, 타입 검증, 시크릿 값, 블록 선택 패널을 한 번에 참고할 수 있는 종합 템플릿
+
+variables:
+  # 장비 기본 식별 정보
+  hostname:
+    required: true
+    type: string
+    description: 장비 호스트명
+    description_ko: 장비 호스트명
+    auto_increment: suffix_number
+
+  site_code:
+    required: false
+    type: string
+    default: HQ
+    description: 사이트 식별 코드
+    description_ko: 사이트 식별 코드
+
+  role_name:
+    required: false
+    type: string
+    default: access
+    description: 장비 역할 문자열
+    description_ko: 장비 역할 문자열
+
+  # 관리 인터페이스
+  mgmt_vlan:
+    required: false
+    type: int
+    default: 99
+    description: 관리 VLAN 번호
+    description_ko: 관리 VLAN 번호
+
+  mgmt_ip:
+    required: true
+    type: ipv4
+    description: 관리 IP 주소
+    description_ko: 관리 IP 주소
+    auto_increment: ipv4
+
+  mgmt_mask:
+    required: true
+    type: ipv4
+    default: 255.255.255.0
+    description: 관리 서브넷 마스크
+    description_ko: 관리 서브넷 마스크
+
+  mgmt_gw:
+    required: true
+    type: ipv4
+    description: 관리 게이트웨이
+    description_ko: 관리 게이트웨이
+
+  # 운영 기본값
+  domain_name:
+    required: false
+    type: string
+    default: corp.local
+    description: 도메인명
+    description_ko: 도메인명
+
+  dns_server:
+    required: false
+    type: ipv4
+    default: 8.8.8.8
+    description: DNS 서버 주소
+    description_ko: DNS 서버 주소
+
+  # 계정 / 권한
+  local_admin:
+    required: true
+    type: string
+    default: netadmin
+    description: 로컬 관리자 계정명
+    description_ko: 로컬 관리자 계정명
+
+  local_admin_secret:
+    required: true
+    type: string
+    description: 로컬 관리자 비밀번호
+    description_ko: 로컬 관리자 비밀번호
+
+  enable_secret:
+    required: true
+    type: string
+    description: Enable 모드 비밀번호
+    description_ko: Enable 모드 비밀번호
+
+  # 선택 기능 제어용 bool
+  enable_ssh:
+    required: false
+    type: bool
+    default: true
+    description: SSH 블록 출력 여부
+    description_ko: SSH 블록 출력 여부
+
+  enable_ntp:
+    required: false
+    type: bool
+    default: true
+    description: NTP 블록 출력 여부
+    description_ko: NTP 블록 출력 여부
+
+  enable_dhcp_snooping:
+    required: false
+    type: bool
+    default: false
+    description: DHCP Snooping 블록 출력 여부
+    description_ko: DHCP Snooping 블록 출력 여부
+
+  enable_access_port:
+    required: false
+    type: bool
+    default: false
+    description: 액세스 포트 블록 출력 여부
+    description_ko: 액세스 포트 블록 출력 여부
+
+  enable_voice_vlan:
+    required: false
+    type: bool
+    default: false
+    description: Voice VLAN 명령 출력 여부
+    description_ko: Voice VLAN 명령 출력 여부
+
+  # 선택 기능용 세부값
+  ntp_server:
+    required: false
+    type: string
+    default: 192.168.254.10
+    description: NTP 서버 IP 또는 호스트명
+    description_ko: NTP 서버 IP 또는 호스트명
+
+  dhcp_snooping_vlans:
+    required: false
+    type: string
+    default: "10,20,30"
+    description: DHCP Snooping 대상 VLAN 목록
+    description_ko: DHCP Snooping 대상 VLAN 목록
+
+  access_interface:
+    required: false
+    type: string
+    default: GigabitEthernet1/0/1
+    description: 액세스 포트 인터페이스 이름
+    description_ko: 액세스 포트 인터페이스 이름
+
+  access_vlan:
+    required: false
+    type: int
+    default: 10
+    description: 액세스 포트 기본 VLAN
+    description_ko: 액세스 포트 기본 VLAN
+
+  voice_vlan:
+    required: false
+    type: int
+    default: 20
+    description: Voice VLAN 번호
+    description_ko: Voice VLAN 번호
+
+blocks:
+  # 항상 출력되는 기본 전역 블록
+  - name: base
+    lines:
+      - "hostname {{ hostname }}"
+      - "service password-encryption"
+      - "ip domain-name {{ domain_name }}"
+      - "ip name-server {{ dns_server }}"
+      - "enable secret {{ enable_secret }}"
+      - "username {{ local_admin }} privilege 15 secret {{ local_admin_secret }}"
+      - "banner motd ^{{ site_code }} / {{ role_name }} / {{ hostname }}^"
+
+  # 관리 인터페이스 블록
+  - name: management
+    lines:
+      - "vlan {{ mgmt_vlan }}"
+      - " name MGMT"
+      - "interface vlan {{ mgmt_vlan }}"
+      - " ip address {{ mgmt_ip }} {{ mgmt_mask }}"
+      - " no shutdown"
+      - "exit"
+      - "ip default-gateway {{ mgmt_gw }}"
+
+  # 블록 선택 패널에서 제어
+  - name: ssh
+    lines:
+      - "crypto key generate rsa modulus 2048"
+      - "ip ssh version 2"
+      - "line vty 0 4"
+      - " login local"
+      - " transport input ssh"
+      - "exit"
+
+  # 블록 선택 패널에서 제어
+  - name: ntp
+    lines:
+      - "ntp server {{ ntp_server }}"
+
+  # 블록 선택 패널에서 제어
+  - name: dhcp_snooping
+    lines:
+      - "ip dhcp snooping"
+      - "ip dhcp snooping vlan {{ dhcp_snooping_vlans }}"
+
+  # 블록 선택 패널에서 제어
+  - name: access_port
+    lines:
+      - "interface {{ access_interface }}"
+      - " switchport mode access"
+      - " switchport access vlan {{ access_vlan }}"
+      - "{% if enable_voice_vlan %} switchport voice vlan {{ voice_vlan }}{% endif %}"
+      - " spanning-tree portfast"
+      - " no shutdown"
+      - "exit"

@@ -1,0 +1,29 @@
+[
+  {
+    "name": "DHCP Auto",
+    "mode": "dhcp",
+    "interface_name": "",
+    "local_ip": "",
+    "prefix": 24,
+    "gateway": "",
+    "dns": [],
+    "target_vendor": "",
+    "target_ip": "",
+    "notes": "Reset selected adapter to DHCP and automatic DNS."
+  },
+  {
+    "name": "Lab Access 192.168.1.10/24",
+    "mode": "static",
+    "interface_name": "",
+    "local_ip": "192.168.1.10",
+    "prefix": 24,
+    "gateway": "",
+    "dns": [
+      "8.8.8.8",
+      "1.1.1.1"
+    ],
+    "target_vendor": "Lab",
+    "target_ip": "192.168.1.1",
+    "notes": "Example profile for initial device access work."
+  }
+]

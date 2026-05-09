@@ -1,0 +1,184 @@
+app:
+  title: 网络运营检查员
+cli:
+  path:
+    excel_message: 设备Excel文件路径：
+    command_message: 命令文件路径（txt/xlsx）：
+    long_instruction: Tab：自动完成 / Enter：确认 / Ctrl+C：取消
+    invalid_path: 请输入有效的文件路径。
+  warning:
+    file_not_found: 输入文件不存在：{path}
+    unsupported_excel_extension: 不支持的文件扩展名（仅限 xlsx/xls/xlsm）：{suffix}
+    unsupported_command_extension: 不支持的文件扩展名（仅限 txt/xlsx/xls/xlsm）：{suffix}
+ui:
+  encrypted_excel_password: 加密文件的密码：
+excel:
+  columns:
+    connection_status: 连接状态
+    error_message: 错误信息
+  status:
+    success: 成功
+    failed: 失败的
+  sheet:
+    inspection_results: 检查结果
+file_handler:
+  error:
+    unsupported_extension: 不支持的文件格式：{suffix}
+    command_file_read_failed: 无法读取命令文件：{filepath}，错误：{error}
+    excel_read_failed: 无法读取 Excel 文件：{filepath}，错误：{error}
+    encrypted_excel_dependency: 安装“msoffcrypto-tool”以读取加密的 Excel 文件。
+    excel_save_failed: 保存结果文件时出错：{error}
+  info:
+    encrypted_excel_decrypted: 加密文件解密成功：{filepath}
+    selected_file: 选定的文件：{filepath}
+    result_save_started: 保存结果：{filepath}
+    result_saved: 保存的结果文件：{filepath}
+  warning:
+    no_results: 没有可保存的结果。
+validator:
+  required_field_missing: 必填字段缺失或为空：“{field}”（IP：{ip}）
+  invalid_ip: 无效的 IP 地址：{ip}
+  invalid_connection_type: 无效连接类型：{connection_type}（IP：{ip}）
+  invalid_port: 无效端口号：{port}（IP：{ip}）
+  duplicate_columns: 标准化后的重复列：{columns}
+  unsupported_vendor: 不受支持的供应商：{vendor}（IP：{ip}）
+  unsupported_os: 不受支持的操作系统型号：{os_model}（供应商：{vendor}，IP：{ip}）
+  empty_excel: Excel 文件为空。
+  missing_columns: 缺少必填列：{columns}
+  duplicate_ips: 发现重复的 IP 地址：{ips}
+  device_info_errors: '发现设备信息错误：
+
+    {errors}'
+main:
+  modes:
+    custom_commands: 自定义命令运行
+    inspection: 检查
+    backup: 备份
+    inspection_backup: 检查+备份
+  run_summary:
+    title: 运行总结
+    item: 物品
+    value: 价值
+    mode: 模式
+    devices: 设备
+    file: 文件
+    timeout: 暂停
+    max_retries: 最大重试次数
+    max_workers: 并发性
+    log_file: 日志档案
+  result:
+    completed: 工作完成。
+    no_results: 没有处理结果。结果文件未保存。
+    result_file: 结果文件
+    backup_dir: 备份目录
+    session_log: 会话日志
+    log_file: 日志档案
+  confirm:
+    run_now: 现在跑？
+    mixed_vendor_os: 不同的供应商/操作系统对混合在一起。继续？
+  info:
+    mode_log_prefix: 模式：{mode}
+    custom_commands_cancelled: 自定义命令运行已取消。
+    job_cancelled: 工作被取消了。
+    dashboard_completed_note: 工作完成（审核摘要）
+  warning:
+    password_not_entered: 未输入密码。
+    encrypted_excel_read_failed: 无法读取加密的 Excel 文件：{error}
+    input_path_missing: 未提供文件路径。
+    command_path_missing: 未提供命令文件路径。
+    command_file_read_failed: 无法读取命令文件：{error}
+    command_list_empty: 在命令文件中找不到可执行命令。
+    no_order_columns: 没有可供订购的检查项目。
+  shutdown: 程序终止。
+  errors:
+    app_error: 应用程序错误：{error}
+    unexpected: 意外错误：{error}
+  prompts:
+    return_main_menu: 按 Enter 返回主菜单。
+dashboard:
+  default_completed_note: 工作完成
+  status:
+    completed: 完全的
+    in_progress: 进行中
+    preparing: 准备中
+  labels:
+    success: 成功
+    failed: 失败的
+    mode: 模式
+    status: 地位
+    elapsed: 过去
+    progress: 进步
+    success_fail: 成功/失败
+    remaining: 其余的
+    throughput: 吞吐量
+    last_updated: 最后更新
+  units:
+    devices_per_min: 设备/分钟
+  titles:
+    dashboard: 实时仪表板
+    recent_events: 近期活动
+  no_events: 还没有活动。
+menu:
+  main:
+    prompt: 选择任务：
+    start: 开始作业（检查/备份）
+    custom_commands: 运行命令文件
+    settings: 设置
+    netmiko_types: 显示 Netmiko device_type 列表
+    exit: 出口
+  action:
+    title: 任务选择
+    description: 选择要执行的任务。
+    prompt: 行动：
+    inspect_only: 仅检查（无备份）
+    backup_only: 仅备份（不检查）
+    inspect_and_backup: 检查+备份（两者）
+    back: 后退
+  netmiko:
+    list_fetch_failed: 无法加载 device_type 列表：{error}
+    no_device_types: 没有可用的 device_type。
+    search_prompt: 搜索设备类型（ESC=返回）：
+    selected: 所选设备类型：{device_type}
+  settings:
+    title: 当前设置
+    item: 物品
+    value: 价值
+    console_log_level: 控制台日志级别
+    max_retries: 最大重试次数
+    timeout: 暂停
+    max_workers: 并发性
+    language: 语言
+    excludes: 检查不包括
+    options_prompt: 设置：
+    change_log_level: 更改控制台日志级别
+    change_retries: 更改最大重试次数
+    change_timeout: 更改超时
+    change_workers: 更改并发数
+    change_language: 更改语言
+    manage_excludes: 管理检验排除
+    back: 后退
+    keep_current_hint: 输入以保持当前值
+    enter_number: 请输入一个数字。
+    enter_range: 输入 {min_val} 和 {max_val} 之间的值。
+    select_log_level_title: 控制台日志级别
+    select_log_level_desc: '当前：{current_level}
+
+      建议大多数用户使用警告。'
+    retries_title: 最大重试次数
+    retries_desc: '当前：{current}
+
+      失败设备连接的最大重试次数。'
+    timeout_title: 连接超时
+    timeout_desc: '当前：{current}s
+
+      初始连接的最长等待时间。'
+    workers_title: 并发性
+    workers_desc: '当前：{current}
+
+      并行处理的设备数量。'
+    language_title: 语言
+    language_desc: '当前：{current}
+
+      提示和结果标签的 UI 语言。'
+  prompts:
+    press_enter_back: 按 Enter 返回。

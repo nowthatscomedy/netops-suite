@@ -1,0 +1,180 @@
+app:
+  title: "NetOps Inspector"
+
+cli:
+  path:
+    excel_message: "장비 엑셀 파일 경로:"
+    command_message: "명령어 파일 경로 (txt/xlsx):"
+    long_instruction: "Tab: 자동완성 / Enter: 확인 / Ctrl+C: 취소"
+    invalid_path: "유효한 파일 경로를 입력하세요."
+  warning:
+    file_not_found: "입력한 파일이 존재하지 않습니다: {path}"
+    unsupported_excel_extension: "지원하지 않는 파일 형식입니다 (xlsx/xls/xlsm만 지원): {suffix}"
+    unsupported_command_extension: "지원하지 않는 파일 형식입니다 (txt/xlsx/xls/xlsm만 지원): {suffix}"
+
+ui:
+  encrypted_excel_password: "암호화된 파일 비밀번호:"
+
+excel:
+  columns:
+    connection_status: "접속 상태"
+    error_message: "오류 메시지"
+  status:
+    success: "성공"
+    failed: "실패"
+  sheet:
+    inspection_results: "점검 결과"
+
+file_handler:
+  error:
+    unsupported_extension: "지원하지 않는 파일 형식입니다: {suffix}"
+    command_file_read_failed: "명령 파일 읽기 실패: {filepath}, 오류: {error}"
+    excel_read_failed: "엑셀 파일 읽기 실패: {filepath}, 오류: {error}"
+    encrypted_excel_dependency: "암호화된 엑셀 파일을 읽으려면 'msoffcrypto-tool'을 설치하세요."
+    excel_save_failed: "결과 파일 저장 중 오류 발생: {error}"
+  info:
+    encrypted_excel_decrypted: "암호화된 파일 복호화 성공: {filepath}"
+    selected_file: "선택한 파일: {filepath}"
+    result_save_started: "결과 저장 시작: {filepath}"
+    result_saved: "결과 파일 저장 완료: {filepath}"
+  warning:
+    no_results: "저장할 결과가 없습니다."
+
+validator:
+  required_field_missing: "필수 필드 누락 또는 빈 값: '{field}' (IP: {ip})"
+  invalid_ip: "잘못된 IP 주소: {ip}"
+  invalid_connection_type: "잘못된 접속 방식: {connection_type} (IP: {ip})"
+  invalid_port: "잘못된 포트 번호: {port} (IP: {ip})"
+  duplicate_columns: "정규화 후 중복 컬럼이 존재합니다: {columns}"
+  unsupported_vendor: "지원하지 않는 벤더: {vendor} (IP: {ip})"
+  unsupported_os: "지원하지 않는 OS 모델: {os_model} (벤더: {vendor}, IP: {ip})"
+  empty_excel: "엑셀 파일이 비어 있습니다."
+  missing_columns: "필수 컬럼 누락: {columns}"
+  duplicate_ips: "중복된 IP 주소가 있습니다: {ips}"
+  device_info_errors: "장비 정보 오류:\n{errors}"
+
+main:
+  modes:
+    custom_commands: "사용자 명령 실행"
+    inspection: "점검"
+    backup: "백업"
+    inspection_backup: "점검+백업"
+  run_summary:
+    title: "실행 요약"
+    item: "항목"
+    value: "값"
+    mode: "모드"
+    devices: "장비 수"
+    file: "파일"
+    timeout: "타임아웃"
+    max_retries: "최대 재시도"
+    max_workers: "동시 처리 수"
+    log_file: "로그 파일"
+  result:
+    completed: "작업이 완료되었습니다."
+    no_results: "처리 결과가 없어 결과 파일을 저장하지 않았습니다."
+    result_file: "결과 파일"
+    backup_dir: "백업 디렉터리"
+    session_log: "세션 로그"
+    log_file: "로그 파일"
+  confirm:
+    run_now: "실행할까요?"
+    mixed_vendor_os: "서로 다른 벤더/OS 조합이 섞여 있습니다. 계속할까요?"
+  info:
+    mode_log_prefix: "MODE    : {mode}"
+    custom_commands_cancelled: "사용자 명령 실행이 취소되었습니다."
+    job_cancelled: "작업이 취소되었습니다."
+    dashboard_completed_note: "작업 완료 (요약 확인)"
+  warning:
+    password_not_entered: "비밀번호가 입력되지 않았습니다."
+    encrypted_excel_read_failed: "암호화된 엑셀 파일 읽기 실패: {error}"
+    input_path_missing: "파일 경로가 입력되지 않았습니다."
+    command_path_missing: "명령 파일 경로가 입력되지 않았습니다."
+    command_file_read_failed: "명령 파일 읽기 실패: {error}"
+    command_list_empty: "실행할 명령이 명령 파일에 없습니다."
+    no_order_columns: "정렬 가능한 점검 항목이 없습니다."
+  shutdown: "프로그램을 종료합니다."
+  errors:
+    app_error: "애플리케이션 오류: {error}"
+    unexpected: "예상하지 못한 오류: {error}"
+  prompts:
+    return_main_menu: "Enter를 누르면 메인 메뉴로 돌아갑니다."
+
+dashboard:
+  default_completed_note: "작업 완료"
+  status:
+    completed: "완료"
+    in_progress: "진행 중"
+    preparing: "준비 중"
+  labels:
+    success: "성공"
+    failed: "실패"
+    mode: "모드"
+    status: "상태"
+    elapsed: "경과 시간"
+    progress: "진행률"
+    success_fail: "성공/실패"
+    remaining: "남은 장비"
+    throughput: "처리량"
+    last_updated: "마지막 업데이트"
+  units:
+    devices_per_min: "대/분"
+  titles:
+    dashboard: "실시간 대시보드"
+    recent_events: "최근 이벤트"
+  no_events: "아직 이벤트가 없습니다."
+
+menu:
+  main:
+    prompt: "작업을 선택하세요:"
+    start: "작업 시작 (점검/백업)"
+    custom_commands: "명령 파일 실행"
+    settings: "설정"
+    netmiko_types: "Netmiko device_type 목록 보기"
+    exit: "종료"
+  action:
+    title: "작업 선택"
+    description: "실행할 작업을 선택하세요."
+    prompt: "작업:"
+    inspect_only: "점검만 실행 (백업 없음)"
+    backup_only: "백업만 실행 (점검 없음)"
+    inspect_and_backup: "점검 + 백업 (둘 다)"
+    back: "뒤로가기"
+  netmiko:
+    list_fetch_failed: "device_type 목록 로드 실패: {error}"
+    no_device_types: "표시할 device_type이 없습니다."
+    search_prompt: "device_type 검색 (ESC=뒤로가기):"
+    selected: "선택된 device_type: {device_type}"
+  settings:
+    title: "현재 설정"
+    item: "항목"
+    value: "값"
+    console_log_level: "콘솔 로그 레벨"
+    max_retries: "최대 재시도"
+    timeout: "타임아웃"
+    max_workers: "동시 처리 수"
+    language: "언어"
+    excludes: "점검 제외 항목"
+    options_prompt: "설정:"
+    change_log_level: "콘솔 로그 레벨 변경"
+    change_retries: "최대 재시도 변경"
+    change_timeout: "타임아웃 변경"
+    change_workers: "동시 처리 수 변경"
+    change_language: "언어 변경"
+    manage_excludes: "점검 제외 관리"
+    back: "뒤로가기"
+    keep_current_hint: "현재 값 유지: Enter"
+    enter_number: "숫자를 입력하세요."
+    enter_range: "{min_val}~{max_val} 범위의 값을 입력하세요."
+    select_log_level_title: "콘솔 로그 레벨"
+    select_log_level_desc: "현재: {current_level}\n일반적으로 WARNING을 권장합니다."
+    retries_title: "최대 재시도"
+    retries_desc: "현재: {current}\n장비 접속 실패 시 최대 재시도 횟수입니다."
+    timeout_title: "연결 타임아웃"
+    timeout_desc: "현재: {current}초\n초기 연결 대기 최대 시간입니다."
+    workers_title: "동시 처리 수"
+    workers_desc: "현재: {current}\n동시에 처리할 장비 수입니다."
+    language_title: "언어"
+    language_desc: "현재: {current}\n프롬프트와 결과 라벨에 사용할 언어입니다."
+  prompts:
+    press_enter_back: "Enter를 누르면 돌아갑니다."

@@ -1,0 +1,35 @@
+inspection_commands:
+  juniper:
+    junos:
+    - show version
+    - show system uptime
+    - show chassis hardware
+    - show configuration
+backup_commands:
+  juniper:
+    junos: show configuration | display set
+parsing_rules:
+  juniper:
+    junos:
+      show version:
+        pattern: Junos:\s+([\d\.\-A-Z]+)
+        output_column: Version
+        first_match_only: true
+      show system uptime:
+        pattern: System booted:.*\(([^)]+)\)
+        output_column: Uptime
+        first_match_only: true
+      show chassis hardware:
+        patterns:
+        - pattern: Chassis\s+(\S+)\s+
+          output_column: Serial Number
+          first_match_only: true
+        - pattern: ^Chassis\s+.*\s(\S+)$
+          output_column: Model
+          first_match_only: true
+connection_overrides:
+  juniper:
+    junos: {}
+handler_overrides:
+  juniper:
+    junos: {}

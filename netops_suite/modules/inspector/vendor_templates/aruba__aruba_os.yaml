@@ -1,0 +1,46 @@
+inspection_commands:
+  aruba:
+    aruba_os:
+    - show running-config
+    - show system information
+    - show system fan
+    - show system temperature
+backup_commands:
+  aruba:
+    aruba_os: show running-config
+parsing_rules:
+  aruba:
+    aruba_os:
+      show running-config:
+        patterns:
+        - custom_parser: parsing_aruba_hostname
+          output_column: Hostname
+        - pattern: ;\s*(\w+)\s+Configuration Editor
+          output_column: Model
+          first_match_only: true
+      show system information:
+        patterns:
+        - pattern: Software revision\s*:\s*(\S+)
+          output_column: Version
+          first_match_only: true
+        - pattern: Serial Number\s*:\s*(\S+)
+          output_column: Serial Number
+          first_match_only: true
+        - custom_parser: parsing_aruba_uptime
+          output_column: Uptime
+        - custom_parser: parsing_aruba_cpu_usage
+          output_column: CPU Usage
+        - custom_parser: parsing_aruba_memory_usage
+          output_column: Memory Usage
+      show system fan:
+        custom_parser: parsing_aruba_fan_status
+        output_column: Fan Status
+      show system temperature:
+        custom_parser: parsing_aruba_temperature
+        output_column: System Temperature
+connection_overrides:
+  aruba:
+    aruba_os: {}
+handler_overrides:
+  aruba:
+    aruba_os: {}

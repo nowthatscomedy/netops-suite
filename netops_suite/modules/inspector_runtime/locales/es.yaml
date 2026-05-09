@@ -1,0 +1,180 @@
+app:
+  title: "NetOps Inspector"
+
+cli:
+  path:
+    excel_message: "Ruta del archivo Excel de dispositivos:"
+    command_message: "Ruta del archivo de comandos (txt/xlsx):"
+    long_instruction: "Tab: autocompletar / Enter: confirmar / Ctrl+C: cancelar"
+    invalid_path: "Ingresa una ruta de archivo válida."
+  warning:
+    file_not_found: "El archivo de entrada no existe: {path}"
+    unsupported_excel_extension: "Extensión no compatible (solo xlsx/xls/xlsm): {suffix}"
+    unsupported_command_extension: "Extensión no compatible (solo txt/xlsx/xls/xlsm): {suffix}"
+
+ui:
+  encrypted_excel_password: "Contraseña del archivo cifrado:"
+
+excel:
+  columns:
+    connection_status: "Estado de conexión"
+    error_message: "Mensaje de error"
+  status:
+    success: "Éxito"
+    failed: "Fallo"
+  sheet:
+    inspection_results: "Resultados de inspección"
+
+file_handler:
+  error:
+    unsupported_extension: "Formato de archivo no compatible: {suffix}"
+    command_file_read_failed: "Error al leer el archivo de comandos: {filepath}, error: {error}"
+    excel_read_failed: "Error al leer el archivo Excel: {filepath}, error: {error}"
+    encrypted_excel_dependency: "Instala 'msoffcrypto-tool' para leer archivos Excel cifrados."
+    excel_save_failed: "Error al guardar el archivo de resultados: {error}"
+  info:
+    encrypted_excel_decrypted: "Archivo cifrado descifrado correctamente: {filepath}"
+    selected_file: "Archivo seleccionado: {filepath}"
+    result_save_started: "Guardando resultados: {filepath}"
+    result_saved: "Archivo de resultados guardado: {filepath}"
+  warning:
+    no_results: "No hay resultados para guardar."
+
+validator:
+  required_field_missing: "Falta un campo obligatorio o está vacío: '{field}' (IP: {ip})"
+  invalid_ip: "Dirección IP no válida: {ip}"
+  invalid_connection_type: "Tipo de conexión no válido: {connection_type} (IP: {ip})"
+  invalid_port: "Número de puerto no válido: {port} (IP: {ip})"
+  duplicate_columns: "Columnas duplicadas tras la normalización: {columns}"
+  unsupported_vendor: "Fabricante no compatible: {vendor} (IP: {ip})"
+  unsupported_os: "Modelo de SO no compatible: {os_model} (vendor: {vendor}, IP: {ip})"
+  empty_excel: "El archivo Excel está vacío."
+  missing_columns: "Faltan columnas obligatorias: {columns}"
+  duplicate_ips: "Se encontraron IP duplicadas: {ips}"
+  device_info_errors: "Se encontraron errores en la información de dispositivos:\n{errors}"
+
+main:
+  modes:
+    custom_commands: "Ejecución de comandos personalizados"
+    inspection: "Inspección"
+    backup: "Respaldo"
+    inspection_backup: "Inspección+Respaldo"
+  run_summary:
+    title: "Resumen de ejecución"
+    item: "Elemento"
+    value: "Valor"
+    mode: "Modo"
+    devices: "Dispositivos"
+    file: "Archivo"
+    timeout: "Tiempo de espera"
+    max_retries: "Reintentos máximos"
+    max_workers: "Concurrencia"
+    log_file: "Archivo de log"
+  result:
+    completed: "Trabajo completado."
+    no_results: "No hay resultados procesados. No se guardó el archivo de resultados."
+    result_file: "Archivo de resultados"
+    backup_dir: "Directorio de respaldo"
+    session_log: "Log de sesión"
+    log_file: "Archivo de log"
+  confirm:
+    run_now: "¿Ejecutar ahora?"
+    mixed_vendor_os: "Hay combinaciones de vendor/SO mezcladas. ¿Continuar?"
+  info:
+    mode_log_prefix: "MODE    : {mode}"
+    custom_commands_cancelled: "La ejecución de comandos personalizados fue cancelada."
+    job_cancelled: "El trabajo fue cancelado."
+    dashboard_completed_note: "Trabajo completo (revisa el resumen)"
+  warning:
+    password_not_entered: "No se ingresó la contraseña."
+    encrypted_excel_read_failed: "No se pudo leer el archivo Excel cifrado: {error}"
+    input_path_missing: "No se proporcionó la ruta del archivo."
+    command_path_missing: "No se proporcionó la ruta del archivo de comandos."
+    command_file_read_failed: "No se pudo leer el archivo de comandos: {error}"
+    command_list_empty: "No se encontraron comandos ejecutables en el archivo."
+    no_order_columns: "No hay elementos de inspección disponibles para ordenar."
+  shutdown: "Programa finalizado."
+  errors:
+    app_error: "Error de la aplicación: {error}"
+    unexpected: "Error inesperado: {error}"
+  prompts:
+    return_main_menu: "Presiona Enter para volver al menú principal."
+
+dashboard:
+  default_completed_note: "Trabajo completo"
+  status:
+    completed: "Completado"
+    in_progress: "En progreso"
+    preparing: "Preparando"
+  labels:
+    success: "éxito"
+    failed: "fallo"
+    mode: "Modo"
+    status: "Estado"
+    elapsed: "Tiempo transcurrido"
+    progress: "Progreso"
+    success_fail: "Éxito/Fallo"
+    remaining: "Restante"
+    throughput: "Rendimiento"
+    last_updated: "Última actualización"
+  units:
+    devices_per_min: "devices/min"
+  titles:
+    dashboard: "Panel en vivo"
+    recent_events: "Eventos recientes"
+  no_events: "Aún no hay eventos."
+
+menu:
+  main:
+    prompt: "Selecciona una tarea:"
+    start: "Iniciar trabajo (Inspección/Respaldo)"
+    custom_commands: "Ejecutar archivo de comandos"
+    settings: "Configuración"
+    netmiko_types: "Mostrar lista de device_type de Netmiko"
+    exit: "Salir"
+  action:
+    title: "Selección de tarea"
+    description: "Selecciona la tarea a ejecutar."
+    prompt: "Acción:"
+    inspect_only: "Solo inspección (sin respaldo)"
+    backup_only: "Solo respaldo (sin inspección)"
+    inspect_and_backup: "Inspección + Respaldo (ambos)"
+    back: "Atrás"
+  netmiko:
+    list_fetch_failed: "No se pudo cargar la lista de device_type: {error}"
+    no_device_types: "No hay device_type disponible."
+    search_prompt: "Buscar device_type (ESC=volver):"
+    selected: "device_type seleccionado: {device_type}"
+  settings:
+    title: "Configuración actual"
+    item: "Elemento"
+    value: "Valor"
+    console_log_level: "Nivel de log en consola"
+    max_retries: "Reintentos máximos"
+    timeout: "Tiempo de espera"
+    max_workers: "Concurrencia"
+    language: "Idioma"
+    excludes: "Exclusiones de inspección"
+    options_prompt: "Configuración:"
+    change_log_level: "Cambiar nivel de log en consola"
+    change_retries: "Cambiar reintentos máximos"
+    change_timeout: "Cambiar tiempo de espera"
+    change_workers: "Cambiar concurrencia"
+    change_language: "Cambiar idioma"
+    manage_excludes: "Administrar exclusiones de inspección"
+    back: "Atrás"
+    keep_current_hint: "Enter para mantener el valor actual"
+    enter_number: "Ingresa un número."
+    enter_range: "Ingresa un valor entre {min_val} y {max_val}."
+    select_log_level_title: "Nivel de log en consola"
+    select_log_level_desc: "Actual: {current_level}\nSe recomienda WARNING para la mayoría de usuarios."
+    retries_title: "Reintentos máximos"
+    retries_desc: "Actual: {current}\nMáximo de reintentos para conexiones fallidas."
+    timeout_title: "Tiempo de espera de conexión"
+    timeout_desc: "Actual: {current}s\nTiempo máximo de espera para la conexión inicial."
+    workers_title: "Concurrencia"
+    workers_desc: "Actual: {current}\nNúmero de dispositivos procesados en paralelo."
+    language_title: "Idioma"
+    language_desc: "Actual: {current}\nIdioma de la UI para prompts y etiquetas de resultados."
+  prompts:
+    press_enter_back: "Presiona Enter para volver."

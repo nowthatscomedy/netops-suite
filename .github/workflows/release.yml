@@ -1,0 +1,181 @@
+name: Build And Release
+
+on:
+  push:
+    branches:
+      - "main"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag name (example: v1.0.7)"
+        required: true
+        default: "v1.0.7"
+      release_name:
+        description: "Optional release title"
+        required: false
+        default: ""
+      prerelease:
+        description: "Publish as prerelease"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Resolve Release Metadata
+        id: meta
+        shell: powershell
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $tagName = "${{ inputs.tag_name }}".Trim()
+            $releaseName = "${{ inputs.release_name }}".Trim()
+            $version = $tagName.TrimStart("v")
+            $isPrerelease = "${{ inputs.prerelease }}" -eq "true"
+          }
+          else {
+            $versionFile = Get-Content -Path "app/version.py" -Raw
+            if ($versionFile -notmatch '__version__\s*=\s*"([^"]+)"') {
+              throw "Could not find __version__ in app/version.py"
+            }
+            $version = $Matches[1].Trim()
+            $tagName = "v$version"
+            $releaseName = ""
+            $isPrerelease = $version -match "-"
+          }
+
+          if ([string]::IsNullOrWhiteSpace($tagName)) {
+            throw "A tag name is required."
+          }
+
+          if (-not $tagName.StartsWith("v")) {
+            throw "The tag name must start with 'v'. Example: v1.0.2"
+          }
+
+          $version = $tagName.TrimStart("v")
+          if ([string]::IsNullOrWhiteSpace($releaseName)) {
+            $releaseName = "NetOps Suite $tagName"
+          }
+
+          "tag_name=$tagName" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "release_name=$releaseName" >> $env:GITHUB_OUTPUT
+          "is_prerelease=$($isPrerelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+      - name: Check Existing Release
+        id: release_guard
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            "should_release=true" >> $env:GITHUB_OUTPUT
+            "reason=manual" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          $headers = @{
+            Authorization          = "Bearer $env:GITHUB_TOKEN"
+            Accept                 = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+          $uri = "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ steps.meta.outputs.tag_name }}"
+
+          try {
+            Invoke-RestMethod -Method GET -Uri $uri -Headers $headers | Out-Null
+            "should_release=false" >> $env:GITHUB_OUTPUT
+            "reason=release_exists" >> $env:GITHUB_OUTPUT
+          }
+          catch {
+            $statusCode = $null
+            if ($_.Exception.Response) {
+              $statusCode = [int]$_.Exception.Response.StatusCode
+            }
+
+            if ($statusCode -eq 404) {
+              "should_release=true" >> $env:GITHUB_OUTPUT
+              "reason=release_missing" >> $env:GITHUB_OUTPUT
+            }
+            else {
+              throw
+            }
+          }
+
+      - name: Skip Release Build
+        if: steps.release_guard.outputs.should_release != 'true'
+        shell: powershell
+        run: |
+          Write-Host "Release already exists for ${{ steps.meta.outputs.tag_name }}. Skipping build and publish."
+
+      - name: Setup Python
+        if: steps.release_guard.outputs.should_release == 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install Build Dependencies
+        if: steps.release_guard.outputs.should_release == 'true'
+        shell: powershell
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+          choco install innosetup --no-progress -y
+
+      - name: Verify File Transfer Runtime Dependencies
+        if: steps.release_guard.outputs.should_release == 'true'
+        shell: powershell
+        run: |
+          python -c "import pyftpdlib, OpenSSL, paramiko, tftpy; print('file transfer runtime dependencies OK')"
+
+      - name: Verify Tag Matches App Version
+        if: steps.release_guard.outputs.should_release == 'true'
+        shell: powershell
+        run: |
+          $tagVersion = "${{ steps.meta.outputs.version }}"
+          $versionFile = Get-Content -Path "app/version.py" -Raw
+          if ($versionFile -notmatch '__version__\s*=\s*"([^"]+)"') {
+            throw "Could not find __version__ in app/version.py"
+          }
+          $appVersion = $Matches[1]
+
+          if ($appVersion.Trim() -ne $tagVersion) {
+            throw "Tag version ($tagVersion) does not match app/version.py version ($appVersion)."
+          }
+
+      - name: Build Installer
+        if: steps.release_guard.outputs.should_release == 'true'
+        shell: powershell
+        run: |
+          Set-ExecutionPolicy -Scope Process Bypass
+          .\scripts\build_release.ps1 -Version "${{ steps.meta.outputs.tag_name }}" -Clean
+
+      - name: Upload Workflow Artifact
+        if: steps.release_guard.outputs.should_release == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: NetOpsSuite-installer-${{ steps.meta.outputs.tag_name }}
+          path: dist/release/NetOpsSuite-setup-*.exe
+          if-no-files-found: error
+
+      - name: Publish GitHub Release Asset
+        if: steps.release_guard.outputs.should_release == 'true'
+        shell: powershell
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          Set-ExecutionPolicy -Scope Process Bypass
+          $asset = Get-ChildItem -Path dist/release/NetOpsSuite-setup-*.exe | Select-Object -First 1 -ExpandProperty FullName
+          .\scripts\publish_release.ps1 `
+            -Repository "${{ github.repository }}" `
+            -TagName "${{ steps.meta.outputs.tag_name }}" `
+            -ReleaseName "${{ steps.meta.outputs.release_name }}" `
+            -AssetPath $asset `
+            -IsPrerelease:([System.Convert]::ToBoolean("${{ steps.meta.outputs.is_prerelease }}"))

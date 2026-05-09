@@ -1,0 +1,17 @@
+inspection_commands:
+  cisco:
+    ios-xe:
+    - show version
+    - show running-config
+backup_commands:
+  cisco:
+    ios-xe: show running-config
+parsing_rules:
+  cisco:
+    ios-xe: {}
+connection_overrides:
+  cisco:
+    ios-xe: {}
+handler_overrides:
+  cisco:
+    ios-xe: {}

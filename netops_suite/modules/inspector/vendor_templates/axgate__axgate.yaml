@@ -1,0 +1,84 @@
+inspection_commands:
+  axgate:
+    axgate:
+    - show system version
+    - show system hostname
+    - show system temperature
+    - show system fan
+    - show system uptime
+    - show resource cpu
+    - show resource memory
+    - show system power
+    - show running-config
+backup_commands:
+  axgate:
+    axgate: show running-config
+parsing_rules:
+  axgate:
+    axgate:
+      show system version:
+        patterns:
+        - pattern: OS:\s+(.+)
+          output_column: Version
+          first_match_only: true
+        - pattern: Serial:\s+(.+)
+          output_column: Serial Number
+          first_match_only: true
+        - pattern: Board:\s+(.+)
+          output_column: Model
+          first_match_only: true
+      show system hostname:
+        pattern: Hostname:\s+(.+)
+        output_column: Hostname
+        first_match_only: true
+      show system temperature:
+        patterns:
+        - pattern: System:\s+(\+?[0-9.-]+\s*C)
+          output_column: System Temperature
+          first_match_only: true
+        - pattern: CPU:\s+(\+?[0-9.-]+\s*C)
+          output_column: CPU Temperature
+          first_match_only: true
+      show system fan:
+        pattern: Chassis:\s+(\S+)
+        output_column: Fan Status
+        first_match_only: true
+      show system uptime:
+        pattern: Uptime:\s+(.+)
+        output_column: Uptime
+        first_match_only: true
+      show resource cpu:
+        patterns:
+        - pattern: T\s+(\d+)\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(\d+)
+          output_columns:
+          - CPU Total
+          - CPU Used
+          first_match_only: true
+          process:
+            type: percentage
+            inputs:
+            - CPU Used
+            - CPU Total
+            output_column: CPU Usage
+      show resource memory:
+        patterns:
+        - pattern: T\s+(\d+)\s+\S+\s+\S+\s+\S+\s+(\d+)
+          output_columns:
+          - Memory Total
+          - Memory Used
+          first_match_only: true
+          process:
+            type: percentage
+            inputs:
+            - Memory Used
+            - Memory Total
+            output_column: Memory Usage
+      show system power:
+        custom_parser: parsing_axgate_power_status
+        output_column: Power Status
+connection_overrides:
+  axgate:
+    axgate: {}
+handler_overrides:
+  axgate:
+    axgate: {}

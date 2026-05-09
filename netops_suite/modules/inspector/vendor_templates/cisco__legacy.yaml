@@ -1,0 +1,33 @@
+inspection_commands:
+  cisco:
+    legacy:
+    - show version
+    - show running-config
+backup_commands:
+  cisco:
+    legacy: show running-config
+parsing_rules:
+  cisco:
+    legacy:
+      show version:
+        patterns:
+        - pattern: (?:Cisco IOS Software|IOS \(tm\)).*?Version\s+([^\s,]+)
+          output_column: Version
+          first_match_only: true
+        - pattern: ([^\s]+) uptime is (.+)
+          output_columns:
+          - Hostname
+          - Uptime
+          first_match_only: true
+        - pattern: (?:cisco|Cisco)\s+([^\s(]+).*\s+with\s+
+          output_column: Model
+          first_match_only: true
+        - pattern: Processor board ID\s+(\S+)
+          output_column: Serial Number
+          first_match_only: true
+connection_overrides:
+  cisco:
+    legacy: {}
+handler_overrides:
+  cisco:
+    legacy: {}

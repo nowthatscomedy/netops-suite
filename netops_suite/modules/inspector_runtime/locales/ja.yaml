@@ -1,0 +1,180 @@
+app:
+  title: "NetOps Inspector"
+
+cli:
+  path:
+    excel_message: "デバイスExcelファイルのパス:"
+    command_message: "コマンドファイルのパス (txt/xlsx):"
+    long_instruction: "Tab: 補完 / Enter: 決定 / Ctrl+C: キャンセル"
+    invalid_path: "有効なファイルパスを入力してください。"
+  warning:
+    file_not_found: "入力ファイルが存在しません: {path}"
+    unsupported_excel_extension: "サポートされていない拡張子です (xlsx/xls/xlsm のみ): {suffix}"
+    unsupported_command_extension: "サポートされていない拡張子です (txt/xlsx/xls/xlsm のみ): {suffix}"
+
+ui:
+  encrypted_excel_password: "暗号化ファイルのパスワード:"
+
+excel:
+  columns:
+    connection_status: "接続状態"
+    error_message: "エラーメッセージ"
+  status:
+    success: "成功"
+    failed: "失敗"
+  sheet:
+    inspection_results: "点検結果"
+
+file_handler:
+  error:
+    unsupported_extension: "サポートされていないファイル形式です: {suffix}"
+    command_file_read_failed: "コマンドファイルの読み込みに失敗しました: {filepath}, エラー: {error}"
+    excel_read_failed: "Excelファイルの読み込みに失敗しました: {filepath}, エラー: {error}"
+    encrypted_excel_dependency: "暗号化されたExcelファイルを読むには 'msoffcrypto-tool' をインストールしてください。"
+    excel_save_failed: "結果ファイルの保存中にエラーが発生しました: {error}"
+  info:
+    encrypted_excel_decrypted: "暗号化ファイルの復号に成功しました: {filepath}"
+    selected_file: "選択したファイル: {filepath}"
+    result_save_started: "結果を保存中: {filepath}"
+    result_saved: "結果ファイルを保存しました: {filepath}"
+  warning:
+    no_results: "保存する結果がありません。"
+
+validator:
+  required_field_missing: "必須フィールドが不足しているか空です: '{field}' (IP: {ip})"
+  invalid_ip: "不正なIPアドレスです: {ip}"
+  invalid_connection_type: "不正な接続方式です: {connection_type} (IP: {ip})"
+  invalid_port: "不正なポート番号です: {port} (IP: {ip})"
+  duplicate_columns: "正規化後に重複カラムがあります: {columns}"
+  unsupported_vendor: "未対応ベンダーです: {vendor} (IP: {ip})"
+  unsupported_os: "未対応OSモデルです: {os_model} (vendor: {vendor}, IP: {ip})"
+  empty_excel: "Excelファイルが空です。"
+  missing_columns: "必須カラムが不足しています: {columns}"
+  duplicate_ips: "重複したIPアドレスがあります: {ips}"
+  device_info_errors: "デバイス情報にエラーがあります:\n{errors}"
+
+main:
+  modes:
+    custom_commands: "カスタムコマンド実行"
+    inspection: "点検"
+    backup: "バックアップ"
+    inspection_backup: "点検+バックアップ"
+  run_summary:
+    title: "実行サマリー"
+    item: "項目"
+    value: "値"
+    mode: "モード"
+    devices: "デバイス数"
+    file: "ファイル"
+    timeout: "タイムアウト"
+    max_retries: "最大再試行回数"
+    max_workers: "同時実行数"
+    log_file: "ログファイル"
+  result:
+    completed: "ジョブが完了しました。"
+    no_results: "処理結果がないため、結果ファイルは保存されませんでした。"
+    result_file: "結果ファイル"
+    backup_dir: "バックアップディレクトリ"
+    session_log: "セッションログ"
+    log_file: "ログファイル"
+  confirm:
+    run_now: "今すぐ実行しますか?"
+    mixed_vendor_os: "異なるベンダー/OSの組み合わせが混在しています。続行しますか?"
+  info:
+    mode_log_prefix: "MODE    : {mode}"
+    custom_commands_cancelled: "カスタムコマンド実行はキャンセルされました。"
+    job_cancelled: "ジョブはキャンセルされました。"
+    dashboard_completed_note: "ジョブ完了 (サマリーを確認してください)"
+  warning:
+    password_not_entered: "パスワードが入力されませんでした。"
+    encrypted_excel_read_failed: "暗号化されたExcelファイルの読み込みに失敗しました: {error}"
+    input_path_missing: "ファイルパスが指定されていません。"
+    command_path_missing: "コマンドファイルパスが指定されていません。"
+    command_file_read_failed: "コマンドファイルの読み込みに失敗しました: {error}"
+    command_list_empty: "実行可能なコマンドがコマンドファイルにありません。"
+    no_order_columns: "並び替え可能な点検項目がありません。"
+  shutdown: "プログラムを終了します。"
+  errors:
+    app_error: "アプリケーションエラー: {error}"
+    unexpected: "予期しないエラー: {error}"
+  prompts:
+    return_main_menu: "Enter を押すとメインメニューに戻ります。"
+
+dashboard:
+  default_completed_note: "ジョブ完了"
+  status:
+    completed: "完了"
+    in_progress: "進行中"
+    preparing: "準備中"
+  labels:
+    success: "成功"
+    failed: "失敗"
+    mode: "モード"
+    status: "状態"
+    elapsed: "経過時間"
+    progress: "進捗"
+    success_fail: "成功/失敗"
+    remaining: "残り"
+    throughput: "処理速度"
+    last_updated: "最終更新"
+  units:
+    devices_per_min: "devices/min"
+  titles:
+    dashboard: "ライブダッシュボード"
+    recent_events: "最近のイベント"
+  no_events: "まだイベントはありません。"
+
+menu:
+  main:
+    prompt: "タスクを選択してください:"
+    start: "ジョブ開始 (点検/バックアップ)"
+    custom_commands: "コマンドファイル実行"
+    settings: "設定"
+    netmiko_types: "Netmiko device_type 一覧を表示"
+    exit: "終了"
+  action:
+    title: "タスク選択"
+    description: "実行するタスクを選択してください。"
+    prompt: "アクション:"
+    inspect_only: "点検のみ (バックアップなし)"
+    backup_only: "バックアップのみ (点検なし)"
+    inspect_and_backup: "点検 + バックアップ (両方)"
+    back: "戻る"
+  netmiko:
+    list_fetch_failed: "device_type 一覧の読み込みに失敗しました: {error}"
+    no_device_types: "利用可能な device_type がありません。"
+    search_prompt: "device_type を検索 (ESC=戻る):"
+    selected: "選択した device_type: {device_type}"
+  settings:
+    title: "現在の設定"
+    item: "項目"
+    value: "値"
+    console_log_level: "コンソールログレベル"
+    max_retries: "最大再試行回数"
+    timeout: "タイムアウト"
+    max_workers: "同時実行数"
+    language: "言語"
+    excludes: "点検除外"
+    options_prompt: "設定:"
+    change_log_level: "コンソールログレベルを変更"
+    change_retries: "最大再試行回数を変更"
+    change_timeout: "タイムアウトを変更"
+    change_workers: "同時実行数を変更"
+    change_language: "言語を変更"
+    manage_excludes: "点検除外を管理"
+    back: "戻る"
+    keep_current_hint: "現在値を保持するには Enter"
+    enter_number: "数値を入力してください。"
+    enter_range: "{min_val} から {max_val} の間の値を入力してください。"
+    select_log_level_title: "コンソールログレベル"
+    select_log_level_desc: "現在: {current_level}\n多くのユーザーには WARNING を推奨します。"
+    retries_title: "最大再試行回数"
+    retries_desc: "現在: {current}\nデバイス接続失敗時の最大再試行回数。"
+    timeout_title: "接続タイムアウト"
+    timeout_desc: "現在: {current}s\n初回接続の最大待機時間。"
+    workers_title: "同時実行"
+    workers_desc: "現在: {current}\n並列処理するデバイス数。"
+    language_title: "言語"
+    language_desc: "現在: {current}\nプロンプトと結果ラベルのUI言語。"
+  prompts:
+    press_enter_back: "Enter を押して戻ります。"

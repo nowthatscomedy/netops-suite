@@ -1,0 +1,144 @@
+# Cisco 샘플 프로파일: L3 디스트리뷰션 스위치 기본 템플릿
+# 권장 사용 예:
+# - ip routing을 사용하는 L3 스위치
+# - 관리 SVI
+# - 기본 경로
+# - 스패닝트리 우선순위 조정
+# - 선택형 NTP / DHCP Snooping
+#
+# 사용자 참고 규칙:
+# 1. required: true
+#    CSV/XLSX 값이 비어 있으면 장비 상태가 "확인 필요"가 됩니다.
+# 2. type: ipv4 / bool / int / string
+#    형식이 잘못되어도 장비 상태가 "확인 필요"가 됩니다.
+# 3. default:
+#    CSV/XLSX 셀이 비어 있을 때 사용합니다.
+# 4. 블록 선택 패널:
+#    UI의 블록 선택 패널에서 해당 블록의 출력 여부를 제어합니다.
+# 5. description_ko:
+#    UI에 표시할 한국어 설명입니다. description과 같은 값으로 둘 수 있습니다.
+id: CISCO_IOSXE_L3_DISTRIBUTION_BASE
+vendor: CISCO
+model: Catalyst 9300 Distribution
+firmware: IOS-XE 17.x
+description: 라우팅, 관리 SVI, 기본 경로, 선택형 NTP, 선택형 DHCP Snooping을 포함한 Cisco IOS-XE L3 디스트리뷰션 스위치 기본 템플릿
+description_ko: 라우팅, 관리 SVI, 기본 경로, 선택형 NTP, 선택형 DHCP Snooping을 포함한 Cisco IOS-XE L3 디스트리뷰션 스위치 기본 템플릿
+
+variables:
+  hostname:
+    required: true
+    description: 장비 호스트명
+    description_ko: 장비 호스트명
+    auto_increment: suffix_number
+  mgmt_vlan:
+    required: false
+    type: int
+    default: 10
+    description: 관리 VLAN 번호
+    description_ko: 관리 VLAN 번호
+  mgmt_ip:
+    required: true
+    type: ipv4
+    description: 관리 SVI IP 주소
+    description_ko: 관리 SVI IP 주소
+    auto_increment: ipv4
+  mgmt_mask:
+    required: true
+    type: ipv4
+    description: 관리 SVI 서브넷 마스크
+    description_ko: 관리 SVI 서브넷 마스크
+  default_route_next_hop:
+    required: true
+    type: ipv4
+    description: 기본 경로 다음 홉 주소
+    description_ko: 기본 경로 다음 홉 주소
+
+  domain_name:
+    required: false
+    default: corp.local
+    description: 장비 도메인명
+    description_ko: 장비 도메인명
+  local_admin:
+    required: true
+    description: 로컬 관리자 계정명
+    description_ko: 로컬 관리자 계정명
+  local_admin_secret:
+    required: true
+    description: 로컬 관리자 비밀번호
+    description_ko: 로컬 관리자 비밀번호
+  enable_secret:
+    required: true
+    description: Enable 모드 비밀번호
+    description_ko: Enable 모드 비밀번호
+
+  snmp_location:
+    required: false
+    default: HQ-MDF
+    description: SNMP 위치 정보 문자열
+    description_ko: SNMP 위치 정보 문자열
+  stp_priority:
+    required: false
+    type: int
+    default: 4096
+    description: 스패닝트리 우선순위 값
+    description_ko: 스패닝트리 우선순위 값
+  enable_ntp:
+    required: false
+    type: bool
+    default: true
+    description: NTP 설정 블록 출력 여부
+    description_ko: NTP 설정 블록 출력 여부
+  ntp_server:
+    required: false
+    default: 192.168.254.10
+    description: NTP 서버 IP 또는 호스트명
+    description_ko: NTP 서버 IP 또는 호스트명
+
+  enable_dhcp_snooping:
+    required: false
+    type: bool
+    default: false
+    description: DHCP Snooping 설정 블록 출력 여부
+    description_ko: DHCP Snooping 설정 블록 출력 여부
+  dhcp_snooping_vlans:
+    required: false
+    default: 10,20,30
+    description: DHCP Snooping 적용 VLAN 목록
+    description_ko: DHCP Snooping 적용 VLAN 목록
+
+blocks:
+  - name: base
+    lines:
+      - "service timestamps log datetime msec"
+      - "no ip domain-lookup"
+      - "hostname {{ hostname }}"
+      - "service password-encryption"
+      - "enable secret {{ enable_secret }}"
+      - "username {{ local_admin }} privilege 15 secret {{ local_admin_secret }}"
+      - "ip domain-name {{ domain_name }}"
+      - "snmp-server location {{ snmp_location }}"
+
+  - name: routing
+    lines:
+      - "ip routing"
+      - "vlan {{ mgmt_vlan }}"
+      - " name MGMT"
+      - "interface vlan {{ mgmt_vlan }}"
+      - " ip address {{ mgmt_ip }} {{ mgmt_mask }}"
+      - " no shutdown"
+      - "exit"
+      - "ip route 0.0.0.0 0.0.0.0 {{ default_route_next_hop }}"
+
+  - name: spanning_tree
+    lines:
+      - "spanning-tree mode rapid-pvst"
+      - "spanning-tree vlan 1-4094 priority {{ stp_priority }}"
+
+  - name: ntp
+    lines:
+      - "ntp server {{ ntp_server }}"
+
+  - name: dhcp_snooping
+    lines:
+      - "ip dhcp snooping"
+      - "ip dhcp snooping vlan {{ dhcp_snooping_vlans }}"

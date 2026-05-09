@@ -1,0 +1,64 @@
+inspection_commands:
+  piolink:
+    tifront:
+    - show version
+    - show system
+    - show resource
+    - show_log_user_this_month
+    - show portstatus
+    - show poe-info
+    - show uptime
+    - show running-config
+backup_commands:
+  piolink:
+    tifront: show running-config
+parsing_rules:
+  piolink:
+    tifront:
+      show version:
+        pattern: (.+)
+        output_column: Version
+        first_match_only: true
+      show system:
+        patterns:
+        - pattern: Product Name\s+:\s+(.+)
+          output_column: Model
+          first_match_only: true
+        - pattern: Serial number\s+:\s+(.+)
+          output_column: Serial Number
+          first_match_only: true
+      show resource:
+        patterns:
+        - pattern: CPU Usage\s+:\s+(.*)
+          output_column: CPU Usage
+        - pattern: Total Memory:\s+(.*)
+          output_column: Memory Total
+        - pattern: Used Memory\s+:\s+(.*)
+          output_column: Memory Used
+        - pattern: Free Memory\s+:\s+(.*)
+          output_column: Memory Free
+        - pattern: Memory Usage:\s+(.*)
+          output_column: Memory Usage
+      show_log_user_this_month:
+        custom_parser: parsing_piolink_login_count
+        output_column: 월별 로그인 수
+      show portstatus:
+        custom_parser: parsing_piolink_port_up_count
+        output_column: UP Port Count
+      show poe-info:
+        custom_parser: parsing_piolink_poe_enable_count
+        output_column: PoE Port Count
+      show uptime:
+        pattern: ^(\d+\s+days)\b
+        output_column: Uptime
+        first_match_only: true
+      show running-config:
+        pattern: ^hostname\s+(\S+)
+        output_column: Hostname
+        first_match_only: true
+connection_overrides:
+  piolink:
+    tifront: {}
+handler_overrides:
+  piolink:
+    tifront: {}
