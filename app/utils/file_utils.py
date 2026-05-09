@@ -49,7 +49,31 @@ def execution_environment_label() -> str:
 
 
 def resolve_asset_path(*parts: str) -> Path:
-    return detect_root_path() / "assets" / Path(*parts)
+    relative_path = Path("assets").joinpath(*parts)
+    candidates: list[Path] = []
+
+    if is_packaged_runtime():
+        bundle_root = getattr(sys, "_MEIPASS", "")
+        if bundle_root:
+            candidates.append(Path(bundle_root) / relative_path)
+        root = detect_root_path()
+        candidates.extend([root / "_internal" / relative_path, root / relative_path])
+    else:
+        candidates.append(detect_root_path() / relative_path)
+
+    seen: set[Path] = set()
+    unique_candidates: list[Path] = []
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        unique_candidates.append(candidate)
+
+    for candidate in unique_candidates:
+        if candidate.exists():
+            return candidate
+
+    return unique_candidates[0]
 
 
 def default_data_root() -> Path:

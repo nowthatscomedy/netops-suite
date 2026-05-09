@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,7 +13,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton
 from app.ui.dialogs.inspector_vendor_template_dialog import InspectorVendorTemplateDialog, PythonParserDialog
 from app.ui.tabs.config_builder_tab import ConfigBuilderTab
 from app.utils.app_icon import load_app_icon
-from app.utils.file_utils import DEFAULT_UPDATE_ASSET_PATTERN
+from app.utils.file_utils import DEFAULT_UPDATE_ASSET_PATTERN, resolve_asset_path
 from netops_suite.modules.config_builder import ConfigBuilderRenderResult, ConfigBuilderService
 from netops_suite.modules.config_builder.switch_configurator.models import RenderedConfig
 from netops_suite.modules.inspector import InspectorService
@@ -453,6 +454,19 @@ def test_main_app_icon_loads(qt_app):
 
     assert not icon.isNull()
     assert icon.availableSizes()
+
+
+def test_asset_path_resolves_pyinstaller_internal_assets(tmp_path: Path, monkeypatch):
+    bundle_root = tmp_path / "_internal"
+    icon_path = bundle_root / "assets" / "icons" / "netops_toolkit.ico"
+    icon_path.parent.mkdir(parents=True)
+    icon_path.write_bytes(b"icon")
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(bundle_root), raising=False)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "NetOpsSuite.exe"))
+
+    assert resolve_asset_path("icons", "netops_toolkit.ico") == icon_path
 
 
 def test_action_button_helper_sets_role_icon_and_state(qt_app):
