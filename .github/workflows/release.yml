@@ -186,17 +186,17 @@ jobs:
           $asset = Get-ChildItem -Path dist/release/NetOpsSuite-setup-*.exe | Select-Object -First 1 -ExpandProperty FullName
           $checksum = Get-ChildItem -Path dist/release/SHA256SUMS.txt | Select-Object -First 1 -ExpandProperty FullName
           $isPrerelease = [System.Convert]::ToBoolean("${{ steps.meta.outputs.is_prerelease }}")
-          $publishArgs = @(
-            "-Repository", "${{ github.repository }}",
-            "-TagName", "${{ steps.meta.outputs.tag_name }}",
-            "-ReleaseName", "${{ steps.meta.outputs.release_name }}",
-            "-AssetPath", $asset,
-            "-ChecksumPath", $checksum
-          )
+          $publishArgs = @{
+            Repository = "${{ github.repository }}"
+            TagName = "${{ steps.meta.outputs.tag_name }}"
+            ReleaseName = "${{ steps.meta.outputs.release_name }}"
+            AssetPath = $asset
+            ChecksumPath = $checksum
+          }
           if ($isPrerelease) {
-            $publishArgs += "-IsPrerelease"
+            $publishArgs["IsPrerelease"] = $true
           }
           if ([System.Convert]::ToBoolean("${{ inputs.allow_asset_replace }}")) {
-            $publishArgs += "-AllowAssetReplace"
+            $publishArgs["AllowAssetReplace"] = $true
           }
           .\scripts\publish_release.ps1 @publishArgs
