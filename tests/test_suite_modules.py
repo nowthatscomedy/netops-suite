@@ -64,6 +64,12 @@ def test_inspector_service_loads_supported_vendor_profiles():
     assert profiles["cisco"]
 
 
+def test_telnet_compat_uses_telnetlib3_not_deprecated_stdlib():
+    from netops_suite.modules.inspector_runtime.core import telnet_compat
+
+    assert telnet_compat.Telnet.__module__.startswith("telnetlib3.")
+
+
 def test_inspector_reference_templates_load():
     templates = InspectorService().supported_profile_templates()
     reference_templates = [template for template in templates if template.get("is_reference")]

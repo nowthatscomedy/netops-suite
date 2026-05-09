@@ -30,8 +30,8 @@ python -m pytest -q
 
 Current verification result:
 
-- `36 passed`
-- one expected warning from the legacy Inspector vendor code: Python 3.13 removes `telnetlib`.
+- `48 passed`
+- Telnet compatibility uses `telnetlib3`; no stdlib `telnetlib` deprecation warning is expected.
 
 ## Notes
 

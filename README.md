@@ -132,7 +132,7 @@ python -m compileall main.py app netops_suite tests
 ```powershell
 pip install -r requirements.txt
 pip install pyinstaller
-powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.0.8 -Clean
+powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.0.0 -Clean
 ```
 
 Windows 설치 파일 빌드에는 Inno Setup 6가 필요합니다.

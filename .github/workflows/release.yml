@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "Release tag name (example: v1.0.7)"
+        description: "Release tag name (example: v1.0.0)"
         required: true
-        default: "v1.0.7"
+        default: "v1.0.0"
       release_name:
         description: "Optional release title"
         required: false
@@ -57,7 +57,7 @@ jobs:
           }
 
           if (-not $tagName.StartsWith("v")) {
-            throw "The tag name must start with 'v'. Example: v1.0.2"
+            throw "The tag name must start with 'v'. Example: v1.0.0"
           }
 
           $version = $tagName.TrimStart("v")
