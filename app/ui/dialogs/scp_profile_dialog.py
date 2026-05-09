@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 
 from app.models.scp_models import ScpProfile
 from app.utils.validators import ValidationError, parse_positive_int, validate_ftp_host, validate_ftp_username
+from netops_suite.ui.actions import polish_dialog_button_box
 
 
 class ScpProfileDialog(QDialog):
@@ -43,6 +44,7 @@ class ScpProfileDialog(QDialog):
         layout.addLayout(form)
 
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        polish_dialog_button_box(self.buttons)
         self.buttons.accepted.connect(self._handle_accept)
         self.buttons.rejected.connect(self.reject)
         layout.addWidget(self.buttons)

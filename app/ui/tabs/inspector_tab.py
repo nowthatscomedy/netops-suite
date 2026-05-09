@@ -28,6 +28,8 @@ from app.ui.dialogs.inspector_vendor_template_dialog import InspectorVendorTempl
 from netops_suite.modules.inspector import InspectorRunRequest, InspectorRunResult, InspectorService
 
 
+from netops_suite.ui.actions import ActionKind, make_action_button
+
 class InspectorTab(QWidget):
     def __init__(self, state: AppState, parent=None) -> None:
         super().__init__(parent)
@@ -50,9 +52,9 @@ class InspectorTab(QWidget):
         self.inventory_path_edit = QLineEdit()
         inventory_row = QHBoxLayout()
         inventory_row.addWidget(self.inventory_path_edit, 1)
-        inventory_button = QPushButton("찾기")
+        inventory_button = make_action_button("Excel 선택", ActionKind.BROWSE)
         inventory_button.clicked.connect(self._pick_inventory)
-        sample_button = QPushButton("샘플 생성")
+        sample_button = make_action_button("샘플 Excel 생성", ActionKind.ADD)
         sample_button.clicked.connect(self._create_sample_inventory)
         inventory_row.addWidget(inventory_button)
         inventory_row.addWidget(sample_button)
@@ -66,7 +68,7 @@ class InspectorTab(QWidget):
         self.command_path_edit = QLineEdit()
         command_row = QHBoxLayout()
         command_row.addWidget(self.command_path_edit, 1)
-        command_button = QPushButton("찾기")
+        command_button = make_action_button("명령 파일 선택", ActionKind.BROWSE)
         command_button.clicked.connect(self._pick_command_file)
         command_row.addWidget(command_button)
         input_layout.addRow("사용자 명령 파일", command_row)
@@ -103,16 +105,16 @@ class InspectorTab(QWidget):
         layout.addWidget(guide)
 
         action_row = QHBoxLayout()
-        self.validate_button = QPushButton("인벤토리 검증")
+        self.validate_button = make_action_button("인벤토리 검증", ActionKind.PRIMARY)
         self.validate_button.clicked.connect(self._validate_inventory)
-        self.run_button = QPushButton("실행")
+        self.run_button = make_action_button("점검 실행", ActionKind.START)
         self.run_button.clicked.connect(self._run_inspector)
-        self.template_editor_button = QPushButton("벤더/모델/OS 템플릿 편집")
+        self.template_editor_button = make_action_button("벤더/모델/OS 템플릿 편집", ActionKind.EDIT)
         self.template_editor_button.clicked.connect(self._open_template_editor)
-        self.open_result_button = QPushButton("결과 Excel 열기")
+        self.open_result_button = make_action_button("결과 Excel 열기", ActionKind.OPEN)
         self.open_result_button.clicked.connect(self._open_result)
         self.open_result_button.setEnabled(False)
-        self.open_artifacts_button = QPushButton("산출물 폴더 열기")
+        self.open_artifacts_button = make_action_button("산출물 폴더 열기", ActionKind.OPEN)
         self.open_artifacts_button.clicked.connect(self._open_artifacts)
         self.open_artifacts_button.setEnabled(False)
         action_row.addWidget(self.validate_button)

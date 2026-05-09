@@ -30,6 +30,8 @@ from app.ui.dialogs.scp_profile_dialog import ScpProfileDialog
 from app.utils.file_utils import open_in_explorer, timestamped_export_path
 
 
+from netops_suite.ui.actions import ActionKind, make_action_button
+
 class ScpDiagnosticsMixin:
     def _build_scp_client_page(self) -> QWidget:
         page = QWidget()
@@ -42,9 +44,9 @@ class ScpDiagnosticsMixin:
 
         profile_row = QHBoxLayout()
         self.scp_profile_combo = QComboBox()
-        self.scp_profile_add_button = QPushButton("추가")
-        self.scp_profile_edit_button = QPushButton("수정")
-        self.scp_profile_delete_button = QPushButton("삭제")
+        self.scp_profile_add_button = make_action_button("추가", ActionKind.ADD)
+        self.scp_profile_edit_button = make_action_button("수정", ActionKind.EDIT)
+        self.scp_profile_delete_button = make_action_button("삭제", ActionKind.DELETE)
         profile_row.addWidget(QLabel("프로파일"))
         profile_row.addWidget(self.scp_profile_combo, 1)
         profile_row.addWidget(self.scp_profile_add_button)
@@ -70,7 +72,7 @@ class ScpDiagnosticsMixin:
         self.scp_client_remote_path_edit.setPlaceholderText("업로드 대상 경로. 예: . 또는 /upload")
         self.scp_client_local_folder_edit = QLineEdit()
         self.scp_client_local_folder_edit.setPlaceholderText("다운로드 저장 폴더. 예: C:\\Temp")
-        self.scp_client_local_browse_button = QPushButton("로컬 폴더")
+        self.scp_client_local_browse_button = make_action_button("로컬 폴더", ActionKind.BROWSE)
         self._set_transfer_field_min_width(
             self.scp_profile_combo,
             self.scp_client_host_edit,
@@ -117,9 +119,9 @@ class ScpDiagnosticsMixin:
         connection_layout.addWidget(self.scp_client_remote_sources_edit)
 
         button_row = QHBoxLayout()
-        self.scp_client_upload_button = QPushButton("업로드 실행")
-        self.scp_client_download_button = QPushButton("다운로드 실행")
-        self.scp_client_cancel_button = QPushButton("중지")
+        self.scp_client_upload_button = make_action_button("업로드 실행", ActionKind.START)
+        self.scp_client_download_button = make_action_button("다운로드 실행", ActionKind.START)
+        self.scp_client_cancel_button = make_action_button("중지", ActionKind.STOP)
         self._set_transfer_button_min_width(
             self.scp_client_upload_button,
             self.scp_client_download_button,
@@ -157,8 +159,8 @@ class ScpDiagnosticsMixin:
         result_layout.addWidget(self.scp_transfer_table)
 
         result_button_row = QHBoxLayout()
-        self.scp_transfer_export_button = QPushButton("전송 결과 CSV 저장")
-        self.scp_client_log_export_button = QPushButton("클라이언트 로그 TXT 저장")
+        self.scp_transfer_export_button = make_action_button("전송 결과 CSV 저장", ActionKind.EXPORT)
+        self.scp_client_log_export_button = make_action_button("클라이언트 로그 TXT 저장", ActionKind.EXPORT)
         self._set_transfer_button_min_width(
             self.scp_transfer_export_button,
             self.scp_client_log_export_button,
@@ -208,7 +210,7 @@ class ScpDiagnosticsMixin:
         self.scp_server_port_edit.setPlaceholderText("예: 2223")
         self.scp_server_root_edit = QLineEdit()
         self.scp_server_root_edit.setPlaceholderText("예: C:\\Transfer")
-        self.scp_server_root_browse_button = QPushButton("공유 폴더")
+        self.scp_server_root_browse_button = make_action_button("공유 폴더", ActionKind.BROWSE)
         self.scp_server_username_edit = QLineEdit()
         self.scp_server_username_edit.setPlaceholderText("예: netops")
         self.scp_server_password_edit = QLineEdit()
@@ -238,9 +240,9 @@ class ScpDiagnosticsMixin:
         server_layout.addLayout(form)
 
         button_row = QHBoxLayout()
-        self.scp_server_start_button = QPushButton("시작")
-        self.scp_server_stop_button = QPushButton("중지")
-        self.scp_server_open_root_button = QPushButton("루트 폴더 열기")
+        self.scp_server_start_button = make_action_button("시작", ActionKind.START)
+        self.scp_server_stop_button = make_action_button("중지", ActionKind.STOP)
+        self.scp_server_open_root_button = make_action_button("루트 폴더 열기", ActionKind.OPEN)
         button_row.addWidget(self.scp_server_start_button)
         button_row.addWidget(self.scp_server_stop_button)
         button_row.addWidget(self.scp_server_open_root_button)
@@ -274,7 +276,7 @@ class ScpDiagnosticsMixin:
         self.scp_server_log_output.setMaximumHeight(170)
         log_layout.addWidget(self.scp_server_log_output)
         log_button_row = QHBoxLayout()
-        self.scp_server_log_export_button = QPushButton("서버 로그 TXT 저장")
+        self.scp_server_log_export_button = make_action_button("서버 로그 TXT 저장", ActionKind.EXPORT)
         log_button_row.addWidget(self.scp_server_log_export_button)
         log_button_row.addStretch(1)
         log_layout.addLayout(log_button_row)

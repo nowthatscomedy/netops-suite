@@ -39,6 +39,8 @@ from app.utils.validators import (
 )
 
 
+from netops_suite.ui.actions import ActionKind, make_action_button
+
 class InterfaceTab(QWidget):
     status_message = Signal(str)
 
@@ -69,7 +71,7 @@ class InterfaceTab(QWidget):
         layout.addWidget(self.admin_label)
 
         top_row = QHBoxLayout()
-        self.refresh_button = QPushButton("인터페이스 새로고침")
+        self.refresh_button = make_action_button("인터페이스 새로고침", ActionKind.REFRESH)
         self.loading_label = QLabel("인터페이스 정보를 불러오는 중입니다...")
         self.loading_label.hide()
         self.loading_bar = QProgressBar()
@@ -119,8 +121,8 @@ class InterfaceTab(QWidget):
         self.dns_edit.setPlaceholderText("예: 8.8.8.8, 1.1.1.1")
 
         apply_row = QHBoxLayout()
-        self.apply_button = QPushButton("적용")
-        self.save_current_button = QPushButton("현재값 저장")
+        self.apply_button = make_action_button("현재 설정 적용", ActionKind.PRIMARY)
+        self.save_current_button = make_action_button("프로파일로 저장", ActionKind.SAVE)
         apply_row.addWidget(self.apply_button)
         apply_row.addWidget(self.save_current_button)
 
@@ -147,10 +149,10 @@ class InterfaceTab(QWidget):
         profile_layout.addLayout(detail_form)
 
         button_row = QHBoxLayout()
-        self.profile_apply_button = QPushButton("프로파일 적용")
-        self.profile_add_button = QPushButton("추가")
-        self.profile_edit_button = QPushButton("수정")
-        self.profile_delete_button = QPushButton("삭제")
+        self.profile_apply_button = make_action_button("선택 프로파일 적용", ActionKind.PRIMARY)
+        self.profile_add_button = make_action_button("프로파일 추가", ActionKind.ADD)
+        self.profile_edit_button = make_action_button("프로파일 수정", ActionKind.EDIT)
+        self.profile_delete_button = make_action_button("프로파일 삭제", ActionKind.DELETE)
         button_row.addWidget(self.profile_apply_button)
         button_row.addWidget(self.profile_add_button)
         button_row.addWidget(self.profile_edit_button)

@@ -13,6 +13,8 @@ from PySide6.QtWidgets import (
 )
 
 
+from netops_suite.ui.actions import ActionKind, make_action_button
+
 class DnsDiagnosticsMixin:
     def _build_dns_tab(self) -> QWidget:
         page = QWidget()
@@ -30,7 +32,7 @@ class DnsDiagnosticsMixin:
         self._update_dns_type_hint()
         self.dns_server_edit = QLineEdit()
         self.dns_server_edit.setPlaceholderText("예: 8.8.8.8")
-        self.dns_run_button = QPushButton("조회")
+        self.dns_run_button = make_action_button("DNS 조회", ActionKind.PRIMARY)
 
         form.addRow("도메인 / IP", self.dns_query_edit)
         form.addRow("레코드 타입", self.dns_type_combo)

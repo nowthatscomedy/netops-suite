@@ -26,6 +26,8 @@ from app.models.tftp_models import TftpServerRuntime, TftpTransferResult
 from app.utils.file_utils import open_in_explorer, timestamped_export_path
 
 
+from netops_suite.ui.actions import ActionKind, make_action_button
+
 class TftpDiagnosticsMixin:
     def _build_tftp_client_page(self) -> QWidget:
         page = QWidget()
@@ -51,10 +53,10 @@ class TftpDiagnosticsMixin:
         self.tftp_client_remote_path_edit.setPlaceholderText("예: config/startup.cfg")
         self.tftp_client_upload_path_edit = QLineEdit()
         self.tftp_client_upload_path_edit.setPlaceholderText("업로드할 로컬 파일 경로")
-        self.tftp_client_upload_browse_button = QPushButton("파일 선택")
+        self.tftp_client_upload_browse_button = make_action_button("파일 선택", ActionKind.BROWSE)
         self.tftp_client_local_folder_edit = QLineEdit()
         self.tftp_client_local_folder_edit.setPlaceholderText("다운로드 저장 폴더. 예: C:\\Temp")
-        self.tftp_client_local_browse_button = QPushButton("로컬 폴더")
+        self.tftp_client_local_browse_button = make_action_button("로컬 폴더", ActionKind.BROWSE)
         self._set_transfer_field_min_width(
             self.tftp_client_host_edit,
             self.tftp_client_remote_path_edit,
@@ -99,9 +101,9 @@ class TftpDiagnosticsMixin:
         connection_layout.addLayout(form)
 
         button_row = QHBoxLayout()
-        self.tftp_client_upload_button = QPushButton("업로드 실행")
-        self.tftp_client_download_button = QPushButton("다운로드 실행")
-        self.tftp_client_cancel_button = QPushButton("중지")
+        self.tftp_client_upload_button = make_action_button("업로드 실행", ActionKind.START)
+        self.tftp_client_download_button = make_action_button("다운로드 실행", ActionKind.START)
+        self.tftp_client_cancel_button = make_action_button("중지", ActionKind.STOP)
         self._set_transfer_button_min_width(
             self.tftp_client_upload_button,
             self.tftp_client_download_button,
@@ -135,8 +137,8 @@ class TftpDiagnosticsMixin:
         activity_layout.addWidget(self.tftp_transfer_table)
 
         result_button_row = QHBoxLayout()
-        self.tftp_transfer_export_button = QPushButton("전송 결과 CSV 저장")
-        self.tftp_client_log_export_button = QPushButton("클라이언트 로그 TXT 저장")
+        self.tftp_transfer_export_button = make_action_button("전송 결과 CSV 저장", ActionKind.EXPORT)
+        self.tftp_client_log_export_button = make_action_button("클라이언트 로그 TXT 저장", ActionKind.EXPORT)
         self._set_transfer_button_min_width(
             self.tftp_transfer_export_button,
             self.tftp_client_log_export_button,
@@ -184,7 +186,7 @@ class TftpDiagnosticsMixin:
         self.tftp_server_port_edit.setPlaceholderText("69")
         self.tftp_server_root_edit = QLineEdit()
         self.tftp_server_root_edit.setPlaceholderText("예: C:\\Transfer")
-        self.tftp_server_root_browse_button = QPushButton("공유 폴더")
+        self.tftp_server_root_browse_button = make_action_button("공유 폴더", ActionKind.BROWSE)
         self.tftp_server_readonly_check = QCheckBox("읽기 전용")
 
         form.addWidget(QLabel("바인드 IP"), 0, 0)
@@ -203,9 +205,9 @@ class TftpDiagnosticsMixin:
         server_layout.addLayout(form)
 
         button_row = QHBoxLayout()
-        self.tftp_server_start_button = QPushButton("시작")
-        self.tftp_server_stop_button = QPushButton("중지")
-        self.tftp_server_open_root_button = QPushButton("루트 폴더 열기")
+        self.tftp_server_start_button = make_action_button("시작", ActionKind.START)
+        self.tftp_server_stop_button = make_action_button("중지", ActionKind.STOP)
+        self.tftp_server_open_root_button = make_action_button("루트 폴더 열기", ActionKind.OPEN)
         button_row.addWidget(self.tftp_server_start_button)
         button_row.addWidget(self.tftp_server_stop_button)
         button_row.addWidget(self.tftp_server_open_root_button)
@@ -238,7 +240,7 @@ class TftpDiagnosticsMixin:
         self.tftp_server_log_output.setMaximumHeight(170)
         log_layout.addWidget(self.tftp_server_log_output)
         log_button_row = QHBoxLayout()
-        self.tftp_server_log_export_button = QPushButton("서버 로그 TXT 저장")
+        self.tftp_server_log_export_button = make_action_button("서버 로그 TXT 저장", ActionKind.EXPORT)
         log_button_row.addWidget(self.tftp_server_log_export_button)
         log_button_row.addStretch(1)
         log_layout.addLayout(log_button_row)

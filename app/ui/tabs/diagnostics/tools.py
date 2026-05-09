@@ -30,6 +30,8 @@ from app.models.result_models import OperationResult
 from app.utils.validators import ValidationError, calculate_subnet_details
 
 
+from netops_suite.ui.actions import ActionKind, make_action_button
+
 class ToolsDiagnosticsMixin:
     def _build_tools_tab(self) -> QWidget:
         page = QWidget()
@@ -48,12 +50,12 @@ class ToolsDiagnosticsMixin:
         layout = QVBoxLayout(page)
 
         button_row = QHBoxLayout()
-        self.public_ip_button = QPushButton("공인 IP 확인")
-        self.snapshot_button = QPushButton("현재 인터페이스")
-        self.ipconfig_button = QPushButton("ipconfig /all")
-        self.route_button = QPushButton("route print")
-        self.arp_button = QPushButton("arp -a")
-        self.flush_dns_button = QPushButton("DNS 캐시 비우기")
+        self.public_ip_button = make_action_button("공인 IP 확인", ActionKind.PRIMARY)
+        self.snapshot_button = make_action_button("현재 인터페이스", ActionKind.UTILITY)
+        self.ipconfig_button = make_action_button("ipconfig /all", ActionKind.UTILITY)
+        self.route_button = make_action_button("route print", ActionKind.UTILITY)
+        self.arp_button = make_action_button("arp -a", ActionKind.UTILITY)
+        self.flush_dns_button = make_action_button("DNS 캐시 비우기", ActionKind.DANGER)
         for button in (
             self.public_ip_button,
             self.snapshot_button,
@@ -93,8 +95,8 @@ class ToolsDiagnosticsMixin:
         self.subnet_calc_prefix_edit.setPlaceholderText("예: 24 또는 255.255.255.0")
         self.subnet_calc_interface_combo = QComboBox()
         self.subnet_calc_interface_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        self.subnet_calc_refresh_button = QPushButton("인터페이스 불러오기")
-        self.subnet_calc_use_selected_button = QPushButton("선택 값 자동 입력")
+        self.subnet_calc_refresh_button = make_action_button("인터페이스 불러오기", ActionKind.REFRESH)
+        self.subnet_calc_use_selected_button = make_action_button("선택 값 자동 입력", ActionKind.UTILITY)
         subnet_form.addRow("IPv4", self.subnet_calc_ip_edit)
         subnet_form.addRow("Prefix / Mask", self.subnet_calc_prefix_edit)
 
@@ -106,7 +108,7 @@ class ToolsDiagnosticsMixin:
         input_layout.addLayout(subnet_form)
 
         subnet_button_row = QHBoxLayout()
-        self.subnet_calc_button = QPushButton("계산")
+        self.subnet_calc_button = make_action_button("서브넷 계산", ActionKind.PRIMARY)
         subnet_button_row.addWidget(self.subnet_calc_button)
         subnet_button_row.addStretch(1)
         input_layout.addLayout(subnet_button_row)
@@ -167,8 +169,8 @@ class ToolsDiagnosticsMixin:
         self.arp_subnet_edit.setPlaceholderText("예: 192.168.0.0/24")
         self.arp_subnet_combo = QComboBox()
         self.arp_subnet_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        self.arp_refresh_subnets_button = QPushButton("인터페이스 불러오기")
-        self.arp_use_selected_subnet_button = QPushButton("선택 값 자동 입력")
+        self.arp_refresh_subnets_button = make_action_button("인터페이스 불러오기", ActionKind.REFRESH)
+        self.arp_use_selected_subnet_button = make_action_button("선택 값 자동 입력", ActionKind.UTILITY)
         self.arp_timeout_edit = QLineEdit()
         self.arp_timeout_edit.setPlaceholderText("800")
         self.arp_workers_edit = QLineEdit()
@@ -176,10 +178,10 @@ class ToolsDiagnosticsMixin:
         self.arp_workers_edit.setToolTip(
             "ARP 스캔은 각 대상에 동시에 Ping을 보내는 방식입니다. 값이 높을수록 빨라지지만 부하도 커집니다."
         )
-        self.arp_start_button = QPushButton("스캔")
-        self.arp_cancel_button = QPushButton("중지")
+        self.arp_start_button = make_action_button("ARP 스캔", ActionKind.START)
+        self.arp_cancel_button = make_action_button("중지", ActionKind.STOP)
         self.arp_cancel_button.setEnabled(False)
-        self.arp_refresh_oui_button = QPushButton("OUI 캐시 갱신")
+        self.arp_refresh_oui_button = make_action_button("OUI 캐시 갱신", ActionKind.REFRESH)
         self.arp_oui_status_label = QLabel()
         self.arp_oui_status_label.setStyleSheet("color:#666;")
 
@@ -237,8 +239,8 @@ class ToolsDiagnosticsMixin:
             "0011.2233.4455\n"
             "58 86 94 A1 5A BA"
         )
-        self.oui_lookup_button = QPushButton("조회")
-        self.oui_refresh_button = QPushButton("OUI 캐시 갱신")
+        self.oui_lookup_button = make_action_button("OUI 조회", ActionKind.PRIMARY)
+        self.oui_refresh_button = make_action_button("OUI 캐시 갱신", ActionKind.REFRESH)
         self.oui_status_label = QLabel()
         self.oui_status_label.setStyleSheet("color:#666;")
 

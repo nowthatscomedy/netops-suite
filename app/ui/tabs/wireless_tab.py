@@ -34,6 +34,8 @@ from app.utils.parser import summarize_channels
 from app.utils.threading_utils import FunctionWorker
 
 
+from netops_suite.ui.actions import ActionKind, make_action_button
+
 class WirelessTab(QWidget):
     def __init__(self, state: AppState, parent=None) -> None:
         super().__init__(parent)
@@ -73,7 +75,7 @@ class WirelessTab(QWidget):
         self.status_group = QGroupBox("현재 Wi-Fi 상태")
         status_layout = QVBoxLayout(self.status_group)
         controls = QHBoxLayout()
-        self.refresh_button = QPushButton("새로고침")
+        self.refresh_button = make_action_button("현재 상태 새로고침", ActionKind.REFRESH)
         self.auto_refresh_check = QCheckBox("자동 갱신")
         self.interval_spin = QSpinBox()
         self.interval_spin.setRange(1, 30)
@@ -141,8 +143,8 @@ class WirelessTab(QWidget):
         nearby_layout = QVBoxLayout(nearby_group)
 
         nearby_controls = QHBoxLayout()
-        self.nearby_refresh_button = QPushButton("주변 AP 새로고침")
-        self.nearby_refresh_oui_button = QPushButton("OUI 캐시 갱신")
+        self.nearby_refresh_button = make_action_button("주변 AP 스캔", ActionKind.START)
+        self.nearby_refresh_oui_button = make_action_button("OUI 캐시 갱신", ActionKind.REFRESH)
         self.nearby_summary_label = QLabel("스캔 전")
         self.nearby_auto_refresh_check = QCheckBox("자동 갱신")
         self.nearby_interval_spin = QSpinBox()

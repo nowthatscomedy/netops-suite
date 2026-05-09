@@ -21,6 +21,8 @@ from app.models.result_models import TcpCheckResult
 from app.utils.validators import ValidationError
 
 
+from netops_suite.ui.actions import ActionKind, make_action_button
+
 class TcpDiagnosticsMixin:
     def _build_tcp_tab(self) -> QWidget:
         page = QWidget()
@@ -42,8 +44,8 @@ class TcpDiagnosticsMixin:
         self.tcp_continuous_check = QCheckBox("계속 실행 (-t)")
 
         button_row = QHBoxLayout()
-        self.tcp_start_button = QPushButton("실행")
-        self.tcp_cancel_button = QPushButton("중지")
+        self.tcp_start_button = make_action_button("TCPing 실행", ActionKind.START)
+        self.tcp_cancel_button = make_action_button("중지", ActionKind.STOP)
         self.tcp_cancel_button.setEnabled(False)
         button_row.addWidget(self.tcp_start_button)
         button_row.addWidget(self.tcp_cancel_button)

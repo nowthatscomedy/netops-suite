@@ -41,6 +41,8 @@ from .models import (
 )
 
 
+from netops_suite.ui.actions import ActionKind, make_action_button
+
 ERROR_BG = QColor("#fff1ed")
 OK_BG = QColor("#eef8eb")
 AUTO_INCREMENT_ITEMS = (
@@ -107,11 +109,11 @@ class ProfileBuilderDialog(QDialog):
 
         actions = QHBoxLayout()
         actions.addStretch(1)
-        refresh_button = QPushButton("검토 갱신")
+        refresh_button = make_action_button("검토 갱신", ActionKind.REFRESH)
         refresh_button.clicked.connect(self.refresh_preview)
-        self.save_button = QPushButton("프로파일 저장")
+        self.save_button = make_action_button("프로파일 저장", ActionKind.SAVE)
         self.save_button.clicked.connect(self.save_profile)
-        close_button = QPushButton("닫기")
+        close_button = make_action_button("닫기", ActionKind.CANCEL)
         close_button.clicked.connect(self.reject)
         actions.addWidget(refresh_button)
         actions.addWidget(self.save_button)
@@ -173,9 +175,9 @@ class ProfileBuilderDialog(QDialog):
         self.variable_list.currentRowChanged.connect(self._on_variable_selection_changed)
         left.addWidget(self.variable_list, 1)
         left_buttons = QHBoxLayout()
-        add_button = QPushButton("변수 추가")
+        add_button = make_action_button("변수 추가", ActionKind.ADD)
         add_button.clicked.connect(self.add_variable)
-        remove_button = QPushButton("변수 삭제")
+        remove_button = make_action_button("변수 삭제", ActionKind.DELETE)
         remove_button.clicked.connect(self.remove_variable)
         left_buttons.addWidget(add_button)
         left_buttons.addWidget(remove_button)
@@ -230,9 +232,9 @@ class ProfileBuilderDialog(QDialog):
         self.block_list.currentRowChanged.connect(self._on_block_selection_changed)
         left.addWidget(self.block_list, 1)
         left_buttons = QHBoxLayout()
-        add_button = QPushButton("블록 추가")
+        add_button = make_action_button("블록 추가", ActionKind.ADD)
         add_button.clicked.connect(self.add_block)
-        remove_button = QPushButton("블록 삭제")
+        remove_button = make_action_button("블록 삭제", ActionKind.DELETE)
         remove_button.clicked.connect(self.remove_block)
         left_buttons.addWidget(add_button)
         left_buttons.addWidget(remove_button)

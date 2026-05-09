@@ -3,9 +3,20 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from PySide6.QtWidgets import QHBoxLayout, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QHBoxLayout,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 
 from app.app_state import AppState
+
+
+from netops_suite.ui.actions import ActionKind, make_action_button
 
 
 class ArtifactsTab(QWidget):
@@ -19,20 +30,24 @@ class ArtifactsTab(QWidget):
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
         actions = QHBoxLayout()
-        refresh_button = QPushButton("새로고침")
-        refresh_button.clicked.connect(self.refresh)
-        open_file_button = QPushButton("파일 열기")
-        open_file_button.clicked.connect(self._open_selected_file)
-        open_folder_button = QPushButton("폴더 열기")
-        open_folder_button.clicked.connect(self._open_selected_folder)
-        actions.addWidget(refresh_button)
-        actions.addWidget(open_file_button)
-        actions.addWidget(open_folder_button)
+        self.refresh_button = make_action_button("목록 새로고침", ActionKind.REFRESH)
+        self.refresh_button.clicked.connect(self.refresh)
+        self.open_file_button = make_action_button("선택 파일 열기", ActionKind.OPEN, enabled=False)
+        self.open_file_button.clicked.connect(self._open_selected_file)
+        self.open_folder_button = make_action_button("선택 폴더 열기", ActionKind.OPEN, enabled=False)
+        self.open_folder_button.clicked.connect(self._open_selected_folder)
+        actions.addWidget(self.refresh_button)
+        actions.addWidget(self.open_file_button)
+        actions.addWidget(self.open_folder_button)
         actions.addStretch(1)
         layout.addLayout(actions)
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["종류", "파일", "수정 시간", "경로"])
         self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.itemSelectionChanged.connect(self._update_action_states)
         layout.addWidget(self.table, 1)
 
     def refresh(self) -> None:
@@ -57,6 +72,7 @@ class ArtifactsTab(QWidget):
             for column, value in enumerate(values):
                 self.table.setItem(row, column, QTableWidgetItem(value))
         self.table.resizeColumnsToContents()
+        self._update_action_states()
 
     def _selected_path(self) -> Path | None:
         indexes = self.table.selectedIndexes()
@@ -76,6 +92,11 @@ class ArtifactsTab(QWidget):
         path = self._selected_path()
         if path:
             os.startfile(path.parent)
+
+    def _update_action_states(self) -> None:
+        has_selection = self._selected_path() is not None
+        self.open_file_button.setEnabled(has_selection)
+        self.open_folder_button.setEnabled(has_selection)
 
     @staticmethod
     def _kind_for(path: Path) -> str:

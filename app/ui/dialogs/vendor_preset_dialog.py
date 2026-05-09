@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 
 from app.models.profile_models import VendorPreset
 from app.utils.validators import ValidationError, parse_dns_servers, validate_ipv4, validate_optional_ipv4, validate_prefix
+from netops_suite.ui.actions import polish_dialog_button_box
 
 
 class VendorPresetDialog(QDialog):
@@ -45,6 +46,7 @@ class VendorPresetDialog(QDialog):
         layout.addLayout(form)
 
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        polish_dialog_button_box(self.buttons)
         self.buttons.accepted.connect(self._handle_accept)
         self.buttons.rejected.connect(self.reject)
         layout.addWidget(self.buttons)

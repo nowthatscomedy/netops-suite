@@ -382,7 +382,7 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            self.state.update_service.launch_installer(downloaded.asset_path)
+            self.state.update_service.launch_installer(downloaded.asset_path, expected_sha256=downloaded.sha256)
         except Exception as exc:
             QMessageBox.warning(self, "설치 프로그램 실행 실패", str(exc))
             return

@@ -21,6 +21,8 @@ from app.models.result_models import PingResult
 from app.utils.validators import ValidationError
 
 
+from netops_suite.ui.actions import ActionKind, make_action_button
+
 class PingDiagnosticsMixin:
     def _build_ping_tab(self) -> QWidget:
         page = QWidget()
@@ -40,8 +42,8 @@ class PingDiagnosticsMixin:
         self.ping_continuous_check = QCheckBox("계속 실행 (-t)")
 
         button_row = QHBoxLayout()
-        self.ping_start_button = QPushButton("실행")
-        self.ping_cancel_button = QPushButton("중지")
+        self.ping_start_button = make_action_button("Ping 실행", ActionKind.START)
+        self.ping_cancel_button = make_action_button("중지", ActionKind.STOP)
         self.ping_cancel_button.setEnabled(False)
         button_row.addWidget(self.ping_start_button)
         button_row.addWidget(self.ping_cancel_button)

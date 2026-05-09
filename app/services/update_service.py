@@ -164,9 +164,17 @@ class UpdateService:
             verification_source=verification_source,
         )
 
-    def launch_installer(self, installer_path: Path) -> None:
+    def launch_installer(self, installer_path: Path, expected_sha256: str = "") -> None:
         if not installer_path.exists():
             raise FileNotFoundError(f"설치 파일을 찾을 수 없습니다: {installer_path}")
+
+        if expected_sha256:
+            actual_sha256 = self._sha256_file(installer_path)
+            if actual_sha256.lower() != expected_sha256.lower():
+                raise ValueError(
+                    "설치 직전 SHA-256 재검증에 실패했습니다. "
+                    "다운로드 이후 설치 파일이 변경되었을 수 있어 실행을 차단했습니다."
+                )
 
         self.logger.info("Launching installer %s", installer_path)
         subprocess.Popen(
@@ -287,8 +295,9 @@ class UpdateService:
             "SHA256SUMS.txt",
             "sha256sums.txt",
         }
+        normalized_names = {name.lower() for name in exact_names}
         for asset in assets:
-            if asset.name in exact_names:
+            if asset.name.lower() in normalized_names:
                 return asset
         return None
 
@@ -297,7 +306,7 @@ class UpdateService:
         hash_pattern = re.compile(r"(?P<hash>[a-fA-F0-9]{64})(?:\s+[\*\s]?(?P<name>.+))?$")
 
         for raw_line in content.splitlines():
-            line = raw_line.strip()
+            line = raw_line.strip().lstrip("\ufeff")
             if not line:
                 continue
             match = hash_pattern.match(line)

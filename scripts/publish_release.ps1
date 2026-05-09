@@ -7,6 +7,7 @@ param(
     [string]$ReleaseName,
     [Parameter(Mandatory = $true)]
     [string]$AssetPath,
+    [string]$ChecksumPath = "",
     [switch]$IsPrerelease
 )
 
@@ -18,6 +19,10 @@ if (-not $env:GITHUB_TOKEN) {
 
 if (-not (Test-Path $AssetPath)) {
     throw "Release asset was not found: $AssetPath"
+}
+
+if (-not [string]::IsNullOrWhiteSpace($ChecksumPath) -and -not (Test-Path $ChecksumPath)) {
+    throw "Checksum asset was not found: $ChecksumPath"
 }
 
 $apiHeaders = @{
@@ -89,26 +94,42 @@ if (-not $release) {
     }
 }
 
-$assetName = Split-Path -Path $AssetPath -Leaf
-$existingAsset = @($release.assets | Where-Object { $_.name -eq $assetName }) | Select-Object -First 1
-if ($existingAsset) {
-    Invoke-GitHubRest -Method DELETE -Uri "https://api.github.com/repos/$Repository/releases/assets/$($existingAsset.id)" | Out-Null
-}
-
-$escapedAssetName = [System.Uri]::EscapeDataString($assetName)
-
 if (-not $release.id) {
     throw "GitHub release id was not returned. Cannot upload release asset."
 }
 
-$uploadUri = "https://uploads.github.com/repos/$Repository/releases/$($release.id)/assets?name=$escapedAssetName"
+function Publish-ReleaseAsset {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Release,
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [string]$ContentType = "application/octet-stream"
+    )
 
-Invoke-RestMethod `
-    -Method POST `
-    -Uri $uploadUri `
-    -Headers $apiHeaders `
-    -InFile $AssetPath `
-    -ContentType "application/octet-stream" | Out-Null
+    $assetName = Split-Path -Path $Path -Leaf
+    $existingAsset = @($Release.assets | Where-Object { $_.name -eq $assetName }) | Select-Object -First 1
+    if ($existingAsset) {
+        Invoke-GitHubRest -Method DELETE -Uri "https://api.github.com/repos/$Repository/releases/assets/$($existingAsset.id)" | Out-Null
+    }
+
+    $escapedAssetName = [System.Uri]::EscapeDataString($assetName)
+    $uploadUri = "https://uploads.github.com/repos/$Repository/releases/$($Release.id)/assets?name=$escapedAssetName"
+
+    Invoke-RestMethod `
+        -Method POST `
+        -Uri $uploadUri `
+        -Headers $apiHeaders `
+        -InFile $Path `
+        -ContentType $ContentType | Out-Null
+
+    Write-Host "Uploaded release asset: $assetName"
+}
+
+Publish-ReleaseAsset -Release $release -Path $AssetPath
+if (-not [string]::IsNullOrWhiteSpace($ChecksumPath)) {
+    Publish-ReleaseAsset -Release $release -Path $ChecksumPath -ContentType "text/plain"
+}
 
 if ($release.draft) {
     $release = Invoke-GitHubRest -Method PATCH -Uri "https://api.github.com/repos/$Repository/releases/$($release.id)" -Body @{
@@ -124,5 +145,3 @@ if ($release.draft) {
         Write-Host "Published release: $TagName"
     }
 }
-
-Write-Host "Uploaded release asset: $assetName"

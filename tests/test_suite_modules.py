@@ -16,6 +16,7 @@ from app.utils.file_utils import DEFAULT_UPDATE_ASSET_PATTERN
 from netops_suite.modules.config_builder import ConfigBuilderRenderResult, ConfigBuilderService
 from netops_suite.modules.config_builder.switch_configurator.models import RenderedConfig
 from netops_suite.modules.inspector import InspectorService
+from netops_suite.ui.actions import ActionKind, make_action_button
 
 
 def test_config_builder_service_renders_valid_csv(tmp_path: Path):
@@ -309,10 +310,14 @@ def test_config_builder_tab_action_buttons_follow_workflow_state(qt_app, tmp_pat
         button = lambda name: tab.findChild(QPushButton, name)
 
         assert button("configBuilderOpenDeviceValuesButton").text() == "장비값 열기"
+        assert button("configBuilderOpenDeviceValuesButton").property("actionKind") == ActionKind.BROWSE.value
         assert button("configBuilderRenderButton").text() == "CLI 생성"
+        assert button("configBuilderRenderButton").property("actionKind") == ActionKind.PRIMARY.value
         assert button("configBuilderEditProfileButton").text() == "선택 편집"
+        assert button("configBuilderEditProfileButton").property("actionKind") == ActionKind.EDIT.value
         assert button("configBuilderFullEditorButton").text() == "고급 편집기"
         assert button("configBuilderCopyButton").text() == "선택 CLI 복사"
+        assert button("configBuilderCopyButton").property("actionKind") == ActionKind.COPY.value
         assert button("configBuilderCopyNextButton").text() == "복사 후 다음"
 
         assert not button("configBuilderRenderButton").isEnabled()
@@ -422,11 +427,16 @@ def test_config_builder_tab_full_editor_receives_profiles_dir(qt_app, tmp_path: 
 
 def test_packaging_names_match_suite_release_contract():
     build_script = Path("scripts/build_release.ps1").read_text(encoding="utf-8")
+    publish_script = Path("scripts/publish_release.ps1").read_text(encoding="utf-8")
     workflow = Path(".github/workflows/release.yml").read_text(encoding="utf-8")
     installer_script = Path("installer/netops-suite.iss").read_text(encoding="utf-8")
 
     assert "NetOpsSuite" in build_script
     assert "NetOpsSuite-setup-*.exe" in build_script
+    assert "SHA256SUMS.txt" in build_script
+    assert "Get-FileHash" in build_script
+    assert "ChecksumPath" in publish_script
+    assert "SHA256SUMS.txt" in workflow
     assert "custom_parsers.example.py" in build_script
     assert "Invoke-CodeSignFile" in build_script
     assert "RequireCodeSigning" in build_script
@@ -443,6 +453,35 @@ def test_main_app_icon_loads(qt_app):
 
     assert not icon.isNull()
     assert icon.availableSizes()
+
+
+def test_action_button_helper_sets_role_icon_and_state(qt_app):
+    button = make_action_button(
+        "테스트 실행",
+        ActionKind.START,
+        tooltip="작업을 시작합니다.",
+        object_name="testActionButton",
+        enabled=False,
+    )
+
+    assert button.text() == "테스트 실행"
+    assert button.property("actionKind") == ActionKind.START.value
+    assert button.objectName() == "testActionButton"
+    assert button.toolTip() == "작업을 시작합니다."
+    assert not button.isEnabled()
+    assert not button.icon().isNull()
+
+
+def test_ui_buttons_are_created_through_action_helper():
+    roots = [Path("app"), Path("netops_suite/modules/config_builder/switch_configurator")]
+    offenders = []
+    for root in roots:
+        for path in root.rglob("*.py"):
+            text = path.read_text(encoding="utf-8")
+            if "QPushButton(" in text:
+                offenders.append(str(path))
+
+    assert offenders == []
 
 
 @pytest.fixture(scope="session")

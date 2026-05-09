@@ -18,6 +18,8 @@ from app.utils.file_utils import default_update_config, open_in_explorer
 from app.version import __version__
 
 
+from netops_suite.ui.actions import ActionKind, make_action_button
+
 class SettingsTab(QWidget):
     check_updates_requested = Signal(dict)
 
@@ -52,8 +54,8 @@ class SettingsTab(QWidget):
         update_layout.addLayout(form)
 
         button_row = QHBoxLayout()
-        self.save_update_button = QPushButton("업데이트 옵션 저장")
-        self.check_update_button = QPushButton("업데이트 확인")
+        self.save_update_button = make_action_button("업데이트 옵션 저장", ActionKind.SAVE)
+        self.check_update_button = make_action_button("업데이트 확인", ActionKind.START)
         button_row.addWidget(self.save_update_button)
         button_row.addWidget(self.check_update_button)
         button_row.addStretch(1)
@@ -78,9 +80,9 @@ class SettingsTab(QWidget):
         path_layout.addWidget(self.log_dir_label)
 
         folder_button_row = QHBoxLayout()
-        self.open_config_button = QPushButton("Config 폴더 열기")
-        self.open_logs_button = QPushButton("로그 폴더 열기")
-        self.reload_button = QPushButton("디스크에서 다시 불러오기")
+        self.open_config_button = make_action_button("Config 폴더 열기", ActionKind.OPEN)
+        self.open_logs_button = make_action_button("로그 폴더 열기", ActionKind.OPEN)
+        self.reload_button = make_action_button("디스크에서 다시 불러오기", ActionKind.REFRESH)
         folder_button_row.addWidget(self.open_config_button)
         folder_button_row.addWidget(self.open_logs_button)
         folder_button_row.addWidget(self.reload_button)

@@ -24,6 +24,8 @@ from app.utils.parser import parse_trace_hop_line, parse_trace_hops
 from app.utils.validators import ValidationError, validate_host_input
 
 
+from netops_suite.ui.actions import ActionKind, make_action_button
+
 class TraceDiagnosticsMixin:
     def _build_trace_tab(self) -> QWidget:
         page = QWidget()
@@ -36,9 +38,9 @@ class TraceDiagnosticsMixin:
         self.trace_no_resolve_check = QCheckBox("호스트 이름 해석 안 함 (-d / -n)")
 
         button_row = QHBoxLayout()
-        self.tracert_button = QPushButton("tracert 실행")
-        self.pathping_button = QPushButton("pathping 실행")
-        self.trace_cancel_button = QPushButton("중지")
+        self.tracert_button = make_action_button("tracert 실행", ActionKind.START)
+        self.pathping_button = make_action_button("pathping 실행", ActionKind.START)
+        self.trace_cancel_button = make_action_button("중지", ActionKind.STOP)
         self.trace_cancel_button.setEnabled(False)
         button_row.addWidget(self.tracert_button)
         button_row.addWidget(self.pathping_button)

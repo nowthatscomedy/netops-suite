@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
 )
 
 
+from netops_suite.ui.actions import ActionKind, make_action_button
+
 class ResultDockWidget(QDockWidget):
     def __init__(self, title: str, on_restore, parent=None) -> None:
         super().__init__(title, parent)
@@ -55,8 +57,8 @@ class ResultDockMixin:
         result_layout.addWidget(table, 1)
 
         button_row = QHBoxLayout()
-        csv_button = QPushButton("전체 결과 CSV 저장")
-        log_button = QPushButton("선택 항목 로그 저장")
+        csv_button = make_action_button("전체 결과 CSV 저장", ActionKind.EXPORT)
+        log_button = make_action_button("선택 항목 로그 저장", ActionKind.EXPORT)
         button_row.addWidget(csv_button)
         button_row.addWidget(log_button)
         button_row.addStretch(1)

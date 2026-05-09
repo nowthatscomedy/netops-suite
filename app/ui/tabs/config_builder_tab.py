@@ -27,6 +27,8 @@ from netops_suite.modules.config_builder import ConfigBuilderRenderResult, Confi
 from netops_suite.modules.config_builder.switch_configurator.models import Profile
 
 
+from netops_suite.ui.actions import ActionKind, make_action_button
+
 class ConfigBuilderTab(QWidget):
     def __init__(self, state: AppState | None = None, parent=None) -> None:
         super().__init__(parent)
@@ -45,10 +47,10 @@ class ConfigBuilderTab(QWidget):
         layout = QVBoxLayout(self)
 
         input_action_row = QHBoxLayout()
-        self.open_device_values_button = QPushButton("장비값 열기")
+        self.open_device_values_button = make_action_button("장비값 열기", ActionKind.BROWSE)
         self.open_device_values_button.setObjectName("configBuilderOpenDeviceValuesButton")
         self.open_device_values_button.clicked.connect(self._pick_device_values)
-        self.render_button = QPushButton("CLI 생성")
+        self.render_button = make_action_button("CLI 생성", ActionKind.PRIMARY)
         self.render_button.setObjectName("configBuilderRenderButton")
         self.render_button.clicked.connect(self._render)
         input_action_row.addWidget(self.open_device_values_button)
@@ -66,10 +68,10 @@ class ConfigBuilderTab(QWidget):
         profile_action_row = QHBoxLayout()
         profile_action_row.addWidget(QLabel("프로파일"))
         profile_action_row.addStretch(1)
-        self.edit_profile_button = QPushButton("선택 편집")
+        self.edit_profile_button = make_action_button("선택 편집", ActionKind.EDIT)
         self.edit_profile_button.setObjectName("configBuilderEditProfileButton")
         self.edit_profile_button.clicked.connect(self._open_selected_profile_editor)
-        self.full_editor_button = QPushButton("고급 편집기")
+        self.full_editor_button = make_action_button("고급 편집기", ActionKind.EDIT)
         self.full_editor_button.setObjectName("configBuilderFullEditorButton")
         self.full_editor_button.clicked.connect(self._open_full_editor)
         profile_action_row.addWidget(self.edit_profile_button)
@@ -101,16 +103,16 @@ class ConfigBuilderTab(QWidget):
         result_action_row = QHBoxLayout()
         result_action_row.addWidget(QLabel("생성 결과"))
         result_action_row.addStretch(1)
-        self.copy_button = QPushButton("선택 CLI 복사")
+        self.copy_button = make_action_button("선택 CLI 복사", ActionKind.COPY)
         self.copy_button.setObjectName("configBuilderCopyButton")
         self.copy_button.clicked.connect(self._copy_selected)
-        self.copy_next_button = QPushButton("복사 후 다음")
+        self.copy_next_button = make_action_button("복사 후 다음", ActionKind.COPY)
         self.copy_next_button.setObjectName("configBuilderCopyNextButton")
         self.copy_next_button.clicked.connect(self._copy_and_next)
-        self.save_button = QPushButton("전체 TXT 저장")
+        self.save_button = make_action_button("전체 TXT 저장", ActionKind.SAVE)
         self.save_button.setObjectName("configBuilderSaveBundleButton")
         self.save_button.clicked.connect(self._save_bundle)
-        self.save_each_button = QPushButton("장비별 TXT 저장")
+        self.save_each_button = make_action_button("장비별 TXT 저장", ActionKind.SAVE)
         self.save_each_button.setObjectName("configBuilderSaveEachButton")
         self.save_each_button.clicked.connect(self._save_each)
         for button in (self.copy_button, self.copy_next_button, self.save_button, self.save_each_button):

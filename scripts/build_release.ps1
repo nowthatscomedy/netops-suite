@@ -296,5 +296,13 @@ if (-not $installer) {
 
 Invoke-CodeSignFile -Path $installer.FullName -Config $codeSigningConfig
 
+$checksumPath = Join-Path $releaseDir "SHA256SUMS.txt"
+$installerHash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+$installerName = Split-Path -Path $installer.FullName -Leaf
+"$installerHash *$installerName" | Set-Content -LiteralPath $checksumPath -Encoding ASCII
+Write-Host "Wrote checksum manifest: $checksumPath"
+
 Get-ChildItem -LiteralPath $releaseDir -Filter "NetOpsSuite-setup-*.exe" |
+    Select-Object FullName, Length, LastWriteTime
+Get-Item -LiteralPath $checksumPath |
     Select-Object FullName, Length, LastWriteTime
