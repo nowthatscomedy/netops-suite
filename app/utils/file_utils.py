@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import sys
@@ -11,6 +12,10 @@ from typing import Any
 
 DEFAULT_UPDATE_REPO = "nowthatscomedy/netops-suite"
 DEFAULT_UPDATE_ASSET_PATTERN = r"NetOpsSuite-setup.*\.exe$"
+PROJECT_DATA_ENV = "NETOPS_SUITE_USE_PROJECT_DATA"
+DATA_ROOT_ENV = "NETOPS_SUITE_DATA_ROOT"
+
+LOGGER = logging.getLogger("netops_suite.file_utils")
 
 
 @dataclass(slots=True)
@@ -110,17 +115,25 @@ def _is_writable_directory(path: Path) -> bool:
         return False
 
 
-def detect_data_root(root: Path) -> Path:
-    if _is_protected_install_root(root):
-        return default_data_root()
-    if _is_writable_directory(root):
-        return root
+def _env_flag_enabled(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def detect_data_root(root: Path, *, prefer_project_data: bool = False) -> Path:
+    override = os.environ.get(DATA_ROOT_ENV, "").strip()
+    if override:
+        return Path(override).expanduser()
+
+    if (prefer_project_data or _env_flag_enabled(PROJECT_DATA_ENV)) and not _is_protected_install_root(root):
+        if _is_writable_directory(root):
+            return root
+
     return default_data_root()
 
 
 def build_app_paths(root_dir: Path | None = None) -> AppPaths:
     root = Path(root_dir) if root_dir else detect_root_path()
-    data_root = detect_data_root(root)
+    data_root = detect_data_root(root, prefer_project_data=root_dir is not None)
     config_dir = data_root / "config"
     logs_dir = data_root / "logs"
     exports_dir = logs_dir / "exports"
@@ -161,11 +174,7 @@ def default_app_config() -> dict[str, Any]:
 
 def default_update_config() -> dict[str, Any]:
     return {
-        "github_repo": DEFAULT_UPDATE_REPO,
-        "installer_asset_pattern": DEFAULT_UPDATE_ASSET_PATTERN,
-        "check_on_startup": True,
-        "include_prerelease": False,
-        "release_channel": "stable",
+        "check_on_startup": False,
     }
 
 
@@ -173,14 +182,6 @@ def normalize_update_config(update_config: Any) -> dict[str, Any]:
     config = default_update_config()
     if isinstance(update_config, dict):
         config["check_on_startup"] = bool(update_config.get("check_on_startup", config["check_on_startup"]))
-        channel = str(update_config.get("release_channel", "") or "").strip().lower()
-        if channel in {"stable", "prerelease"}:
-            config["release_channel"] = channel
-            config["include_prerelease"] = channel == "prerelease"
-        else:
-            # Migrate older configs to the safer stable channel by default.
-            config["release_channel"] = "stable"
-            config["include_prerelease"] = False
     return config
 
 
@@ -329,13 +330,41 @@ def load_json(file_path: Path, default: Any) -> Any:
         return default
     try:
         return json.loads(file_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except json.JSONDecodeError as exc:
+        backup_path = _backup_invalid_json(file_path)
+        if backup_path:
+            LOGGER.warning("Invalid JSON in %s. Backed up to %s: %s", file_path, backup_path, exc)
+        else:
+            LOGGER.warning("Invalid JSON in %s and backup failed: %s", file_path, exc)
+        return default
+    except OSError as exc:
+        LOGGER.warning("Failed to read JSON from %s: %s", file_path, exc)
         return default
 
 
 def save_json(file_path: Path, data: Any) -> None:
     file_path.parent.mkdir(parents=True, exist_ok=True)
-    file_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    payload = json.dumps(data, ensure_ascii=False, indent=2)
+    temp_path = file_path.with_name(f".{file_path.name}.{os.getpid()}.tmp")
+    try:
+        temp_path.write_text(payload, encoding="utf-8")
+        temp_path.replace(file_path)
+    finally:
+        if temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                LOGGER.warning("Failed to remove temporary JSON file %s", temp_path)
+
+
+def _backup_invalid_json(file_path: Path) -> Path | None:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = file_path.with_name(f"{file_path.name}.invalid-{timestamp}")
+    try:
+        shutil.copyfile(file_path, backup_path)
+        return backup_path
+    except OSError:
+        return None
 
 
 def timestamped_export_path(directory: Path, prefix: str, extension: str) -> Path:

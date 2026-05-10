@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from threading import Event
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -11,15 +12,15 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
-    QPushButton,
+    QSplitter,
     QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from app.models.network_models import TraceHop
 from app.models.result_models import OperationResult
+from app.ui.common import make_table_item, set_table_minimums
 from app.utils.parser import parse_trace_hop_line, parse_trace_hops
 from app.utils.validators import ValidationError, validate_host_input
 
@@ -31,15 +32,15 @@ class TraceDiagnosticsMixin:
         page = QWidget()
         layout = QVBoxLayout(page)
 
-        group = QGroupBox("경로 추적")
+        group = QGroupBox("경로 추적 (tracert/pathping)")
         form = QFormLayout(group)
         self.trace_target_edit = QLineEdit()
         self.trace_target_edit.setPlaceholderText("예: 8.8.8.8")
         self.trace_no_resolve_check = QCheckBox("호스트 이름 해석 안 함 (-d / -n)")
 
         button_row = QHBoxLayout()
-        self.tracert_button = make_action_button("tracert 실행", ActionKind.START)
-        self.pathping_button = make_action_button("pathping 실행", ActionKind.START)
+        self.tracert_button = make_action_button("경로 추적 실행 (tracert)", ActionKind.START)
+        self.pathping_button = make_action_button("손실률 측정 (pathping)", ActionKind.UTILITY)
         self.trace_cancel_button = make_action_button("중지", ActionKind.STOP)
         self.trace_cancel_button.setEnabled(False)
         button_row.addWidget(self.tracert_button)
@@ -50,18 +51,29 @@ class TraceDiagnosticsMixin:
         form.addRow("대상", self.trace_target_edit)
         form.addRow("", self.trace_no_resolve_check)
         form.addRow("", button_row)
+        self.pathping_hint_label = QLabel("pathping은 홉별 손실률을 측정하므로 수 분 걸릴 수 있습니다.")
+        self.pathping_hint_label.setWordWrap(True)
+        self.pathping_hint_label.setStyleSheet("color:#92400e;")
+        form.addRow("", self.pathping_hint_label)
         layout.addWidget(group)
 
         self.trace_status_label = QLabel("준비")
         layout.addWidget(self.trace_status_label)
+        self.trace_splitter = QSplitter(Qt.Vertical)
+        self.trace_splitter.setChildrenCollapsible(False)
         self.trace_table = QTableWidget(0, 7)
         self.trace_table.setHorizontalHeaderLabels(["Hop", "RTT1", "RTT2", "RTT3", "평균(ms)", "목적지", "상태"])
         self._setup_table(self.trace_table)
         self._set_stretch_columns(self.trace_table, 5)
-        self.trace_table.setMaximumHeight(220)
-        layout.addWidget(self.trace_table)
+        set_table_minimums(self.trace_table, 180, (5,))
+        self.trace_splitter.addWidget(self.trace_table)
         self.trace_output = self._output()
-        layout.addWidget(self.trace_output, 1)
+        self.trace_output.setMinimumHeight(100)
+        self.trace_output.setMaximumHeight(16777215)
+        self.trace_output.setPlaceholderText("tracert/pathping 원본 명령 출력이 여기에 표시됩니다.")
+        self.trace_splitter.addWidget(self.trace_output)
+        self.trace_splitter.setSizes([420, 160])
+        layout.addWidget(self.trace_splitter, 1)
 
         self.tracert_button.clicked.connect(lambda: self.start_trace("tracert"))
         self.pathping_button.clicked.connect(lambda: self.start_trace("pathping"))
@@ -133,7 +145,7 @@ class TraceDiagnosticsMixin:
             hop.status or "-",
         ]
         for column, value in enumerate(values):
-            item = QTableWidgetItem(value)
+            item = make_table_item(value)
             if column == 6:
                 if hop.status == "정상":
                     item.setForeground(QColor("#1b5e20"))

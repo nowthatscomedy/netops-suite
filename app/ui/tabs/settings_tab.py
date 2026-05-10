@@ -8,17 +8,16 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
-    QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
 from app.app_state import AppState
+from app.ui.common import make_selectable_wrapped_label
 from app.utils.file_utils import default_update_config, open_in_explorer
 from app.version import __version__
-
-
 from netops_suite.ui.actions import ActionKind, make_action_button
+
 
 class SettingsTab(QWidget):
     check_updates_requested = Signal(dict)
@@ -46,17 +45,13 @@ class SettingsTab(QWidget):
         form = QFormLayout()
         self.version_label = QLabel(__version__)
         self.check_on_startup_check = QCheckBox("프로그램 시작 시 업데이트 확인")
-        self.include_prerelease_check = QCheckBox("사전 배포(prerelease) 포함")
 
         form.addRow("현재 버전", self.version_label)
         form.addRow("", self.check_on_startup_check)
-        form.addRow("", self.include_prerelease_check)
         update_layout.addLayout(form)
 
         button_row = QHBoxLayout()
-        self.save_update_button = make_action_button("업데이트 옵션 저장", ActionKind.SAVE)
         self.check_update_button = make_action_button("업데이트 확인", ActionKind.START)
-        button_row.addWidget(self.save_update_button)
         button_row.addWidget(self.check_update_button)
         button_row.addStretch(1)
         update_layout.addLayout(button_row)
@@ -72,17 +67,17 @@ class SettingsTab(QWidget):
 
         path_group = QGroupBox("경로")
         path_layout = QVBoxLayout(path_group)
-        self.config_dir_label = QLabel()
-        self.ip_profile_label = QLabel()
-        self.log_dir_label = QLabel()
+        self.config_dir_label = make_selectable_wrapped_label()
+        self.ip_profile_label = make_selectable_wrapped_label()
+        self.log_dir_label = make_selectable_wrapped_label()
         path_layout.addWidget(self.config_dir_label)
         path_layout.addWidget(self.ip_profile_label)
         path_layout.addWidget(self.log_dir_label)
 
         folder_button_row = QHBoxLayout()
-        self.open_config_button = make_action_button("Config 폴더 열기", ActionKind.OPEN)
+        self.open_config_button = make_action_button("설정 폴더 열기", ActionKind.OPEN)
         self.open_logs_button = make_action_button("로그 폴더 열기", ActionKind.OPEN)
-        self.reload_button = make_action_button("디스크에서 다시 불러오기", ActionKind.REFRESH)
+        self.reload_button = make_action_button("다시 불러오기", ActionKind.REFRESH)
         folder_button_row.addWidget(self.open_config_button)
         folder_button_row.addWidget(self.open_logs_button)
         folder_button_row.addWidget(self.reload_button)
@@ -93,23 +88,20 @@ class SettingsTab(QWidget):
         self.open_config_button.clicked.connect(lambda: open_in_explorer(self.state.paths.config_dir))
         self.open_logs_button.clicked.connect(lambda: open_in_explorer(self.state.paths.logs_dir))
         self.reload_button.clicked.connect(self.state.reload_config_files)
-        self.save_update_button.clicked.connect(lambda: self.save_update_settings(show_feedback=True))
+        self.check_on_startup_check.toggled.connect(self._save_startup_update_preference)
         self.check_update_button.clicked.connect(self._request_update_check)
 
     def current_update_config(self) -> dict:
         config = default_update_config()
         config["check_on_startup"] = self.check_on_startup_check.isChecked()
-        config["include_prerelease"] = self.include_prerelease_check.isChecked()
-        config["release_channel"] = "prerelease" if config["include_prerelease"] else "stable"
         return config
 
-    def save_update_settings(self, show_feedback: bool = False) -> dict:
+    def _save_startup_update_preference(self, checked: bool) -> None:
         config = dict(self.state.app_config)
-        config["update"] = self.current_update_config()
+        update_config = default_update_config()
+        update_config["check_on_startup"] = checked
+        config["update"] = update_config
         self.state.save_app_config(config)
-        if show_feedback:
-            self.set_update_status("업데이트 옵션을 저장했습니다.")
-        return config["update"]
 
     def set_update_status(self, message: str, details: str = "") -> None:
         self.update_status_label.setText(message)
@@ -119,20 +111,19 @@ class SettingsTab(QWidget):
             self.update_details.clear()
 
     def set_update_busy(self, busy: bool) -> None:
-        self.save_update_button.setEnabled(not busy)
         self.check_update_button.setEnabled(not busy)
 
     def reload_view(self) -> None:
         update_config = self.state.app_config.get("update", {})
-        self.check_on_startup_check.setChecked(bool(update_config.get("check_on_startup", True)))
-        self.include_prerelease_check.setChecked(bool(update_config.get("include_prerelease", False)))
+        was_blocked = self.check_on_startup_check.blockSignals(True)
+        self.check_on_startup_check.setChecked(bool(update_config.get("check_on_startup", False)))
+        self.check_on_startup_check.blockSignals(was_blocked)
 
-        self.config_dir_label.setText(f"Config 폴더: {self.state.paths.config_dir}")
+        self.config_dir_label.setText(f"설정 폴더: {self.state.paths.config_dir}")
         self.ip_profile_label.setText(f"IP 프로파일: {self.state.paths.ip_profiles}")
         self.log_dir_label.setText(f"로그 폴더: {self.state.paths.logs_dir}")
         self.version_label.setText(__version__)
         self.set_update_status("업데이트는 프로그램 내부에 고정된 공식 배포 채널을 사용합니다.")
 
     def _request_update_check(self) -> None:
-        update_config = self.save_update_settings(show_feedback=False)
-        self.check_updates_requested.emit(dict(update_config))
+        self.check_updates_requested.emit(self.current_update_config())

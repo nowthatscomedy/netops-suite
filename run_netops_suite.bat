@@ -3,22 +3,22 @@ setlocal
 cd /d "%~dp0"
 
 if not exist ".venv\Scripts\python.exe" (
-    py -3 -m venv .venv
-    if errorlevel 1 goto :error
+    echo Python virtual environment was not found.
+    echo Run the setup command first:
+    echo   powershell -ExecutionPolicy Bypass -File .\scripts\install_dev.ps1
+    set EXIT_CODE=1
+    goto :error
 )
 
-call ".venv\Scripts\activate.bat"
-python -m pip install -r requirements.txt
-if errorlevel 1 goto :error
-
-python main.py
+".venv\Scripts\python.exe" main.py
 if errorlevel 1 goto :error
 
 exit /b 0
 
 :error
+if "%EXIT_CODE%"=="" set EXIT_CODE=%errorlevel%
 echo.
-echo NetOps Suite failed to start. Error code: %errorlevel%
+echo NetOps Suite failed to start. Error code: %EXIT_CODE%
 pause
-exit /b %errorlevel%
+exit /b %EXIT_CODE%
 

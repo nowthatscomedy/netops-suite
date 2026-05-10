@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import inspect
+import logging
 from typing import Any, Callable
 
 from PySide6.QtCore import QObject, QRunnable, Signal, Slot
+
+LOGGER = logging.getLogger("netops_suite.worker")
 
 
 class WorkerSignals(QObject):
@@ -35,8 +38,9 @@ class FunctionWorker(QRunnable):
                 self.kwargs["progress_callback"] = self.signals.progress
             result = self.fn(*self.args, **self.kwargs)
         except Exception as exc:
+            LOGGER.exception("Background worker failed in %s", getattr(self.fn, "__qualname__", repr(self.fn)))
             try:
-                self.signals.error.emit(str(exc))
+                self.signals.error.emit(str(exc) or exc.__class__.__name__)
             except RuntimeError:
                 return
         else:

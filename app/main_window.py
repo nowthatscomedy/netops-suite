@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Callable
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QFont, QFontDatabase
 from PySide6.QtWidgets import (
     QApplication,
     QDockWidget,
@@ -15,12 +15,11 @@ from PySide6.QtWidgets import (
     QStatusBar,
     QTabWidget,
     QToolBar,
-    QToolButton,
 )
 
 from app.app_state import AppState
 from app.models.update_models import DownloadedUpdate, UpdateCheckResult
-from app.ui.common import JobRunner
+from app.ui.common import JobRunner, confirm_risky_action, make_menu_button
 from app.ui.tabs.artifacts_tab import ArtifactsTab
 from app.ui.tabs.config_builder_tab import ConfigBuilderTab
 from app.ui.tabs.diagnostics_tab import DiagnosticsTab
@@ -42,8 +41,9 @@ class MainWindow(QMainWindow):
         self._update_busy = False
         self._startup_activated = False
         self.setWindowTitle("NetOps Suite")
+        self._apply_locale_font()
         self._apply_window_icon()
-        self.resize(1120, 760)
+        self.resize(1120, 720)
         self.setDockOptions(
             QMainWindow.AnimatedDocks
             | QMainWindow.AllowNestedDocks
@@ -62,6 +62,20 @@ class MainWindow(QMainWindow):
         if not icon.isNull():
             self.setWindowIcon(icon)
 
+    def _apply_locale_font(self) -> None:
+        families = set(QFontDatabase.families())
+        for family in ("Malgun Gothic", "맑은 고딕", "Segoe UI"):
+            if family not in families:
+                continue
+            app = QApplication.instance()
+            base_font = app.font() if app is not None else self.font()
+            font = QFont(base_font)
+            font.setFamily(family)
+            self.setFont(font)
+            if app is not None:
+                app.setFont(font)
+            return
+
     def _build_ui(self) -> None:
         self.tab_widget = QTabWidget()
         self.interface_tab = InterfaceTab(self.state)
@@ -72,13 +86,13 @@ class MainWindow(QMainWindow):
         self.artifacts_tab = ArtifactsTab(self.state)
         self.settings_tab = SettingsTab(self.state)
 
-        self.tab_widget.addTab(self.interface_tab, "인터페이스")
-        self.tab_widget.addTab(self.diagnostics_tab, "진단")
-        self.tab_widget.addTab(self.wireless_tab, "무선 상태")
-        self.tab_widget.addTab(self.inspector_tab, "장비 점검")
-        self.tab_widget.addTab(self.config_builder_tab, "설정 생성")
-        self.tab_widget.addTab(self.artifacts_tab, "작업 기록")
-        self.tab_widget.addTab(self.settings_tab, "설정")
+        self.tab_widget.addTab(self.interface_tab, "네트워크 설정")
+        self.tab_widget.addTab(self.diagnostics_tab, "연결 진단")
+        self.tab_widget.addTab(self.wireless_tab, "Wi-Fi 분석")
+        self.tab_widget.addTab(self.inspector_tab, "장비 점검/백업")
+        self.tab_widget.addTab(self.config_builder_tab, "CLI 설정 생성")
+        self.tab_widget.addTab(self.artifacts_tab, "결과 파일")
+        self.tab_widget.addTab(self.settings_tab, "프로그램 설정")
         self.setCentralWidget(self.tab_widget)
 
         toolbar = QToolBar("메인 도구", self)
@@ -102,19 +116,16 @@ class MainWindow(QMainWindow):
         self.view_menu = QMenu("보기", self)
         self.toggle_log_view_action = QAction("애플리케이션 로그", self)
         self.toggle_log_view_action.setCheckable(True)
-        self.ping_result_view_action = QAction("Ping 결과 창", self)
+        self.ping_result_view_action = QAction("Ping 결과 표", self)
         self.ping_result_view_action.setCheckable(True)
-        self.tcp_result_view_action = QAction("TCPing 결과 창", self)
+        self.tcp_result_view_action = QAction("포트 확인 결과 창 (TCPing)", self)
         self.tcp_result_view_action.setCheckable(True)
         self.view_menu.addAction(self.toggle_log_view_action)
         self.view_menu.addSeparator()
         self.view_menu.addAction(self.ping_result_view_action)
         self.view_menu.addAction(self.tcp_result_view_action)
 
-        self.view_button = QToolButton(self)
-        self.view_button.setText("보기")
-        self.view_button.setPopupMode(QToolButton.InstantPopup)
-        self.view_button.setMenu(self.view_menu)
+        self.view_button = make_menu_button("보기", self.view_menu, "로그와 분리된 결과 표를 표시합니다.")
         self.view_button.setStyleSheet("QToolButton::menu-indicator { image: none; width: 0px; }")
         toolbar.addWidget(self.view_button)
 
@@ -249,7 +260,7 @@ class MainWindow(QMainWindow):
 
     def _maybe_check_updates_on_startup(self) -> None:
         update_config = dict(self.state.app_config.get("update", {}) or {})
-        if not update_config.get("check_on_startup", True):
+        if not update_config.get("check_on_startup", False):
             return
         self._check_for_updates(update_config, manual=False)
 
@@ -298,8 +309,6 @@ class MainWindow(QMainWindow):
             details_lines.append(f"릴리즈: {result.release_name}")
         if result.latest_version:
             details_lines.append(f"최신 버전: {result.latest_version}")
-        if result.is_prerelease:
-            details_lines.append("배포 종류: 사전 배포")
         if result.published_at:
             details_lines.append(f"게시일: {result.published_at}")
         if result.release_url:
@@ -330,8 +339,6 @@ class MainWindow(QMainWindow):
             f"현재 버전: {result.current_version}",
             f"최신 버전: {result.latest_version}",
         ]
-        if result.is_prerelease:
-            message_lines.append("배포 종류: 사전 배포")
         if result.release_name:
             message_lines.append(f"릴리즈: {result.release_name}")
         if result.asset:
@@ -381,11 +388,15 @@ class MainWindow(QMainWindow):
         self.settings_tab.set_update_status("업데이트 파일 검증을 완료했습니다.", "\n".join(details))
         self.statusBar().showMessage("업데이트 파일 검증 완료")
 
-        question = (
-            "검증한 설치 프로그램을 실행할까요?\n\n"
-            "실행하면 현재 프로그램을 종료하고 설치 프로그램을 시작합니다."
-        )
-        if QMessageBox.question(self, "업데이트 설치", question) != QMessageBox.Yes:
+        if not confirm_risky_action(
+            self,
+            "업데이트 설치",
+            impact="현재 프로그램을 종료하고 검증된 설치 프로그램을 실행합니다. 설치 중에는 NetOps Suite를 사용할 수 없습니다.",
+            reversibility="설치 전에는 취소할 수 있습니다. 설치 후 되돌리기는 Windows 앱 제거 또는 이전 버전 재설치가 필요할 수 있습니다.",
+            output_location=f"업데이트 상태와 검증 정보는 프로그램 설정 화면에 표시되고 설치 파일은 {downloaded.asset_path}에 남습니다.",
+            question="검증한 설치 프로그램을 실행할까요?",
+            confirm_text="설치 실행",
+        ):
             return
 
         try:
@@ -424,4 +435,5 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         self._save_ui_state()
+        self.state.shutdown()
         super().closeEvent(event)

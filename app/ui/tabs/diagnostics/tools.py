@@ -4,6 +4,7 @@ import re
 from threading import Event
 from typing import Callable
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -18,33 +19,27 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
+    QSplitter,
     QTableWidget,
-    QTableWidgetItem,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from app.models.network_models import ArpScanEntry
 from app.models.result_models import OperationResult
+from app.ui.common import (
+    confirm_risky_action,
+    make_empty_state,
+    make_table_item,
+    make_table_log_splitter,
+    set_table_minimums,
+)
 from app.utils.validators import ValidationError, calculate_subnet_details
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
 
 class ToolsDiagnosticsMixin:
-    def _build_tools_tab(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        self.tools_inner_tab = QTabWidget()
-        self.tools_inner_tab.addTab(self._build_command_tools_page(), "명령 출력")
-        self.tools_inner_tab.addTab(self._build_arp_scan_page(), "ARP 스캔")
-        self.tools_inner_tab.addTab(self._build_subnet_calc_page(), "서브넷 계산기")
-        self.tools_inner_tab.addTab(self._build_oui_lookup_page(), "MAC OUI")
-        layout.addWidget(self.tools_inner_tab, 1)
-        self._refresh_oui_status_labels()
-        return page
-
     def _build_command_tools_page(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
@@ -69,6 +64,7 @@ class ToolsDiagnosticsMixin:
         layout.addLayout(button_row)
 
         self.tools_output = self._output()
+        self.tools_output.setPlaceholderText("명령을 선택하면 결과가 여기에 표시됩니다.")
         layout.addWidget(self.tools_output, 1)
 
         self.snapshot_button.clicked.connect(self.load_interface_snapshot)
@@ -76,10 +72,22 @@ class ToolsDiagnosticsMixin:
         self.route_button.clicked.connect(lambda: self._run_tools_command(self.state.trace_service.run_route_print))
         self.arp_button.clicked.connect(lambda: self._run_tools_command(self.state.trace_service.run_arp_table))
         self.flush_dns_button.clicked.connect(
-            lambda: self._run_tools_command(self.state.dns_service.flush_dns_cache)
+            self._confirm_and_flush_dns_cache
         )
         self.public_ip_button.clicked.connect(self.check_public_ip)
         return page
+
+    def _confirm_and_flush_dns_cache(self) -> None:
+        if not confirm_risky_action(
+            self,
+            "DNS 캐시 비우기",
+            "현재 Windows DNS 캐시가 즉시 비워져, 이후 이름 해석은 새로 조회됩니다.",
+            "자동으로 다시 쌓이지만, 캐시 기반 문제 재현 상태는 사라질 수 있습니다.",
+            "실행 결과는 명령 출력 영역과 애플리케이션 로그에 기록됩니다.",
+            confirm_text="캐시 비우기",
+        ):
+            return
+        self._run_tools_command(self.state.dns_service.flush_dns_cache)
 
     def _build_subnet_calc_page(self) -> QWidget:
         page = QWidget()
@@ -95,10 +103,10 @@ class ToolsDiagnosticsMixin:
         self.subnet_calc_prefix_edit.setPlaceholderText("예: 24 또는 255.255.255.0")
         self.subnet_calc_interface_combo = QComboBox()
         self.subnet_calc_interface_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        self.subnet_calc_refresh_button = make_action_button("인터페이스 불러오기", ActionKind.REFRESH)
+        self.subnet_calc_refresh_button = make_action_button("어댑터 목록 불러오기", ActionKind.REFRESH)
         self.subnet_calc_use_selected_button = make_action_button("선택 값 자동 입력", ActionKind.UTILITY)
         subnet_form.addRow("IPv4", self.subnet_calc_ip_edit)
-        subnet_form.addRow("Prefix / Mask", self.subnet_calc_prefix_edit)
+        subnet_form.addRow("프리픽스 / 마스크", self.subnet_calc_prefix_edit)
 
         interface_row = QHBoxLayout()
         interface_row.addWidget(self.subnet_calc_interface_combo, 1)
@@ -113,7 +121,7 @@ class ToolsDiagnosticsMixin:
         subnet_button_row.addStretch(1)
         input_layout.addLayout(subnet_button_row)
 
-        self.subnet_calc_status_label = QLabel("IPv4와 Prefix를 입력하면 서브넷 정보를 계산합니다.")
+        self.subnet_calc_status_label = QLabel("IPv4와 프리픽스를 입력하면 서브넷 정보를 계산합니다.")
         self.subnet_calc_status_label.setWordWrap(True)
         self.subnet_calc_status_label.setStyleSheet("color:#666;")
         input_layout.addWidget(self.subnet_calc_status_label)
@@ -132,12 +140,17 @@ class ToolsDiagnosticsMixin:
         for index, (key, title, color) in enumerate(cards):
             card, value_label = self._build_subnet_metric_card(title, color)
             self.subnet_calc_summary_labels[key] = value_label
-            summary_grid.addWidget(card, index // 2, index % 2)
-        result_layout.addLayout(summary_grid)
+            summary_grid.addWidget(card, 0, index)
+            summary_grid.setColumnStretch(index, 1)
+        self.subnet_calc_summary_widget = QWidget()
+        self.subnet_calc_summary_widget.setLayout(summary_grid)
+        result_layout.addWidget(self.subnet_calc_summary_widget)
 
         self.subnet_calc_result_hint = QLabel("계산 후 요약 카드와 상세 네트워크 정보를 아래에서 확인할 수 있습니다.")
         self.subnet_calc_result_hint.setStyleSheet("color:#666; padding:4px 2px 2px 2px;")
         result_layout.addWidget(self.subnet_calc_result_hint)
+        self.subnet_calc_empty_label = make_empty_state("IPv4와 프리픽스/마스크를 입력하고 서브넷 계산을 누르면 결과가 표시됩니다.")
+        result_layout.addWidget(self.subnet_calc_empty_label)
 
         self.subnet_calc_detail_table = QTableWidget(0, 2)
         self.subnet_calc_detail_table.setHorizontalHeaderLabels(["항목", "값"])
@@ -148,6 +161,7 @@ class ToolsDiagnosticsMixin:
         self.subnet_calc_detail_table.setAlternatingRowColors(True)
         self.subnet_calc_detail_table.setColumnWidth(0, 180)
         self.subnet_calc_detail_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        set_table_minimums(self.subnet_calc_detail_table, 160, (1,))
         result_layout.addWidget(self.subnet_calc_detail_table, 1)
         self._clear_subnet_calc_results()
         layout.addWidget(result_group, 1)
@@ -163,13 +177,15 @@ class ToolsDiagnosticsMixin:
         page = QWidget()
         layout = QVBoxLayout(page)
 
-        group = QGroupBox("ARP 스캔 / 같은 대역 장비 탐색")
-        form = QFormLayout(group)
+        group = QGroupBox("같은 대역 장비 찾기 (ARP 스캔)")
+        form = QGridLayout(group)
+        form.setColumnStretch(1, 1)
+        form.setColumnStretch(3, 1)
         self.arp_subnet_edit = QLineEdit()
         self.arp_subnet_edit.setPlaceholderText("예: 192.168.0.0/24")
         self.arp_subnet_combo = QComboBox()
         self.arp_subnet_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        self.arp_refresh_subnets_button = make_action_button("인터페이스 불러오기", ActionKind.REFRESH)
+        self.arp_refresh_subnets_button = make_action_button("어댑터 목록 불러오기", ActionKind.REFRESH)
         self.arp_use_selected_subnet_button = make_action_button("선택 값 자동 입력", ActionKind.UTILITY)
         self.arp_timeout_edit = QLineEdit()
         self.arp_timeout_edit.setPlaceholderText("800")
@@ -181,7 +197,7 @@ class ToolsDiagnosticsMixin:
         self.arp_start_button = make_action_button("ARP 스캔", ActionKind.START)
         self.arp_cancel_button = make_action_button("중지", ActionKind.STOP)
         self.arp_cancel_button.setEnabled(False)
-        self.arp_refresh_oui_button = make_action_button("OUI 캐시 갱신", ActionKind.REFRESH)
+        self.arp_refresh_oui_button = make_action_button("OUI 캐시 업데이트", ActionKind.REFRESH)
         self.arp_oui_status_label = QLabel()
         self.arp_oui_status_label.setStyleSheet("color:#666;")
 
@@ -197,25 +213,40 @@ class ToolsDiagnosticsMixin:
         action_row.addWidget(self.arp_refresh_oui_button)
         action_row.addStretch(1)
 
-        form.addRow("서브넷", self.arp_subnet_edit)
-        form.addRow("인터페이스", subnet_button_row)
-        form.addRow("Timeout (ms)", self.arp_timeout_edit)
-        form.addRow("동시 실행 수", self.arp_workers_edit)
-        form.addRow("", action_row)
-        form.addRow("OUI 캐시", self.arp_oui_status_label)
+        form.addWidget(QLabel("서브넷"), 0, 0)
+        form.addWidget(self.arp_subnet_edit, 0, 1)
+        form.addWidget(QLabel("Timeout (ms)"), 0, 2)
+        form.addWidget(self.arp_timeout_edit, 0, 3)
+        form.addWidget(QLabel("인터페이스"), 1, 0)
+        form.addLayout(subnet_button_row, 1, 1, 1, 3)
+        form.addWidget(QLabel("동시 실행 수"), 2, 0)
+        form.addWidget(self.arp_workers_edit, 2, 1)
+        form.addWidget(QLabel("OUI 캐시"), 2, 2)
+        form.addWidget(self.arp_oui_status_label, 2, 3)
+        form.addLayout(action_row, 3, 1, 1, 3)
         layout.addWidget(group)
 
         self.arp_table = QTableWidget(0, 8)
         self.arp_table.setHorizontalHeaderLabels(
-            ["IP", "MAC", "벤더", "상태", "감지", "응답(ms)", "ARP 타입", "인터페이스"]
+            ["IP", "MAC", "제조사(vendor)", "상태", "감지", "응답(ms)", "ARP 타입", "어댑터"]
         )
         self._setup_table(self.arp_table)
         self._set_stretch_columns(self.arp_table, 2, 7)
-        layout.addWidget(self.arp_table, 1)
+        set_table_minimums(self.arp_table, 220, (2, 7))
+        self.arp_empty_label = make_empty_state("서브넷을 선택하고 ARP 스캔을 실행하면 발견 장비가 여기에 표시됩니다.")
+        layout.addWidget(self.arp_empty_label)
 
         self.arp_output = self._output()
-        self.arp_output.setMaximumHeight(150)
-        layout.addWidget(self.arp_output)
+        self.arp_output.setPlaceholderText("ARP 스캔 진행 로그가 여기에 표시됩니다.")
+        self.arp_output.setMinimumHeight(90)
+        self.arp_output.setMaximumHeight(16777215)
+
+        self.arp_result_splitter = QSplitter(Qt.Vertical)
+        self.arp_result_splitter.setChildrenCollapsible(False)
+        self.arp_result_splitter.addWidget(self.arp_table)
+        self.arp_result_splitter.addWidget(self.arp_output)
+        self.arp_result_splitter.setSizes([420, 110])
+        layout.addWidget(self.arp_result_splitter, 1)
 
         self.arp_refresh_subnets_button.clicked.connect(self.refresh_arp_subnets)
         self.arp_use_selected_subnet_button.clicked.connect(self.use_selected_arp_subnet)
@@ -228,7 +259,7 @@ class ToolsDiagnosticsMixin:
         page = QWidget()
         layout = QVBoxLayout(page)
 
-        group = QGroupBox("MAC OUI 벤더 조회")
+        group = QGroupBox("MAC 제조사 조회 (OUI)")
         form = QFormLayout(group)
         self.oui_mac_edit = QPlainTextEdit()
         self.oui_mac_edit.setMaximumHeight(110)
@@ -240,7 +271,7 @@ class ToolsDiagnosticsMixin:
             "58 86 94 A1 5A BA"
         )
         self.oui_lookup_button = make_action_button("OUI 조회", ActionKind.PRIMARY)
-        self.oui_refresh_button = make_action_button("OUI 캐시 갱신", ActionKind.REFRESH)
+        self.oui_refresh_button = make_action_button("OUI 캐시 업데이트", ActionKind.REFRESH)
         self.oui_status_label = QLabel()
         self.oui_status_label.setStyleSheet("color:#666;")
 
@@ -255,7 +286,7 @@ class ToolsDiagnosticsMixin:
         layout.addWidget(group)
 
         self.oui_table = QTableWidget(0, 5)
-        self.oui_table.setHorizontalHeaderLabels(["이름", "입력 MAC", "정규화", "벤더", "상태"])
+        self.oui_table.setHorizontalHeaderLabels(["이름", "입력 MAC", "정규화", "제조사(vendor)", "상태"])
         self._setup_table(self.oui_table)
         header = self.oui_table.horizontalHeader()
         header.setStretchLastSection(False)
@@ -264,11 +295,15 @@ class ToolsDiagnosticsMixin:
         header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(3, header.ResizeMode.Stretch)
         header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        layout.addWidget(self.oui_table, 1)
+        set_table_minimums(self.oui_table, 180, (3,))
+        self.oui_empty_label = make_empty_state("MAC 주소를 입력하고 OUI 조회를 실행하면 제조사(vendor)가 표시됩니다.")
+        layout.addWidget(self.oui_empty_label)
 
         self.oui_result_output = self._output()
-        self.oui_result_output.setMaximumHeight(160)
-        layout.addWidget(self.oui_result_output)
+        self.oui_result_output.setMinimumHeight(90)
+        self.oui_result_output.setMaximumHeight(16777215)
+        self.oui_result_splitter = make_table_log_splitter(self.oui_table, self.oui_result_output, 360, 120)
+        layout.addWidget(self.oui_result_splitter, 1)
 
         self.oui_lookup_button.clicked.connect(self.lookup_oui_vendor)
         self.oui_refresh_button.clicked.connect(lambda: self.refresh_oui_cache(self.oui_result_output))
@@ -310,7 +345,7 @@ class ToolsDiagnosticsMixin:
         prefix_text = self.subnet_calc_prefix_edit.text().strip()
 
         if not ip_text and not prefix_text:
-            self.subnet_calc_status_label.setText("IPv4와 Prefix를 입력하면 서브넷 정보를 계산합니다.")
+            self.subnet_calc_status_label.setText("IPv4와 프리픽스를 입력하면 서브넷 정보를 계산합니다.")
             self.subnet_calc_status_label.setStyleSheet("color:#666;")
             self._clear_subnet_calc_results()
             return
@@ -436,7 +471,18 @@ class ToolsDiagnosticsMixin:
             QMessageBox.warning(self, "입력 확인", str(exc))
             return
 
+        if not confirm_risky_action(
+            self,
+            "ARP 스캔 실행",
+            f"{self.arp_subnet_edit.text().strip() or '입력한 서브넷'} 대역에 여러 ICMP/ARP 확인 요청을 보냅니다.",
+            "스캔 자체는 설정을 변경하지 않지만, 보안 장비 로그에 탐지될 수 있습니다.",
+            "스캔 결과는 ARP 스캔 표와 아래 로그 영역에 표시됩니다.",
+            confirm_text="스캔 시작",
+        ):
+            return
+
         self.arp_table.setRowCount(0)
+        self.arp_empty_label.setVisible(False)
         self.arp_output.clear()
         self.arp_cancel_event = Event()
         self._current_arp_scan_subnet = self.arp_subnet_edit.text().strip()
@@ -484,7 +530,7 @@ class ToolsDiagnosticsMixin:
                 entry.interface_name or "-",
             ]
             for column, value in enumerate(values):
-                item = QTableWidgetItem(value)
+                item = make_table_item(value)
                 if column == 3:
                     if entry.reachable:
                         item.setForeground(QColor("#1b5e20"))
@@ -495,6 +541,7 @@ class ToolsDiagnosticsMixin:
                 elif column == 4 and detection_color is not None:
                     item.setForeground(detection_color)
                 self.arp_table.setItem(row, column, item)
+        self.arp_empty_label.setVisible(not bool(entries))
 
     def _analyze_arp_entries(
         self,
@@ -597,6 +644,7 @@ class ToolsDiagnosticsMixin:
             return
 
         self.oui_table.setRowCount(0)
+        self.oui_empty_label.setVisible(False)
         found_count = 0
         invalid_count = 0
         lines = [f"OUI 조회 {len(entries)}건", ""]
@@ -610,10 +658,10 @@ class ToolsDiagnosticsMixin:
                 vendor = "-"
                 invalid_count += 1
             elif match is None:
-                judgment = "벤더 정보 없음"
+                judgment = "제조사 정보 없음"
                 vendor = "-"
             else:
-                judgment = "벤더 확인됨"
+                judgment = "제조사 확인됨"
                 vendor = match.organization
                 found_count += 1
 
@@ -621,9 +669,9 @@ class ToolsDiagnosticsMixin:
             self.oui_table.insertRow(row)
             values = [name if name != mac_address else "-", mac_address, normalized or "-", vendor, judgment]
             for column, value in enumerate(values):
-                item = QTableWidgetItem(value)
+                item = make_table_item(value)
                 if column == 4:
-                    if judgment == "벤더 확인됨":
+                    if judgment == "제조사 확인됨":
                         item.setForeground(QColor("#1b5e20"))
                     elif judgment == "입력 형식 확인 필요":
                         item.setForeground(QColor("#b71c1c"))
@@ -643,6 +691,7 @@ class ToolsDiagnosticsMixin:
             ]
         )
         self.oui_result_output.setPlainText("\n".join(lines))
+        self.oui_empty_label.setVisible(self.oui_table.rowCount() == 0)
 
     def refresh_oui_cache(self, output_widget: QPlainTextEdit) -> None:
         output_widget.clear()
@@ -650,7 +699,7 @@ class ToolsDiagnosticsMixin:
             self.state.oui_service.refresh_cache,
             on_progress=output_widget.appendPlainText,
             on_result=lambda result, widget=output_widget: self._finish_oui_refresh(result, widget),
-            error_title="OUI 캐시 갱신 실패",
+            error_title="OUI 캐시 업데이트 실패",
         )
 
     def _finish_oui_refresh(self, result: OperationResult, output_widget: QPlainTextEdit) -> None:

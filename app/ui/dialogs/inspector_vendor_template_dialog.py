@@ -53,6 +53,14 @@ class PythonParserDialog(QDialog):
         hint.setWordWrap(True)
         layout.addWidget(hint)
 
+        warning = QLabel(
+            "주의: Python 추출 함수는 이 프로그램 권한으로 실행됩니다. "
+            "직접 작성했거나 신뢰할 수 있는 코드만 테스트하고 저장하세요."
+        )
+        warning.setObjectName("pythonParserTrustWarning")
+        warning.setWordWrap(True)
+        layout.addWidget(warning)
+
         form = QFormLayout()
         self.function_name_edit = QLineEdit("parsing_custom_value")
         self.function_name_edit.setPlaceholderText("예: parsing_cpu_usage")

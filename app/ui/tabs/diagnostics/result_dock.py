@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.ui.common import set_table_minimums
 
 from netops_suite.ui.actions import ActionKind, make_action_button
 
@@ -34,6 +35,10 @@ class ResultDockMixin:
         panel = QWidget()
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
+        if hasattr(output, "setMinimumHeight"):
+            output.setMinimumHeight(max(output.minimumHeight(), 110))
+        if hasattr(output, "setMaximumHeight"):
+            output.setMaximumHeight(16777215)
         layout.addWidget(QLabel(title))
         layout.addWidget(output)
         return panel
@@ -46,6 +51,7 @@ class ResultDockMixin:
     ) -> QSplitter:
         splitter = QSplitter(Qt.Vertical)
         splitter.setChildrenCollapsible(False)
+        set_table_minimums(table, 220)
 
         result_host = QWidget()
         result_host_layout = QVBoxLayout(result_host)
@@ -64,10 +70,10 @@ class ResultDockMixin:
         button_row.addStretch(1)
         result_layout.addLayout(button_row)
 
-        placeholder = QLabel("결과 표가 분리되어 있습니다. 상단 `보기` 메뉴에서 다시 복원할 수 있습니다.")
+        placeholder = QLabel("결과 표 분리됨. 보기 메뉴에서 복원할 수 있습니다.")
         placeholder.setAlignment(Qt.AlignCenter)
+        placeholder.setWordWrap(True)
         placeholder.setStyleSheet("color:#666; padding:6px 10px; border:1px dashed #bbb;")
-        placeholder.setMaximumHeight(34)
         placeholder.hide()
 
         self._result_hosts[key] = result_host
@@ -92,7 +98,7 @@ class ResultDockMixin:
 
         splitter.addWidget(result_host)
         splitter.addWidget(log_panel)
-        splitter.setSizes([430, 170])
+        splitter.setSizes([480, 160])
         return splitter
 
     def _detach_result_panel(self, key: str) -> None:
@@ -111,7 +117,7 @@ class ResultDockMixin:
         placeholder.show()
         result_host.setMaximumHeight(40)
 
-        window_title = "Ping 결과 표" if key == "ping" else "TCPing 결과 표"
+        window_title = "Ping 결과 표" if key == "ping" else "포트 확인 결과 표 (TCPing)"
         dock = ResultDockWidget(
             window_title,
             lambda from_dock_close=False, mode=key: self._attach_result_panel(mode, from_dock_close),
@@ -162,7 +168,7 @@ class ResultDockMixin:
         result_host.setMaximumHeight(16777215)
         host_layout.insertWidget(0, panel)
         panel.show()
-        self._result_splitters[key].setSizes([430, 170])
+        self._result_splitters[key].setSizes([480, 160])
         self.result_dock_visibility_changed.emit(key, False)
 
     def set_result_dock_visible(self, key: str, visible: bool) -> None:

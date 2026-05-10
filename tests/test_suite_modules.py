@@ -12,15 +12,18 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 import pandas as pd
 from PySide6.QtCore import QThreadPool
-from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton
+from PySide6.QtWidgets import QApplication, QCheckBox, QGroupBox, QLabel, QMessageBox, QPushButton, QScrollArea, QSizePolicy, QWidget
 
+from app.app_state import AppState
+from app.main_window import MainWindow
+from app.ui.common import confirm_risky_action
 from app.ui.dialogs.inspector_vendor_template_dialog import InspectorVendorTemplateDialog, PythonParserDialog
+from app.ui.tabs.artifacts_tab import ArtifactsTab
 from app.ui.tabs.inspector_tab import InspectorTab
 from app.ui.tabs.config_builder_tab import ConfigBuilderTab
 from app.utils.app_icon import load_app_icon
 from app.utils.file_utils import DEFAULT_UPDATE_ASSET_PATTERN, resolve_asset_path
-from netops_suite.modules.config_builder import ConfigBuilderRenderResult, ConfigBuilderService
-from netops_suite.modules.config_builder.switch_configurator.models import RenderedConfig
+from netops_suite.modules.config_builder import ConfigBuilderService
 from netops_suite.modules.inspector import InspectorService
 from netops_suite.ui.actions import ActionKind, make_action_button
 
@@ -266,6 +269,28 @@ def test_python_parser_dialog_saves_function(qt_app, tmp_path: Path, monkeypatch
         dialog.close()
 
 
+def test_python_parser_dialog_shows_trusted_code_warning(qt_app, tmp_path: Path):
+    service = InspectorService(user_data_dir=tmp_path / "inspector")
+    dialog = PythonParserDialog(service)
+    try:
+        warning = dialog.findChild(QLabel, "pythonParserTrustWarning")
+
+        assert warning is not None
+        assert "신뢰할 수 있는 코드만" in warning.text()
+    finally:
+        dialog.close()
+
+
+def test_inspector_logs_custom_parser_test_failure(tmp_path: Path, caplog):
+    service = InspectorService(user_data_dir=tmp_path / "inspector")
+    code = "def parsing_broken(output: str):\n    raise RuntimeError('boom')\n"
+
+    with pytest.raises(RuntimeError, match="boom"):
+        service.test_custom_parser_code("parsing_broken", code, "sample")
+
+    assert "Python custom parser failed during test: parsing_broken" in caplog.text
+
+
 def test_split_fields_parser_extracts_range():
     service = InspectorService()
     with service._runtime_import_path():
@@ -393,69 +418,181 @@ def test_config_builder_generates_blank_sample_for_custom_profile(tmp_path: Path
     assert lines[1].startswith(",CUSTOM_PROFILE,,")
 
 
-def test_config_builder_tab_shows_selected_profile_details_and_blocks(qt_app, tmp_path: Path):
+def test_config_builder_tab_embeds_full_builder_and_removes_legacy_shortcuts(qt_app, tmp_path: Path):
     tab = ConfigBuilderTab(_config_builder_state(tmp_path))
     try:
-        _select_config_builder_profile(tab, "SAMPLE_COMPREHENSIVE_REFERENCE")
+        tab.show()
+        QApplication.processEvents()
+        button = lambda name: tab.findChild(QPushButton, name)
+        builder = tab.builder_widget
 
-        blocks = [tab.block_list.item(index).text() for index in range(tab.block_list.count())]
-        details = tab.profile_detail_view.toPlainText()
-        profile = tab._selected_profile()
-
-        assert profile is not None
-        assert blocks == [block.name for block in profile.blocks]
-        assert len(blocks) > 1
-        assert "local_admin_secret" in details
-        assert "sample_comprehensive_reference.yaml" in details
+        assert button("configBuilderGuideButton") is None
+        assert button("configBuilderSampleDeviceValuesButton") is None
+        assert button("configBuilderRequiredColumnsButton") is None
+        assert tab.full_editor_button.text() == "전체 편집기 열기"
+        assert tab.full_editor_button.property("actionKind") == ActionKind.EDIT.value
+        assert "별도 창" in tab.full_editor_button.toolTip()
+        assert builder._embedded is True
+        assert builder.objectName() == "configBuilderEmbeddedBuilder"
+        assert builder.windowTitle() == "CLI 설정 생성"
+        assert builder.findChild(QWidget, "configBuilderCompactCommandBar") is not None
+        assert builder.findChild(QWidget, "configBuilderSummaryChips") is not None
+        assert builder.findChild(QWidget, "configBuilderAdvancedPanel").isHidden()
+        assert builder.findChild(QPushButton, "configBuilderSampleStartButton").text() == "샘플로 시작"
+        assert builder.open_file_button.text() == "장비 변수 파일 열기"
+        assert builder.add_row_button.text() == "빈 행 추가"
+        assert builder.advanced_toggle_button.text() == "고급 작업"
+        assert builder.copy_cli_button.text() == "복사"
+        assert builder.copy_next_cli_button.text() == "복사+다음"
+        assert "자동 적용하지 않고" in builder.copy_next_cli_button.toolTip()
+        assert builder.table_model.headers == ["profile_id"]
+        assert builder.table_model.rowCount() == 0
+        assert builder.current_file_path is None
+        assert builder.file_path_label.text() == "-"
+        assert builder.main_splitter.sizes()[0] > 0
     finally:
         tab.close()
 
 
-def test_config_builder_tab_action_buttons_follow_workflow_state(qt_app, tmp_path: Path):
+def test_config_builder_tab_uses_existing_builder_profile_blocks(qt_app, tmp_path: Path):
     tab = ConfigBuilderTab(_config_builder_state(tmp_path))
     try:
-        button = lambda name: tab.findChild(QPushButton, name)
+        tab.show()
+        QApplication.processEvents()
+        builder = tab.builder_widget
+        group_titles = {group.title(): group for group in builder.findChildren(QGroupBox)}
+        for title in ("명령 블록 선택", "필터", "표시 컬럼", "파일 상태"):
+            assert title in group_titles
+            assert not group_titles[title].isVisible()
 
-        assert button("configBuilderOpenDeviceValuesButton").text() == "장비값 파일 선택"
-        assert button("configBuilderOpenDeviceValuesButton").property("actionKind") == ActionKind.BROWSE.value
-        assert button("configBuilderRenderButton").text() == "CLI 생성"
-        assert button("configBuilderRenderButton").property("actionKind") == ActionKind.PRIMARY.value
-        assert button("configBuilderEditProfileButton").text() == "선택 프로파일 편집"
-        assert button("configBuilderEditProfileButton").property("actionKind") == ActionKind.EDIT.value
-        assert button("configBuilderFullEditorButton").text() == "고급 편집기 열기"
-        assert button("configBuilderCopyButton").text() == "선택 CLI 복사"
-        assert button("configBuilderCopyButton").property("actionKind") == ActionKind.COPY.value
-        assert button("configBuilderCopyNextButton").text() == "복사 후 다음"
+        builder.advanced_toggle_button.setChecked(True)
+        builder.add_profile_combo.setCurrentText("SAMPLE_COMPREHENSIVE_REFERENCE")
+        QApplication.processEvents()
+        assert builder.findChild(QWidget, "configBuilderAdvancedPanel").isVisible()
+        block_group = builder.findChild(QGroupBox, "configBuilderBlockToggleGroup")
+        block_scroll = builder.findChild(QScrollArea, "configBuilderBlockToggleScroll")
 
-        assert not button("configBuilderRenderButton").isEnabled()
-        assert button("configBuilderEditProfileButton").isEnabled()
-        assert not button("configBuilderCopyButton").isEnabled()
-        assert not button("configBuilderSaveBundleButton").isEnabled()
+        assert block_group is not None
+        assert block_scroll is not None
+        assert "QGroupBox#configBuilderBlockToggleGroup" in block_group.styleSheet()
+        assert "QWidget#configBuilderBlockToggleContainer" in block_group.styleSheet()
+        assert "#ffffff" in block_group.styleSheet()
 
-        tab._device_values_path = str(tmp_path / "devices.csv")
-        tab._update_action_states()
-        assert button("configBuilderRenderButton").isEnabled()
+        profile = builder.profiles["SAMPLE_COMPREHENSIVE_REFERENCE"]
+        block_checks = []
+        for index in range(builder.block_toggle_container_layout.count()):
+            widget = builder.block_toggle_container_layout.itemAt(index).widget()
+            if isinstance(widget, QCheckBox):
+                block_checks.append(widget)
+        block_names = [check.text() for check in block_checks]
 
-        tab._last_result = ConfigBuilderRenderResult(
-            profile_issues=[],
-            device_issues=[],
-            rendered=[
-                RenderedConfig(
-                    device_id="sw1",
-                    profile_id="CISCO_IOS_L2_ACCESS_BASE",
-                    text="hostname sw1",
-                    values={},
-                    display_name="sw1",
-                )
-            ],
-            bundle_text="hostname sw1",
-        )
-        tab._fill_result_table()
+        assert block_names == [block.name for block in profile.blocks]
+        assert len(block_names) > 1
+        assert builder.profile_summary_label.text().startswith("프로파일 ")
+    finally:
+        tab.close()
 
-        assert button("configBuilderCopyButton").isEnabled()
-        assert button("configBuilderCopyNextButton").isEnabled()
-        assert button("configBuilderSaveBundleButton").isEnabled()
-        assert button("configBuilderSaveEachButton").isEnabled()
+
+def test_config_builder_tab_initial_empty_state_is_actionable(qt_app, tmp_path: Path):
+    tab = ConfigBuilderTab(_config_builder_state(tmp_path))
+    try:
+        tab.show()
+        QApplication.processEvents()
+        builder = tab.builder_widget
+        empty_state = builder.findChild(QWidget, "configBuilderEmptyState")
+        empty_text = " ".join(label.text() for label in empty_state.findChildren(QLabel))
+
+        assert empty_state is not None
+        assert empty_state.isVisible()
+        assert "아직 장비 목록이 없습니다." in empty_text
+        assert "샘플로 시작" in [button.text() for button in empty_state.findChildren(QPushButton)]
+        assert "장비 변수 파일 열기" in [button.text() for button in empty_state.findChildren(QPushButton)]
+        assert "빈 행 추가" in [button.text() for button in empty_state.findChildren(QPushButton)]
+        assert builder.table_model.rowCount() == 0
+        assert builder.cli_preview.toPlainText() == ""
+        assert builder.issue_list.item(0).text() == "선택한 장비 없음"
+        assert not builder.copy_cli_button.isEnabled()
+        assert not builder.copy_next_cli_button.isEnabled()
+    finally:
+        tab.close()
+
+
+def test_config_builder_tab_empty_state_hides_after_first_row(qt_app, tmp_path: Path):
+    tab = ConfigBuilderTab(_config_builder_state(tmp_path))
+    try:
+        tab.show()
+        QApplication.processEvents()
+        builder = tab.builder_widget
+        empty_state = builder.findChild(QWidget, "configBuilderEmptyState")
+
+        assert empty_state.isVisible()
+        builder.add_row()
+        QApplication.processEvents()
+
+        assert builder.table_model.rowCount() == 1
+        assert not empty_state.isVisible()
+        assert builder._current_source_row() == 0
+        assert builder.findChild(QWidget, "configBuilderAdvancedPanel").isHidden()
+    finally:
+        tab.close()
+
+
+def test_config_builder_tab_sample_start_shows_device_variable_columns(qt_app, tmp_path: Path):
+    tab = ConfigBuilderTab(_config_builder_state(tmp_path))
+    try:
+        tab.show()
+        QApplication.processEvents()
+        builder = tab.builder_widget
+        builder.add_profile_combo.setCurrentText("CISCO_IOSXE_EDGE_PORT_BASE")
+        QApplication.processEvents()
+
+        builder._start_sample_for_current_profile()
+        QApplication.processEvents()
+
+        assert builder.table_model.rowCount() == 2
+        assert "profile_id" in builder.table_model.headers
+        assert "hostname" in builder.table_model.headers
+        assert "access_interface" in builder.table_model.headers
+        assert set(builder.visible_headers) == set(builder.table_model.headers)
+
+        visible_columns = [
+            header
+            for column, header in enumerate(builder.table_model.headers)
+            if not builder.table_view.isColumnHidden(column) or not builder.pinned_table_view.isColumnHidden(column)
+        ]
+        assert "profile_id" in visible_columns
+        assert "hostname" in visible_columns
+        assert "access_interface" in visible_columns
+    finally:
+        tab.close()
+
+
+def test_config_builder_tab_loads_new_device_file_with_all_columns_visible(qt_app, tmp_path: Path):
+    device_file = tmp_path / "devices.csv"
+    device_file.write_text(
+        "\n".join(
+            [
+                "profile_id,device_id,hostname,mgmt_ip,access_interface",
+                "CISCO_IOSXE_EDGE_PORT_BASE,SW01,SW01,192.0.2.10,GigabitEthernet1/0/1",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    tab = ConfigBuilderTab(_config_builder_state(tmp_path))
+    try:
+        tab.show()
+        QApplication.processEvents()
+        builder = tab.builder_widget
+
+        builder.load_device_file(device_file)
+        QApplication.processEvents()
+
+        assert builder.table_model.rowCount() == 1
+        assert "profile_id" in builder.visible_headers
+        assert "device_id" in builder.visible_headers
+        assert "hostname" in builder.visible_headers
+        assert "access_interface" in builder.visible_headers
+        assert set(builder.visible_headers) == set(builder.table_model.headers)
     finally:
         tab.close()
 
@@ -474,18 +611,18 @@ def test_config_builder_tab_profile_editor_uses_service_profiles_dir(qt_app, tmp
         def exec(self):
             return False
 
-    from netops_suite.modules.config_builder.switch_configurator import profile_builder_dialog
+    from netops_suite.modules.config_builder.switch_configurator import desktop_impl
 
-    monkeypatch.setattr(profile_builder_dialog, "ProfileBuilderDialog", FakeProfileBuilderDialog)
+    monkeypatch.setattr(desktop_impl, "ProfileBuilderDialog", FakeProfileBuilderDialog)
     tab = ConfigBuilderTab(_config_builder_state(tmp_path))
     try:
-        _select_config_builder_profile(tab, "CISCO_IOS_L2_ACCESS_BASE")
+        tab.builder_widget.add_profile_combo.setCurrentText("CISCO_IOS_L2_ACCESS_BASE")
 
-        tab._open_selected_profile_editor()
+        tab.builder_widget.edit_current_profile_dialog()
 
         assert captured["profiles_dir"] == tmp_path / "data" / "config_builder" / "profiles"
         assert captured["profile_id"] == "CISCO_IOS_L2_ACCESS_BASE"
-        assert captured["parent"] is tab
+        assert captured["parent"] is tab.builder_widget
     finally:
         tab.close()
 
@@ -512,13 +649,13 @@ def test_config_builder_tab_full_editor_receives_profiles_dir(qt_app, tmp_path: 
         def activateWindow(self):
             captured["activated"] = True
 
-    from netops_suite.modules.config_builder.switch_configurator import desktop_impl
+    from app.ui.tabs import config_builder_tab
 
-    monkeypatch.setattr(desktop_impl, "DesktopWindow", FakeDesktopWindow)
+    monkeypatch.setattr(config_builder_tab, "DesktopWindow", FakeDesktopWindow)
     tab = ConfigBuilderTab(_config_builder_state(tmp_path))
     try:
-        tab._device_values_path = str(tmp_path / "devices.csv")
-        _select_config_builder_profile(tab, "CISCO_IOS_L2_ACCESS_BASE")
+        tab.builder_widget.current_file_path = tmp_path / "devices.csv"
+        tab.builder_widget.add_profile_combo.setCurrentText("CISCO_IOS_L2_ACCESS_BASE")
 
         tab._open_full_editor()
 
@@ -529,6 +666,72 @@ def test_config_builder_tab_full_editor_receives_profiles_dir(qt_app, tmp_path: 
         assert captured["raised"] is True
         assert captured["activated"] is True
     finally:
+        tab.close()
+
+
+def test_config_builder_tab_no_longer_starts_external_helper_files():
+    sources = "\n".join(
+        [
+            Path("app/ui/tabs/config_builder_tab.py").read_text(encoding="utf-8"),
+            Path("netops_suite/modules/config_builder/switch_configurator/desktop_impl.py").read_text(encoding="utf-8"),
+        ]
+    )
+
+    assert "os.startfile" not in sources
+    assert "configBuilderGuideButton" not in sources
+    assert "configBuilderSampleDeviceValuesButton" not in sources
+    assert "configBuilderRequiredColumnsButton" not in sources
+    assert "가이드 열기" not in sources
+    assert "샘플 장비 변수 파일 열기" not in sources
+    assert "필수 컬럼 보기" not in sources
+
+
+def test_config_builder_full_editor_window_uses_netops_title(qt_app, tmp_path: Path):
+    from netops_suite.modules.config_builder.switch_configurator.desktop_impl import DesktopWindow, SwitchConfigBuilderWidget
+
+    window = DesktopWindow(profiles_dir=tmp_path / "profiles")
+    try:
+        assert window.windowTitle() == "CLI 설정 생성 - 전체 편집기"
+        assert isinstance(window.builder, SwitchConfigBuilderWidget)
+    finally:
+        window.close()
+
+
+def test_config_builder_full_editor_keeps_advanced_controls_available(qt_app, tmp_path: Path, monkeypatch):
+    from netops_suite.modules.config_builder.switch_configurator import desktop_impl
+
+    monkeypatch.setattr(desktop_impl, "APP_STATE_PATH", tmp_path / "missing_state.json")
+    tab = ConfigBuilderTab(_config_builder_state(tmp_path))
+    window = desktop_impl.DesktopWindow(profiles_dir=tab.service.profiles_dir)
+    try:
+        window.show()
+        QApplication.processEvents()
+        builder = window.builder
+        group_titles = {group.title(): group for group in builder.findChildren(QGroupBox)}
+
+        assert builder._embedded is False
+        assert not builder.main_toolbar.isHidden()
+        assert builder.findChild(QWidget, "configBuilderFullEditorCentral") is not None
+        assert "QWidget#configBuilderFullEditorCentral" in builder.styleSheet()
+        assert "QGroupBox" in builder.styleSheet()
+        assert "background: #ffffff" in builder.styleSheet()
+        for title in ("프로파일 작업", "명령 블록 선택", "필터", "행 작업", "표시 컬럼", "파일 상태"):
+            assert title in group_titles
+            assert group_titles[title].isVisible()
+        for widget in (
+            builder.duplicate_row_button,
+            builder.increment_duplicate_row_button,
+            builder.delete_row_button,
+            builder.auto_save_check,
+            builder.allow_error_autosave_check,
+            builder.select_cli_button,
+            builder.mark_done_button,
+            builder.reset_work_state_button,
+            builder.detail_tabs,
+        ):
+            assert widget.isVisible()
+    finally:
+        window.close()
         tab.close()
 
 
@@ -579,16 +782,210 @@ def test_inspector_tab_buttons_use_clear_workflow_labels(qt_app, tmp_path: Path)
     )
     tab = InspectorTab(state)
     try:
-        assert tab.validate_button.text() == "인벤토리 검증"
-        assert tab.run_button.text() == "점검 실행"
+        top_panel = tab.findChild(QWidget, "inspectorTopPanel")
+        step_titles = []
+        for index in range(top_panel.layout().count()):
+            widget = top_panel.layout().itemAt(index).widget()
+            if isinstance(widget, QGroupBox):
+                step_titles.append(widget.title())
+
+        template_group = tab.findChild(QGroupBox, "inspectorTemplateGroup")
+        validation_group = tab.findChild(QGroupBox, "inspectorValidationGroup")
+        result_group = tab.findChild(QGroupBox, "inspectorResultGroup")
+        step_hint = tab.findChild(QLabel, "stepHint")
+
+        def has_ancestor(widget: QWidget, ancestor: QWidget) -> bool:
+            parent = widget.parentWidget()
+            while parent is not None:
+                if parent is ancestor:
+                    return True
+                parent = parent.parentWidget()
+            return False
+
+        assert step_titles == ["1. 장비 템플릿", "2. 인벤토리", "3. 실행 방식", "4. 검증 및 실행"]
+        assert step_hint is not None
+        assert "장비 템플릿 확인/관리" in step_hint.text()
+        assert "실행 방식 선택" in step_hint.text()
+        assert template_group is not None
+        assert validation_group is not None
+        assert result_group is not None
+        assert result_group.title() == "5. 결과"
+        assert tab.validate_button.text() == "먼저 검증"
+        assert tab.run_button.text() == "점검/백업 실행"
+        assert not tab.run_button.isEnabled()
         assert tab.template_editor_button.text() == "장비 템플릿 관리"
-        assert "지원 벤더" in tab.template_editor_button.toolTip()
-        assert "지원 벤더 목록 로드 실패" not in tab.supported_label.text()
+        assert has_ancestor(tab.template_editor_button, template_group)
+        assert not has_ancestor(tab.template_editor_button, validation_group)
+        assert has_ancestor(tab.supported_toggle_button, template_group)
+        assert has_ancestor(tab.supported_table, template_group)
+        assert "지원 제조사(vendor)" in tab.template_editor_button.toolTip()
+        assert "지원 제조사(vendor) 목록 로드 실패" not in tab.supported_label.text()
+        assert tab.supported_table.minimumHeight() >= 160
+        assert tab.log_view.minimumHeight() >= 140
+        assert not tab.supported_toggle_button.isChecked()
+        assert tab.supported_toggle_button.text() == "지원 템플릿 보기"
+        assert tab.supported_label.isHidden()
+        assert tab.supported_table.isHidden()
+        assert not tab.command_path_edit.isEnabled()
+        assert not tab.command_button.isEnabled()
+        assert "사용자 명령 모드" in tab.command_path_edit.placeholderText()
+        tab.inventory_path_edit.setText(str(tmp_path / "inventory.xlsx"))
+        assert tab.run_button.isEnabled()
+        tab.mode_combo.setCurrentIndex(tab.mode_combo.findData("custom_commands"))
+        assert tab.command_path_edit.isEnabled()
+        assert tab.command_button.isEnabled()
+        assert "사용자 명령 파일" in tab.command_path_edit.placeholderText()
+        assert not tab.run_button.isEnabled()
+        tab.command_path_edit.setText(str(tmp_path / "commands.txt"))
+        assert tab.run_button.isEnabled()
+        tab.inventory_path_edit.clear()
+        assert not tab.run_button.isEnabled()
+        tab.inventory_path_edit.setText(str(tmp_path / "inventory.xlsx"))
+        assert tab.run_button.isEnabled()
+        tab._inspector_running = True
+        tab._update_run_action_state()
+        assert not tab.run_button.isEnabled()
+        tab._inspector_running = False
+        tab._update_run_action_state()
+        assert tab.run_button.isEnabled()
         message = tab._inspector_error_message(ModuleNotFoundError("No module named 'vendors'"))
         assert "No module named" not in message
         assert "requirements.txt" in message
     finally:
         tab.close()
+
+
+def test_inspector_tab_top_sections_use_white_background(qt_app, tmp_path: Path):
+    state = SimpleNamespace(
+        thread_pool=QThreadPool.globalInstance(),
+        paths=SimpleNamespace(data_root=tmp_path / "data"),
+    )
+    tab = InspectorTab(state)
+    try:
+        template_group = tab.findChild(QGroupBox, "inspectorTemplateGroup")
+        inventory_group = tab.findChild(QGroupBox, "inspectorInventoryGroup")
+        execution_group = tab.findChild(QGroupBox, "inspectorExecutionGroup")
+        validation_group = tab.findChild(QGroupBox, "inspectorValidationGroup")
+        top_scroll = tab.findChild(QScrollArea, "inspectorTopScrollArea")
+
+        assert template_group is not None
+        assert inventory_group is not None
+        assert execution_group is not None
+        assert validation_group is not None
+        assert top_scroll is not None
+        style = top_scroll.styleSheet()
+        assert "QGroupBox#inspectorTemplateGroup" in style
+        assert "QGroupBox#inspectorInventoryGroup" in style
+        assert "QGroupBox#inspectorExecutionGroup" in style
+        assert "QGroupBox#inspectorValidationGroup" in style
+        assert "QWidget#inspectorTopPanel" in style
+        assert "#ffffff" in style
+    finally:
+        tab.close()
+
+
+def test_artifacts_tab_shortens_path_column_and_keeps_table_readable(qt_app, tmp_path: Path):
+    data_root = tmp_path / "data"
+    logs_dir = tmp_path / "logs"
+    exports_dir = tmp_path / "exports"
+    deep_path = logs_dir / "sessions" / "2026" / "run.log"
+    deep_path.parent.mkdir(parents=True)
+    deep_path.write_text("ok", encoding="utf-8")
+    state = SimpleNamespace(
+        paths=SimpleNamespace(logs_dir=logs_dir, exports_dir=exports_dir, data_root=data_root),
+    )
+
+    tab = ArtifactsTab(state)
+    try:
+        assert tab.table.minimumHeight() >= 220
+        assert tab.table.rowCount() == 1
+        path_item = tab.table.item(0, 3)
+        assert path_item.toolTip() == str(deep_path)
+        assert path_item.text() != str(deep_path)
+        assert "..." in path_item.text()
+    finally:
+        tab.close()
+
+
+def test_main_window_uses_purpose_based_tab_labels_and_step_hints(qt_app, tmp_path: Path):
+    state = AppState(tmp_path)
+    window = MainWindow(state)
+    try:
+        labels = [window.tab_widget.tabText(index) for index in range(window.tab_widget.count())]
+
+        assert labels == [
+            "네트워크 설정",
+            "연결 진단",
+            "Wi-Fi 분석",
+            "장비 점검/백업",
+            "CLI 설정 생성",
+            "결과 파일",
+            "프로그램 설정",
+        ]
+        diagnostic_labels = [
+            window.diagnostics_tab.diagnostic_tool_list.item(index).text()
+            for index in range(window.diagnostics_tab.diagnostic_tool_list.count())
+        ]
+        assert diagnostic_labels == [
+            "Ping",
+            "포트 확인 (TCPing)",
+            "DNS 조회 (nslookup)",
+            "경로 추적 (tracert/pathping)",
+            "대역폭 측정 (iperf3)",
+            "같은 대역 장비 찾기 (ARP 스캔)",
+            "서브넷 계산기",
+            "MAC 제조사 조회 (OUI)",
+            "파일 전송",
+            "명령 출력",
+        ]
+        window.state.is_admin = False
+        window.interface_tab._update_admin_banner()
+        window.interface_tab._update_action_states()
+        assert not window.interface_tab.apply_button.isEnabled()
+        assert not window.interface_tab.restart_admin_button.isHidden()
+        for tab in (
+            window.interface_tab,
+            window.diagnostics_tab,
+            window.wireless_tab,
+            window.inspector_tab,
+            window.config_builder_tab,
+            window.artifacts_tab,
+        ):
+            hint = tab.findChild(QLabel, "stepHint")
+            assert hint is not None
+            assert hint.maximumHeight() <= 42
+        assert window.diagnostics_tab.diagnostic_stack.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Ignored
+    finally:
+        window.close()
+
+
+def test_confirm_risky_action_message_contains_standard_sections(qt_app, monkeypatch):
+    captured: dict[str, str] = {}
+
+    def fake_exec(self):
+        captured["title"] = self.windowTitle()
+        captured["text"] = self.text()
+        captured["confirm"] = self.button(QMessageBox.StandardButton.Yes).text()
+        captured["cancel"] = self.button(QMessageBox.StandardButton.No).text()
+        return QMessageBox.StandardButton.Yes
+
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+
+    assert confirm_risky_action(
+        None,
+        "위험 작업",
+        "영향",
+        "되돌리기 가능",
+        "결과 위치",
+        confirm_text="삭제",
+        cancel_text="그만두기",
+    )
+    assert captured["title"] == "위험 작업"
+    assert "영향 범위: 영향" in captured["text"]
+    assert "되돌리기: 되돌리기 가능" in captured["text"]
+    assert "기록 위치: 결과 위치" in captured["text"]
+    assert captured["confirm"] == "삭제"
+    assert captured["cancel"] == "그만두기"
 
 
 def test_asset_path_resolves_pyinstaller_internal_assets(tmp_path: Path, monkeypatch):

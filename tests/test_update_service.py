@@ -6,9 +6,36 @@ import logging
 import pytest
 
 from app.models.update_models import ReleaseAsset
-from app.utils.file_utils import default_update_config
+from app.utils.file_utils import default_update_config, normalize_update_config
 from app.services import update_service as update_service_module
 from app.services.update_service import UpdateService
+
+
+def test_default_update_config_is_stable_only():
+    config = default_update_config()
+
+    assert config["check_on_startup"] is False
+    assert "github_repo" not in config
+    assert "installer_asset_pattern" not in config
+    assert "include_prerelease" not in config
+    assert "release_channel" not in config
+
+
+def test_normalize_update_config_drops_legacy_prerelease_options():
+    normalized = normalize_update_config(
+        {
+            "check_on_startup": False,
+            "github_repo": "someone/fork",
+            "installer_asset_pattern": "custom.*\\.exe$",
+            "include_prerelease": True,
+            "release_channel": "prerelease",
+        }
+    )
+
+    assert normalized == {
+        **default_update_config(),
+        "check_on_startup": False,
+    }
 
 
 def test_update_service_parses_sha256sums_for_named_asset(tmp_path):
@@ -87,10 +114,63 @@ def test_update_service_labels_sha256_as_integrity_not_publisher_trust(monkeypat
             }
         ],
     }
-    monkeypatch.setattr(service, "_fetch_release", lambda repo, include_prerelease: release)
+    monkeypatch.setattr(service, "_fetch_release", lambda repo: release)
 
     result = service.check_for_updates("1.0.1", default_update_config())
 
     assert result.install_ready
     assert "무결성" in result.details
     assert "코드서명" in result.details
+
+
+def test_update_service_ignores_prerelease_releases(monkeypatch):
+    service = UpdateService(logging.getLogger("test-update"))
+    stable_release = {
+        "tag_name": "v1.0.2",
+        "prerelease": False,
+        "draft": False,
+        "name": "NetOps Suite v1.0.2",
+        "html_url": "https://example.test/stable",
+        "published_at": "2026-05-10T00:00:00Z",
+        "body": "",
+        "assets": [
+            {
+                "name": "NetOpsSuite-setup-1.0.2.exe",
+                "browser_download_url": "https://example.test/stable-installer",
+                "size": 12,
+                "digest": "sha256:" + "a" * 64,
+            }
+        ],
+    }
+    prerelease = {
+        "tag_name": "v9.0.0-beta.1",
+        "prerelease": True,
+        "draft": False,
+        "name": "NetOps Suite v9.0.0 beta",
+        "html_url": "https://example.test/prerelease",
+        "published_at": "2026-05-10T00:00:00Z",
+        "body": "",
+        "assets": [
+            {
+                "name": "NetOpsSuite-setup-9.0.0-beta.1.exe",
+                "browser_download_url": "https://example.test/beta-installer",
+                "size": 12,
+                "digest": "sha256:" + "b" * 64,
+            }
+        ],
+    }
+    monkeypatch.setattr(service, "_request_json", lambda url: [prerelease, stable_release])
+
+    result = service.check_for_updates(
+        "1.0.1",
+        {
+            **default_update_config(),
+            "include_prerelease": True,
+            "release_channel": "prerelease",
+        },
+    )
+
+    assert result.latest_version == "1.0.2"
+    assert result.is_prerelease is False
+    assert result.asset is not None
+    assert result.asset.name == "NetOpsSuite-setup-1.0.2.exe"

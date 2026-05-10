@@ -3,7 +3,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QRect, Qt
+from PySide6.QtWidgets import QGroupBox, QMessageBox, QSplitter, QTableWidget, QTabWidget
 
 from app.models.ftp_models import FtpProfile
 from app.models.network_models import NetworkAdapterInfo, OuiRecord, PublicIperfServer
@@ -319,7 +320,7 @@ def build_fake_state(tmp_path):
 
 def _show_compact_file_transfer_tab(tab: DiagnosticsTab, qapp) -> None:
     tab.show()
-    tab.tab_widget.setCurrentIndex(5)
+    tab.select_diagnostic_tab("transfer")
     qapp.processEvents()
 
     compact_width = max(640, tab.file_transfer_page_stack.minimumSizeHint().width())
@@ -334,16 +335,96 @@ def _assert_widget_readable(widget, tab: DiagnosticsTab) -> None:
     assert widget.height() >= expected_height
 
 
+def _assert_table_min_visible_rows(table: QTableWidget, rows: int = 4) -> None:
+    row_height = max(table.verticalHeader().defaultSectionSize(), 22)
+    expected_height = table.horizontalHeader().height() + row_height * rows
+    assert table.minimumHeight() >= expected_height
+
+
+def _assert_plain_text_edit_min_visible_lines(edit, lines: int = 5) -> None:
+    expected_height = edit.fontMetrics().lineSpacing() * lines + 24
+    assert max(edit.minimumHeight(), edit.height()) >= expected_height
+    assert edit.maximumHeight() >= edit.minimumHeight()
+
+
+def _assert_vertical_widgets_do_not_overlap(upper, lower) -> None:
+    upper_bottom = upper.mapToGlobal(upper.rect().bottomLeft()).y()
+    lower_top = lower.mapToGlobal(lower.rect().topLeft()).y()
+    assert upper_bottom < lower_top
+
+
+def _assert_widget_center_inside(parent, child) -> None:
+    center = child.mapToGlobal(child.rect().center())
+    assert parent.rect().contains(parent.mapFromGlobal(center))
+
+
+def _global_rect(widget) -> QRect:
+    return QRect(widget.mapToGlobal(widget.rect().topLeft()), widget.size())
+
+
+def _assert_widgets_do_not_overlap(first, second) -> None:
+    assert first.isVisibleTo(first.window())
+    assert second.isVisibleTo(second.window())
+    assert not _global_rect(first).intersects(_global_rect(second))
+
+
+def _assert_widget_rect_inside(parent, child) -> None:
+    for point in (
+        child.rect().topLeft(),
+        child.rect().topRight(),
+        child.rect().bottomLeft(),
+        child.rect().bottomRight(),
+    ):
+        assert parent.rect().contains(parent.mapFromGlobal(child.mapToGlobal(point)))
+
+
+def _assert_input_group_height_is_compact(group, tab: DiagnosticsTab) -> None:
+    max_group_height = tab.height() // 2
+    assert group.minimumHeight() <= max_group_height
+    assert group.height() <= max_group_height
+
+
+def _assert_explicit_white_background_style(*widgets) -> None:
+    combined_style = "\n".join(widget.styleSheet() for widget in widgets).replace(" ", "").lower()
+    assert any(
+        token in combined_style
+        for token in (
+            "background:#ffffff",
+            "background-color:#ffffff",
+            "background:#fff",
+            "background-color:#fff",
+            "background:white",
+            "background-color:white",
+        )
+    )
+
+
+def _assert_splitter_ratio(
+    splitter: QSplitter,
+    min_first: int = 1,
+    min_second: int = 1,
+    *,
+    first_larger: bool = True,
+) -> None:
+    sizes = splitter.sizes()
+    assert len(sizes) >= 2
+    assert sizes[0] >= min_first
+    assert sizes[1] >= min_second
+    if first_larger:
+        assert sizes[0] > sizes[1]
+
+
 def _assert_current_file_transfer_page_readable(tab: DiagnosticsTab, expected_index: int) -> None:
     stack = tab.file_transfer_page_stack
     current_page = stack.currentWidget()
-    expected_height = current_page.sizeHint().height()
 
     assert stack.currentIndex() == expected_index
     assert current_page.isVisibleTo(tab)
-    assert stack.minimumHeight() >= expected_height
-    assert stack.height() >= expected_height
-    assert current_page.height() >= expected_height
+    assert tab.file_transfer_scroll_area.widget() is stack
+    assert tab.file_transfer_scroll_area.widgetResizable()
+    assert stack.minimumHeight() == 0
+    assert current_page.minimumHeight() == 0
+    assert current_page.sizeHint().height() >= current_page.minimumSizeHint().height()
 
 
 def test_diagnostics_state_save_and_restore_shape(qapp, tmp_path):
@@ -369,7 +450,8 @@ def test_diagnostics_state_save_and_restore_shape(qapp, tmp_path):
 
     saved = tab.save_ui_state()
 
-    assert set(saved) == {"current_tab", "tools", "ping", "tcp", "dns", "trace", "ftp", "iperf"}
+    assert set(saved) == {"current_tool_key", "tools", "ping", "tcp", "dns", "trace", "ftp", "iperf"}
+    assert saved["current_tool_key"] == "ping"
     assert saved["tools"]["version"] == 2
     assert saved["tools"]["subnet_ip"] == "192.168.0.10"
     assert saved["tools"]["oui_targets"] == "AP,00:11:22:33:44:55"
@@ -424,8 +506,7 @@ def test_diagnostics_state_save_and_restore_shape(qapp, tmp_path):
 
     tab.restore_ui_state(legacy_state)
 
-    assert tab.tab_widget.currentIndex() == 5
-    assert tab.tools_inner_tab.currentIndex() == 3
+    assert tab._current_tool_key() == "transfer"
     assert tab.subnet_calc_ip_edit.text() == "10.0.0.5"
     assert tab.arp_subnet_edit.text() == "10.0.0.0/24"
     assert tab.oui_mac_edit.toPlainText() == "Legacy,AA:BB:CC:DD:EE:FF"
@@ -445,6 +526,143 @@ def test_diagnostics_state_save_and_restore_shape(qapp, tmp_path):
     restored_saved = tab.save_ui_state()
     assert restored_saved["tools"]["version"] == 2
     assert restored_saved["tools"]["oui_targets"] == "Legacy,AA:BB:CC:DD:EE:FF"
+
+
+def test_diagnostics_sidebar_labels_navigation_and_legacy_tools_migration(qapp, tmp_path):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+
+    expected_labels = [
+        "Ping",
+        "포트 확인 (TCPing)",
+        "DNS 조회 (nslookup)",
+        "경로 추적 (tracert/pathping)",
+        "대역폭 측정 (iperf3)",
+        "같은 대역 장비 찾기 (ARP 스캔)",
+        "서브넷 계산기",
+        "MAC 제조사 조회 (OUI)",
+        "파일 전송",
+        "명령 출력",
+    ]
+    assert [tab.diagnostic_tool_list.item(index).text() for index in range(tab.diagnostic_tool_list.count())] == expected_labels
+    assert not tab.findChildren(QTabWidget)
+
+    assert tab.select_diagnostic_tab("dns")
+    assert tab._current_tool_key() == "dns"
+    assert tab.diagnostic_tool_list.currentRow() == 2
+
+    assert tab.select_quick_tool("arp")
+    assert tab._current_tool_key() == "arp"
+    assert tab.diagnostic_tool_list.currentRow() == 5
+
+    tab.restore_ui_state({"current_tab": 0, "tools": {"version": 2, "current_subtab": 2}})
+    assert tab._current_tool_key() == "subnet"
+
+    tab.restore_ui_state({"current_tab": 0, "tools": {"version": 1, "current_subtab": 2}})
+    assert tab._current_tool_key() == "oui"
+
+
+def test_ping_tcp_target_inputs_are_readable_and_explain_multi_target_format(qapp, tmp_path):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    tab.show()
+    tab.resize(1280, 720)
+    qapp.processEvents()
+
+    tab.select_diagnostic_tab("ping")
+    qapp.processEvents()
+    _assert_plain_text_edit_min_visible_lines(tab.ping_targets_edit, lines=4)
+    _assert_vertical_widgets_do_not_overlap(tab.ping_targets_edit, tab.ping_targets_help_label)
+    _assert_vertical_widgets_do_not_overlap(tab.ping_targets_help_label, tab.ping_count_edit)
+    _assert_vertical_widgets_do_not_overlap(tab.ping_start_button, tab.ping_empty_label)
+    _assert_widget_rect_inside(tab.ping_input_group, tab.ping_continuous_check)
+    _assert_widget_rect_inside(tab.ping_input_group, tab.ping_start_button)
+    _assert_widget_rect_inside(tab.ping_input_group, tab.ping_cancel_button)
+
+    tab.select_diagnostic_tab("tcp")
+    qapp.processEvents()
+    _assert_plain_text_edit_min_visible_lines(tab.tcp_targets_edit, lines=3)
+    _assert_vertical_widgets_do_not_overlap(tab.tcp_targets_edit, tab.tcp_targets_help_label)
+    _assert_vertical_widgets_do_not_overlap(tab.tcp_targets_help_label, tab.tcp_ports_edit)
+    _assert_vertical_widgets_do_not_overlap(tab.tcp_ports_edit, tab.tcp_ports_help_label)
+    _assert_vertical_widgets_do_not_overlap(tab.tcp_ports_help_label, tab.tcp_count_edit)
+    _assert_vertical_widgets_do_not_overlap(tab.tcp_start_button, tab.tcp_empty_label)
+    _assert_widget_rect_inside(tab.tcp_input_group, tab.tcp_continuous_check)
+    _assert_widget_rect_inside(tab.tcp_input_group, tab.tcp_start_button)
+    _assert_widget_rect_inside(tab.tcp_input_group, tab.tcp_cancel_button)
+
+    assert "192.168.0.254" in tab.ping_targets_edit.placeholderText()
+    assert "192.168.0.254" in tab.tcp_targets_edit.placeholderText()
+
+    for label in (tab.ping_targets_help_label, tab.tcp_targets_help_label):
+        text = label.text()
+        assert "한 줄에 하나" in text
+        assert "이름,IP" in text
+        assert "생략하면 대상 주소가 이름" in text
+
+    ports_help = tab.tcp_ports_help_label.text()
+    assert "22,80,443" in ports_help
+    assert "8000-8010" in ports_help
+    assert "대상 × 포트" in ports_help
+
+    ping_targets = "GW,192.168.0.1\nDNS,8.8.8.8\n192.168.0.254"
+    tcp_targets = "API,10.0.0.10\nDB,10.0.0.20\n10.0.0.30"
+    tab.ping_targets_edit.setPlainText(ping_targets)
+    tab.tcp_targets_edit.setPlainText(tcp_targets)
+    tab.tcp_ports_edit.setText("22,80,443 8000-8010")
+    saved = tab.save_ui_state()
+
+    restored = DiagnosticsTab(build_fake_state(tmp_path))
+    restored.restore_ui_state(saved)
+    assert restored.ping_targets_edit.toPlainText() == ping_targets
+    assert restored.tcp_targets_edit.toPlainText() == tcp_targets
+    assert restored.tcp_ports_edit.text() == "22,80,443 8000-8010"
+
+
+@pytest.mark.parametrize(("width", "height"), [(1280, 720), (1120, 720), (900, 640)])
+def test_ping_tcp_primary_controls_fit_without_overlap(qapp, tmp_path, width, height):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    tab.show()
+    tab.resize(width, height)
+    qapp.processEvents()
+
+    tab.select_diagnostic_tab("ping")
+    qapp.processEvents()
+    _assert_input_group_height_is_compact(tab.ping_input_group, tab)
+    for button in (tab.ping_start_button, tab.ping_cancel_button):
+        _assert_widget_rect_inside(tab.ping_input_group, button)
+        _assert_widgets_do_not_overlap(tab.ping_targets_edit, button)
+        _assert_widgets_do_not_overlap(button, tab.ping_empty_label)
+    _assert_widgets_do_not_overlap(tab.ping_targets_help_label, tab.ping_targets_edit)
+    _assert_widgets_do_not_overlap(tab.ping_targets_help_label, tab.ping_empty_label)
+    assert tab.ping_empty_label.isVisibleTo(tab)
+
+    tab.select_diagnostic_tab("tcp")
+    qapp.processEvents()
+    _assert_input_group_height_is_compact(tab.tcp_input_group, tab)
+    for button in (tab.tcp_start_button, tab.tcp_cancel_button):
+        _assert_widget_rect_inside(tab.tcp_input_group, button)
+        _assert_widgets_do_not_overlap(tab.tcp_ports_edit, button)
+        _assert_widgets_do_not_overlap(button, tab.tcp_empty_label)
+    _assert_widgets_do_not_overlap(tab.tcp_targets_help_label, tab.tcp_ports_help_label)
+    _assert_widgets_do_not_overlap(tab.tcp_ports_help_label, tab.tcp_targets_edit)
+    _assert_widgets_do_not_overlap(tab.tcp_targets_edit, tab.tcp_ports_edit)
+    _assert_widgets_do_not_overlap(tab.tcp_targets_help_label, tab.tcp_empty_label)
+    _assert_widgets_do_not_overlap(tab.tcp_ports_help_label, tab.tcp_empty_label)
+    assert tab.tcp_empty_label.isVisibleTo(tab)
+
+
+def test_tcp_scroll_area_declares_explicit_white_background(qapp, tmp_path):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    tab.show()
+    tab.resize(1280, 720)
+    tab.select_diagnostic_tab("tcp")
+    qapp.processEvents()
+
+    assert tab.tcp_scroll_area.widget() is tab.tcp_page_content
+    _assert_explicit_white_background_style(
+        tab.tcp_scroll_area,
+        tab.tcp_scroll_area.viewport(),
+        tab.tcp_page_content,
+    )
 
 
 @pytest.mark.parametrize(
@@ -540,6 +758,176 @@ def test_file_transfer_client_pages_remain_readable_at_compact_size(
     _assert_current_file_transfer_page_readable(tab, expected_stack_index)
     for control_name in representative_controls:
         _assert_widget_readable(getattr(tab, control_name), tab)
+
+
+def test_file_transfer_preflight_confirmation_cancels_and_accepts(qapp, tmp_path, monkeypatch):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    captured: list[str] = []
+
+    def fake_cancel(self):
+        captured.append(self.text())
+        return QMessageBox.StandardButton.No
+
+    monkeypatch.setattr(QMessageBox, "exec", fake_cancel)
+    assert not tab._confirm_transfer_preflight(
+        protocol="FTP",
+        direction="업로드",
+        source="startup.cfg",
+        target="/backup",
+        file_count=1,
+        overwrite_note="같은 이름이면 덮어쓸 수 있습니다.",
+    )
+    assert "프로토콜: FTP" in captured[-1]
+    assert "방향: 업로드" in captured[-1]
+    assert "덮어쓰기 가능성: 같은 이름이면 덮어쓸 수 있습니다." in captured[-1]
+
+    monkeypatch.setattr(QMessageBox, "exec", lambda self: QMessageBox.StandardButton.Yes)
+    assert tab._confirm_transfer_preflight(
+        protocol="SCP",
+        direction="다운로드",
+        source="/var/log/messages",
+        target=str(tmp_path),
+        file_count=1,
+        overwrite_note="같은 이름이면 덮어쓸 수 있습니다.",
+    )
+
+
+def test_arp_scan_result_table_keeps_readable_height(qapp, tmp_path):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    _show_compact_file_transfer_tab(tab, qapp)
+    tab.select_diagnostic_tab("arp")
+    qapp.processEvents()
+
+    assert tab.arp_table.minimumHeight() >= 220
+    assert tab.arp_output.minimumHeight() >= 90
+    assert tab.arp_output.maximumHeight() > 1000
+    assert tab.arp_result_splitter.sizes()[0] > tab.arp_result_splitter.sizes()[1]
+
+
+def test_diagnostics_result_tables_keep_readable_height_and_table_first_splitters(qapp, tmp_path):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    tab.show()
+    tab.resize(1280, 720)
+    qapp.processEvents()
+
+    tab.select_diagnostic_tab("ping")
+    qapp.processEvents()
+    _assert_table_min_visible_rows(tab.ping_table)
+    _assert_splitter_ratio(tab.ping_splitter)
+
+    tab.select_diagnostic_tab("tcp")
+    qapp.processEvents()
+    _assert_table_min_visible_rows(tab.tcp_table)
+    _assert_splitter_ratio(tab.tcp_splitter)
+
+    tab.select_diagnostic_tab("trace")
+    qapp.processEvents()
+    _assert_table_min_visible_rows(tab.trace_table)
+    _assert_splitter_ratio(tab.trace_splitter)
+
+    tab.select_diagnostic_tab("subnet")
+    qapp.processEvents()
+    _assert_table_min_visible_rows(tab.subnet_calc_detail_table)
+
+    tab.select_diagnostic_tab("oui")
+    qapp.processEvents()
+    _assert_table_min_visible_rows(tab.oui_table)
+    _assert_splitter_ratio(tab.oui_result_splitter)
+
+
+def test_quick_tools_remove_symptom_shortcuts_and_subnet_results_are_progressive(qapp, tmp_path):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    tab.select_diagnostic_tab("subnet")
+    qapp.processEvents()
+
+    group_titles = [group.title() for group in tab.findChildren(QGroupBox)]
+    assert "증상별 바로가기" not in group_titles
+    assert not tab.subnet_calc_empty_label.isHidden()
+    assert tab.subnet_calc_summary_widget.isHidden()
+    assert tab.subnet_calc_result_hint.isHidden()
+    assert tab.subnet_calc_detail_table.isHidden()
+
+    tab.subnet_calc_ip_edit.setText("192.168.10.5")
+    tab.subnet_calc_prefix_edit.setText("24")
+    tab.calculate_subnet_from_tools_inputs()
+
+    assert tab.subnet_calc_empty_label.isHidden()
+    assert not tab.subnet_calc_summary_widget.isHidden()
+    assert not tab.subnet_calc_result_hint.isHidden()
+    assert not tab.subnet_calc_detail_table.isHidden()
+    assert tab.subnet_calc_detail_table.rowCount() > 0
+
+
+def test_file_transfer_tables_have_empty_states_and_table_first_splitters(qapp, tmp_path):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    _show_compact_file_transfer_tab(tab, qapp)
+
+    tab.file_transfer_role_combo.setCurrentIndex(0)
+    tab.file_transfer_mode_combo.setCurrentIndex(0)
+    qapp.processEvents()
+    assert tab.ftp_remote_table.minimumHeight() >= 160
+    assert tab.ftp_remote_table.maximumHeight() > 1000
+    _assert_table_min_visible_rows(tab.ftp_transfer_table)
+    _assert_splitter_ratio(tab.ftp_client_main_splitter, first_larger=False)
+    _assert_splitter_ratio(tab.ftp_client_result_log_splitter)
+    assert not tab.ftp_transfer_empty_label.isHidden()
+
+    tab.file_transfer_mode_combo.setCurrentIndex(1)
+    qapp.processEvents()
+    _assert_table_min_visible_rows(tab.scp_transfer_table)
+    _assert_splitter_ratio(tab.scp_client_result_log_splitter)
+    assert not tab.scp_transfer_empty_label.isHidden()
+
+    tab.file_transfer_mode_combo.setCurrentIndex(2)
+    qapp.processEvents()
+    _assert_table_min_visible_rows(tab.tftp_transfer_table)
+    _assert_splitter_ratio(tab.tftp_client_result_log_splitter)
+    assert not tab.tftp_transfer_empty_label.isHidden()
+
+    tab.file_transfer_role_combo.setCurrentIndex(1)
+    qapp.processEvents()
+    _assert_splitter_ratio(tab.ftp_server_splitter, first_larger=False)
+    tab.file_transfer_mode_combo.setCurrentIndex(1)
+    qapp.processEvents()
+    _assert_splitter_ratio(tab.scp_server_splitter, first_larger=False)
+    tab.file_transfer_mode_combo.setCurrentIndex(2)
+    qapp.processEvents()
+    _assert_splitter_ratio(tab.tftp_server_splitter, first_larger=False)
+
+
+def test_file_transfer_checkboxes_keep_visible_indicator_when_checked(qapp, tmp_path):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    _show_compact_file_transfer_tab(tab, qapp)
+
+    tab.file_transfer_role_combo.setCurrentIndex(0)
+    tab.file_transfer_mode_combo.setCurrentIndex(0)
+    qapp.processEvents()
+
+    tab.file_transfer_role_combo.setCurrentIndex(1)
+    tab.file_transfer_mode_combo.setCurrentIndex(0)
+    ftp_index = tab.ftp_server_protocol_combo.findData("ftp")
+    if ftp_index >= 0:
+        tab.ftp_server_protocol_combo.setCurrentIndex(ftp_index)
+    qapp.processEvents()
+
+    tab.file_transfer_mode_combo.setCurrentIndex(2)
+    qapp.processEvents()
+
+    checkboxes = [
+        tab.ftp_client_passive_check,
+        tab.ftp_server_readonly_check,
+        tab.ftp_server_anonymous_check,
+        tab.tftp_server_readonly_check,
+    ]
+    for checkbox in checkboxes:
+        checkbox.setEnabled(True)
+        checkbox.setChecked(True)
+        qapp.processEvents()
+        style = checkbox.styleSheet()
+        assert checkbox.isChecked()
+        assert "QCheckBox::indicator:checked" in style
+        assert "background: #2563eb" in style
+        assert checkbox.minimumHeight() >= 24
 
 
 def test_ping_table_sorts_numeric_columns_and_updates_sorted_rows(qapp, tmp_path):

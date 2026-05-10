@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -11,6 +12,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from app.ui.common import make_empty_state, make_inline_status, set_inline_status
+from app.utils.file_utils import timestamped_export_path
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
@@ -20,7 +24,7 @@ class DnsDiagnosticsMixin:
         page = QWidget()
         layout = QVBoxLayout(page)
 
-        group = QGroupBox("nslookup")
+        group = QGroupBox("DNS 조회 (nslookup)")
         form = QFormLayout(group)
         self.dns_query_edit = QLineEdit()
         self.dns_query_edit.setPlaceholderText("예: google.com 또는 8.8.8.8")
@@ -33,19 +37,30 @@ class DnsDiagnosticsMixin:
         self.dns_server_edit = QLineEdit()
         self.dns_server_edit.setPlaceholderText("예: 8.8.8.8")
         self.dns_run_button = make_action_button("DNS 조회", ActionKind.PRIMARY)
+        self.dns_export_button = make_action_button("결과 TXT 저장", ActionKind.EXPORT, enabled=False)
+        button_row = QHBoxLayout()
+        button_row.addWidget(self.dns_run_button)
+        button_row.addWidget(self.dns_export_button)
+        button_row.addStretch(1)
 
         form.addRow("도메인 / IP", self.dns_query_edit)
         form.addRow("레코드 타입", self.dns_type_combo)
         form.addRow("", self.dns_type_hint)
         form.addRow("DNS 서버", self.dns_server_edit)
-        form.addRow("", self.dns_run_button)
+        form.addRow("", button_row)
         layout.addWidget(group)
 
+        self.dns_status_label = make_inline_status("info", "")
+        layout.addWidget(self.dns_status_label)
+        self.dns_empty_label = make_empty_state("도메인 또는 IP를 입력하고 DNS 조회를 누르면 결과가 표시됩니다.")
+        layout.addWidget(self.dns_empty_label)
         self.dns_output = self._output()
+        self.dns_output.setPlaceholderText("DNS 조회 결과가 여기에 표시됩니다.")
         layout.addWidget(self.dns_output, 1)
 
         self.dns_type_combo.currentIndexChanged.connect(self._update_dns_type_hint)
         self.dns_run_button.clicked.connect(self.run_dns_lookup)
+        self.dns_export_button.clicked.connect(self.export_dns_result)
         return page
 
     def _update_dns_type_hint(self) -> None:
@@ -59,12 +74,34 @@ class DnsDiagnosticsMixin:
             return
 
         record_type, _description = self.dns_type_combo.currentData()
-        self.dns_output.setPlainText("nslookup 실행 중...")
+        self.dns_empty_label.hide()
+        self.dns_output.clear()
+        self.dns_export_button.setEnabled(False)
+        self.dns_run_button.setEnabled(False)
+        set_inline_status(self.dns_status_label, "info", "DNS 조회(nslookup)를 실행 중입니다...")
         self._start_worker(
             self.state.dns_service.lookup,
             query,
             record_type,
             self.dns_server_edit.text().strip(),
-            on_result=lambda result: self.dns_output.setPlainText(result.details or result.message),
+            on_result=self._finish_dns_lookup,
+            on_finished=lambda: self.dns_run_button.setEnabled(True),
             error_title="nslookup 실패",
         )
+
+    def _finish_dns_lookup(self, result) -> None:
+        text = result.details or result.message
+        self.dns_output.setPlainText(text)
+        self.dns_export_button.setEnabled(bool(text.strip()))
+        kind = "success" if getattr(result, "success", False) else "error"
+        set_inline_status(self.dns_status_label, kind, result.message)
+        self.dns_empty_label.setVisible(not bool(text.strip()))
+
+    def export_dns_result(self) -> None:
+        text = self.dns_output.toPlainText().strip()
+        if not text:
+            set_inline_status(self.dns_status_label, "warning", "저장할 DNS 조회 결과가 없습니다.")
+            return
+        path = timestamped_export_path(self.state.paths.exports_dir, "dns_lookup", "txt")
+        path.write_text(text + "\n", encoding="utf-8")
+        set_inline_status(self.dns_status_label, "success", f"DNS 조회 결과를 저장했습니다: {path}")

@@ -13,7 +13,7 @@ from app.services.dns_service import DnsService
 from app.services.ftp_client_service import FtpClientService
 from app.services.ftp_server_service import FtpServerService
 from app.services.iperf_service import IperfService
-from app.services.logging_service import configure_logging
+from app.services.logging_service import configure_logging, shutdown_logging
 from app.services.network_interface_service import NetworkInterfaceService
 from app.services.oui_service import OuiService
 from app.services.ping_service import PingService
@@ -124,7 +124,7 @@ class AppState(QObject):
         self.config_reloaded.emit()
         if hasattr(self, "logger"):
             if should_save_app_config:
-                self.logger.info("Normalized app_config.json update channel settings.")
+                self.logger.info("Normalized app_config.json update settings.")
             if migrated_legacy:
                 self.logger.info("Migrated legacy vendor presets into ip_profiles.json")
             self.logger.info("Configuration reloaded from disk.")
@@ -172,4 +172,7 @@ class AppState(QObject):
         self.tftp_runtime = dict(runtime)
         save_json(self.paths.tftp_runtime, self.tftp_runtime)
         self.logger.info("Saved tftp_runtime.json")
+
+    def shutdown(self) -> None:
+        shutdown_logging(self.logger)
 

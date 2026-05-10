@@ -11,7 +11,7 @@ import urllib.request
 from pathlib import Path
 
 from app.models.update_models import DownloadedUpdate, ReleaseAsset, UpdateCheckResult
-from app.utils.file_utils import normalize_update_config
+from app.utils.file_utils import DEFAULT_UPDATE_ASSET_PATTERN, DEFAULT_UPDATE_REPO
 from app.utils.process_utils import no_window_creationflags
 
 
@@ -28,28 +28,23 @@ class UpdateService:
         update_config: dict,
         progress_callback=None,
     ) -> UpdateCheckResult:
-        normalized_config = normalize_update_config(update_config)
-        repo = self._normalize_repo(str(normalized_config.get("github_repo", "") or ""))
+        repo = self._normalize_repo(DEFAULT_UPDATE_REPO)
         if not repo:
             return UpdateCheckResult(
                 success=False,
                 current_version=current_version,
                 requires_config=True,
-                message="GitHub 저장소가 설정되지 않았습니다.",
-                details="설정 탭에서 owner/repo 형식의 공개 저장소를 입력해 주세요.",
+                message="공식 업데이트 저장소 설정이 올바르지 않습니다.",
+                details="앱 내부 업데이트 저장소는 owner/repo 형식이어야 합니다.",
             )
 
-        include_prerelease = bool(normalized_config.get("include_prerelease", False))
-        asset_pattern = str(
-        normalized_config.get("installer_asset_pattern", r"NetOpsSuite-setup.*\.exe$")
-        or r"NetOpsSuite-setup.*\.exe$"
-        )
+        asset_pattern = DEFAULT_UPDATE_ASSET_PATTERN
 
         if progress_callback is not None:
             progress_callback.emit({"stage": "check", "message": f"{repo} 릴리즈 정보를 확인하는 중..."})
 
         self.logger.info("Checking updates from GitHub repo %s", repo)
-        release = self._fetch_release(repo, include_prerelease)
+        release = self._fetch_release(repo)
         latest_version = self._normalize_version(str(release.get("tag_name", "") or ""))
         if not latest_version:
             raise ValueError("릴리즈 태그에서 버전 정보를 읽지 못했습니다.")
@@ -189,7 +184,7 @@ class UpdateService:
             creationflags=no_window_creationflags(),
         )
 
-    def _fetch_release(self, repo: str, include_prerelease: bool) -> dict:
+    def _fetch_release(self, repo: str) -> dict:
         releases = self._request_json(f"https://api.github.com/repos/{repo}/releases")
         if not isinstance(releases, list):
             raise ValueError("GitHub Releases 응답 형식이 올바르지 않습니다.")
@@ -198,7 +193,7 @@ class UpdateService:
         for release in releases:
             if release.get("draft"):
                 continue
-            if not include_prerelease and release.get("prerelease"):
+            if release.get("prerelease"):
                 continue
             version = self._normalize_version(str(release.get("tag_name", "") or ""))
             if not version:
@@ -206,8 +201,6 @@ class UpdateService:
             candidates.append(release)
 
         if not candidates:
-            if include_prerelease:
-                raise ValueError("사용 가능한 GitHub 릴리즈를 찾지 못했습니다.")
             raise ValueError("사용 가능한 정식 릴리즈를 찾지 못했습니다.")
 
         candidates.sort(

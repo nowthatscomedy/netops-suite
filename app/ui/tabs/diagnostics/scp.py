@@ -17,15 +17,16 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QPlainTextEdit,
+    QSizePolicy,
     QSplitter,
     QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from app.models.result_models import OperationResult
 from app.models.scp_models import ScpProfile, ScpServerRuntime, ScpTransferResult
+from app.ui.common import confirm_risky_action, make_empty_state, make_table_item, set_table_minimums
 from app.ui.dialogs.scp_profile_dialog import ScpProfileDialog
 from app.utils.file_utils import open_in_explorer, timestamped_export_path
 
@@ -154,13 +155,14 @@ class ScpDiagnosticsMixin:
         )
         self._setup_table(self.scp_transfer_table)
         self._set_stretch_columns(self.scp_transfer_table, 2, 3)
-        self.scp_transfer_table.setMinimumHeight(130)
-        self.scp_transfer_table.setMaximumHeight(180)
-        result_layout.addWidget(self.scp_transfer_table)
+        set_table_minimums(self.scp_transfer_table, 220, (2, 3))
+        self.scp_client_result_log_splitter = QSplitter(Qt.Vertical)
+        self.scp_client_result_log_splitter.setChildrenCollapsible(False)
+        self.scp_client_result_log_splitter.addWidget(self.scp_transfer_table)
 
         result_button_row = QHBoxLayout()
         self.scp_transfer_export_button = make_action_button("전송 결과 CSV 저장", ActionKind.EXPORT)
-        self.scp_client_log_export_button = make_action_button("클라이언트 로그 TXT 저장", ActionKind.EXPORT)
+        self.scp_client_log_export_button = make_action_button("로그 TXT 저장", ActionKind.EXPORT)
         self._set_transfer_button_min_width(
             self.scp_transfer_export_button,
             self.scp_client_log_export_button,
@@ -170,15 +172,22 @@ class ScpDiagnosticsMixin:
         result_button_row.addWidget(self.scp_client_log_export_button)
         result_button_row.addStretch(1)
         result_layout.addLayout(result_button_row)
-        result_layout.addWidget(QLabel("실시간 로그"))
+        self.scp_transfer_empty_label = make_empty_state("업로드/다운로드를 실행하면 전송 결과가 표시됩니다.")
+        result_layout.addWidget(self.scp_transfer_empty_label)
+        scp_log_panel = QWidget()
+        scp_log_layout = QVBoxLayout(scp_log_panel)
+        scp_log_layout.setContentsMargins(0, 0, 0, 0)
+        scp_log_layout.addWidget(QLabel("실시간 로그"))
         self.scp_client_log_output = self._output()
         self.scp_client_log_output.setPlaceholderText("업로드 또는 다운로드를 실행하면 로그가 여기에 표시됩니다.")
         self.scp_client_log_output.setMinimumHeight(110)
-        self.scp_client_log_output.setMaximumHeight(150)
-        result_layout.addWidget(self.scp_client_log_output)
-        self._set_compact_transfer_group(self.scp_client_activity_splitter)
-        layout.addWidget(self.scp_client_activity_splitter)
-        layout.addStretch(1)
+        self.scp_client_log_output.setMaximumHeight(16777215)
+        scp_log_layout.addWidget(self.scp_client_log_output)
+        self.scp_client_result_log_splitter.addWidget(scp_log_panel)
+        self.scp_client_result_log_splitter.setSizes([420, 160])
+        result_layout.addWidget(self.scp_client_result_log_splitter, 1)
+        self.scp_client_activity_splitter.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        layout.addWidget(self.scp_client_activity_splitter, 1)
 
         self.scp_profile_combo.currentIndexChanged.connect(self._apply_selected_scp_profile)
         self.scp_profile_add_button.clicked.connect(self._add_scp_profile)
@@ -206,6 +215,9 @@ class ScpDiagnosticsMixin:
 
         self.scp_server_bind_host_edit = QLineEdit()
         self.scp_server_bind_host_edit.setPlaceholderText("예: 0.0.0.0")
+        self.scp_server_bind_warning_label = QLabel("0.0.0.0 = 모든 네트워크 인터페이스에 공개")
+        self.scp_server_bind_warning_label.setWordWrap(True)
+        self.scp_server_bind_warning_label.setStyleSheet("color:#b45309;")
         self.scp_server_port_edit = QLineEdit()
         self.scp_server_port_edit.setPlaceholderText("예: 2223")
         self.scp_server_root_edit = QLineEdit()
@@ -222,6 +234,7 @@ class ScpDiagnosticsMixin:
 
         form.addWidget(QLabel("바인드 IP"), 0, 0)
         form.addWidget(self.scp_server_bind_host_edit, 0, 1)
+        form.addWidget(self.scp_server_bind_warning_label, 0, 4)
         form.addWidget(QLabel("포트"), 0, 2)
         form.addWidget(self.scp_server_port_edit, 0, 3)
         form.addWidget(QLabel("공유 루트"), 1, 0)
@@ -266,23 +279,27 @@ class ScpDiagnosticsMixin:
         status_form.addRow("호스트 키 지문", self.scp_server_fingerprint_label)
         server_layout.addLayout(status_form)
         self._set_compact_transfer_group(server_group)
-        layout.addWidget(server_group)
+        self.scp_server_top_group = server_group
 
         self.scp_server_log_group = QGroupBox("서버 로그")
         log_layout = QVBoxLayout(self.scp_server_log_group)
         self.scp_server_log_output = self._output()
         self.scp_server_log_output.setPlaceholderText("서버를 시작하면 접속 및 전송 로그가 여기에 표시됩니다.")
         self.scp_server_log_output.setMinimumHeight(120)
-        self.scp_server_log_output.setMaximumHeight(170)
+        self.scp_server_log_output.setMaximumHeight(16777215)
         log_layout.addWidget(self.scp_server_log_output)
         log_button_row = QHBoxLayout()
-        self.scp_server_log_export_button = make_action_button("서버 로그 TXT 저장", ActionKind.EXPORT)
+        self.scp_server_log_export_button = make_action_button("서버 로그 저장", ActionKind.EXPORT)
         log_button_row.addWidget(self.scp_server_log_export_button)
         log_button_row.addStretch(1)
         log_layout.addLayout(log_button_row)
-        self._set_compact_transfer_group(self.scp_server_log_group)
-        layout.addWidget(self.scp_server_log_group)
-        layout.addStretch(1)
+        self.scp_server_log_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.scp_server_splitter = QSplitter(Qt.Vertical)
+        self.scp_server_splitter.setChildrenCollapsible(False)
+        self.scp_server_splitter.addWidget(self.scp_server_top_group)
+        self.scp_server_splitter.addWidget(self.scp_server_log_group)
+        self.scp_server_splitter.setSizes([260, 360])
+        layout.addWidget(self.scp_server_splitter, 1)
 
         self.scp_server_root_browse_button.clicked.connect(self._choose_scp_server_root)
         self.scp_server_start_button.clicked.connect(self._start_scp_server)
@@ -356,7 +373,15 @@ class ScpDiagnosticsMixin:
         if profile is None:
             QMessageBox.warning(self, "선택 필요", "삭제할 SCP 프로파일을 먼저 선택해 주세요.")
             return
-        if QMessageBox.question(self, "프로파일 삭제", f"'{profile.name}' 프로파일을 삭제할까요?") != QMessageBox.Yes:
+        if not confirm_risky_action(
+            self,
+            "SCP 프로파일 삭제",
+            impact=f"저장된 SCP 접속 프로파일 '{profile.name}'이 삭제됩니다.",
+            reversibility="삭제 후 자동 복구는 제공되지 않습니다. 접속 정보가 필요하면 다시 입력해야 합니다.",
+            output_location="삭제 결과는 파일 전송 상태와 애플리케이션 로그에 기록됩니다.",
+            question="이 프로파일을 삭제할까요?",
+            confirm_text="삭제",
+        ):
             return
         profiles = [item for item in self.state.scp_profiles if item.name != profile.name]
         self.state.save_scp_profiles(profiles)
@@ -408,6 +433,16 @@ class ScpDiagnosticsMixin:
         )
         if not files:
             return
+        remote_target = self.scp_client_remote_path_edit.text().strip() or "."
+        if not self._confirm_transfer_preflight(
+            protocol="SCP",
+            direction="업로드",
+            source=", ".join(Path(file).name for file in files[:3]) + (" ..." if len(files) > 3 else ""),
+            target=remote_target,
+            file_count=len(files),
+            overwrite_note="원격 대상에 같은 이름이 있으면 SCP 동작에 따라 덮어쓸 수 있습니다.",
+        ):
+            return
         self.scp_client_log_output.clear()
         self._scp_client_logs = []
         self._scp_transfer_row_map.clear()
@@ -421,7 +456,7 @@ class ScpDiagnosticsMixin:
             self.scp_client_username_edit.text().strip(),
             self.scp_client_password_edit.text(),
             files,
-            self.scp_client_remote_path_edit.text().strip() or ".",
+            remote_target,
             self.scp_client_timeout_edit.text().strip() or "15",
             cancel_event=self.scp_client_cancel_event,
             on_progress=self._handle_scp_client_progress,
@@ -447,6 +482,15 @@ class ScpDiagnosticsMixin:
         remote_sources = [line.strip() for line in self.scp_client_remote_sources_edit.toPlainText().splitlines() if line.strip()]
         if not remote_sources:
             QMessageBox.warning(self, "입력 필요", "다운로드할 원격 경로를 한 줄에 하나씩 입력해 주세요.")
+            return
+        if not self._confirm_transfer_preflight(
+            protocol="SCP",
+            direction="다운로드",
+            source=", ".join(remote_sources[:3]) + (" ..." if len(remote_sources) > 3 else ""),
+            target=local_folder,
+            file_count=len(remote_sources),
+            overwrite_note="로컬 폴더에 같은 이름이 있으면 SCP 동작에 따라 덮어쓸 수 있습니다.",
+        ):
             return
 
         self.scp_client_log_output.clear()
@@ -513,7 +557,7 @@ class ScpDiagnosticsMixin:
             result.status,
         ]
         for column, value in enumerate(values):
-            item = QTableWidgetItem(value)
+            item = make_table_item(value)
             if column == 7:
                 if result.status == "완료":
                     item.setForeground(QColor("#1b5e20"))
@@ -522,6 +566,7 @@ class ScpDiagnosticsMixin:
                 elif result.status == "오류":
                     item.setForeground(QColor("#b71c1c"))
             self.scp_transfer_table.setItem(row, column, item)
+        self._update_scp_client_activity_visibility()
 
     def _export_scp_transfer_results(self) -> None:
         if self.scp_transfer_table.rowCount() == 0:
@@ -554,6 +599,17 @@ class ScpDiagnosticsMixin:
         self._apply_scp_support_label(self.scp_server_support_label, support)
         if not support.success:
             self._show_scp_support_warning("SCP 서버 준비 필요", support)
+            return
+        root = self.scp_server_root_edit.text().strip() or "(공유 루트 미입력)"
+        access = "읽기 전용" if bool(self.scp_server_readonly_combo.currentData()) else "읽기/쓰기 가능"
+        if not confirm_risky_action(
+            self,
+            "임시 SCP 서버 시작",
+            impact=f"SCP 서버가 지정한 바인드 IP/포트에서 열리고 공유 루트가 노출됩니다. 공유 루트: {root} / 권한: {access}",
+            reversibility="서버 중지 버튼으로 종료할 수 있지만, 실행 중 접속한 클라이언트의 다운로드/업로드는 별도로 되돌릴 수 없습니다.",
+            output_location="접속 및 전송 기록은 서버 로그 영역과 서버 로그 저장 결과에 남습니다.",
+            confirm_text="서버 시작",
+        ):
             return
 
         self.scp_server_log_output.clear()
@@ -666,6 +722,8 @@ class ScpDiagnosticsMixin:
     def _update_scp_client_activity_visibility(self) -> None:
         self.scp_transfer_export_button.setEnabled(self.scp_transfer_table.rowCount() > 0)
         self.scp_client_log_export_button.setEnabled(bool(self._scp_client_logs))
+        if hasattr(self, "scp_transfer_empty_label"):
+            self.scp_transfer_empty_label.setVisible(self.scp_transfer_table.rowCount() == 0)
 
     def _update_scp_server_log_visibility(self) -> None:
         self.scp_server_log_export_button.setEnabled(bool(self._scp_server_logs))

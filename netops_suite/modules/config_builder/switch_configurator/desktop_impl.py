@@ -135,9 +135,15 @@ QHeaderView::section {
 """
 
 COMPACT_UI_STYLE = """
+QWidget#configBuilderFullEditorCentral,
+QWidget#configBuilderEmbeddedCentral,
+QWidget#configBuilderAdvancedPanel {
+    background: #ffffff;
+}
 QGroupBox {
     font-weight: 600;
     margin-top: 8px;
+    background: #ffffff;
 }
 QGroupBox::title {
     subcontrol-origin: margin;
@@ -1425,12 +1431,13 @@ class DeviceFilterProxyModel(QSortFilterProxyModel):
         return self._filter_text in value
 
 
-class DesktopWindow(QMainWindow):
-    def __init__(self, profiles_dir: str | Path | None = None) -> None:
-        super().__init__()
+class SwitchConfigBuilderWidget(QWidget):
+    def __init__(self, profiles_dir: str | Path | None = None, parent: QWidget | None = None, *, embedded: bool = False) -> None:
+        super().__init__(parent)
+        self._embedded = embedded
         app = QApplication.instance()
         self.setWindowIcon(app.windowIcon() if app and not app.windowIcon().isNull() else build_app_icon())
-        self.setWindowTitle("Switch Config Builder Desktop")
+        self.setWindowTitle("CLI 설정 생성")
         self.resize(1520, 840)
         font = self.font()
         font.setPointSize(8)
@@ -1500,12 +1507,16 @@ class DesktopWindow(QMainWindow):
         self.proxy_model.setSourceModel(self.table_model)
         self.cell_delegate = DeviceCellDelegate(lambda: self.profiles, self)
 
-        self._build_ui()
+        if self._embedded:
+            self._build_embedded_ui()
+        else:
+            self._build_ui()
         self._apply_restored_window_state()
         self.reload_profiles()
         self._update_history_actions()
         self._set_empty_table()
-        self._restore_last_session_state()
+        if not self._embedded:
+            self._restore_last_session_state()
 
     def _row_state_for_model(self, row_index: int) -> str:
         return self.row_work_state.get(self.table_model.row_uid(row_index), "")
@@ -1551,7 +1562,12 @@ class DesktopWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         self._build_toolbar()
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+        root.addWidget(self.main_toolbar)
         central = QWidget(self)
+        central.setObjectName("configBuilderFullEditorCentral")
         main = QVBoxLayout(central)
         main.setContentsMargins(10, 10, 10, 10)
         main.setSpacing(8)
@@ -1578,12 +1594,193 @@ class DesktopWindow(QMainWindow):
         self.main_splitter = splitter
         main.addWidget(splitter, 1)
 
-        self.setCentralWidget(central)
-        self.setStatusBar(QStatusBar(self))
         self.filter_field_combo.currentTextChanged.connect(self.apply_filter)
         self.filter_value_edit.textChanged.connect(self.apply_filter)
         self.add_profile_combo.currentTextChanged.connect(self.refresh_selected_preview)
         self.add_profile_combo.currentTextChanged.connect(self.refresh_block_toggle_panel)
+        self._status_bar = QStatusBar(self)
+        root.addWidget(central, 1)
+        root.addWidget(self._status_bar)
+
+    def statusBar(self) -> QStatusBar:
+        return self._status_bar
+
+    def _build_embedded_ui(self) -> None:
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+        central = QWidget(self)
+        central.setObjectName("configBuilderEmbeddedCentral")
+        main = QVBoxLayout(central)
+        main.setContentsMargins(8, 6, 8, 6)
+        main.setSpacing(6)
+
+        self.summary_label = QLabel("장비 변수 파일을 열거나 샘플로 시작하면 CLI를 바로 확인할 수 있습니다.")
+        self.summary_label.setWordWrap(True)
+        self.summary_label.setStyleSheet("color:#334155;")
+        main.addWidget(self.summary_label)
+        main.addWidget(self._build_embedded_command_bar())
+        main.addWidget(self._build_embedded_summary_chips())
+
+        self.advanced_panel = self._build_embedded_advanced_panel()
+        self.advanced_panel.setObjectName("configBuilderAdvancedPanel")
+        self.advanced_panel.setVisible(False)
+        main.addWidget(self.advanced_panel)
+
+        splitter = QSplitter(Qt.Horizontal, self)
+        splitter.setChildrenCollapsible(False)
+        splitter.addWidget(self._build_left_panel())
+        self.right_panel = self._build_right_panel()
+        splitter.addWidget(self.right_panel)
+        splitter.setSizes([820, 420])
+        self.main_splitter = splitter
+        main.addWidget(splitter, 1)
+
+        self.filter_field_combo.currentTextChanged.connect(self.apply_filter)
+        self.filter_value_edit.textChanged.connect(self.apply_filter)
+        self.add_profile_combo.currentTextChanged.connect(self.refresh_selected_preview)
+        self.add_profile_combo.currentTextChanged.connect(self.refresh_block_toggle_panel)
+        self._status_bar = QStatusBar(self)
+        self._status_bar.hide()
+        root.addWidget(central, 1)
+
+    def _build_embedded_command_bar(self) -> QWidget:
+        bar = QWidget()
+        bar.setObjectName("configBuilderCompactCommandBar")
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        profile_label = QLabel("기준 프로파일")
+        self.add_profile_combo = QComboBox()
+        self.add_profile_combo.setMinimumWidth(260)
+        self.sample_start_button = make_action_button("샘플로 시작", ActionKind.PRIMARY)
+        self.sample_start_button.setObjectName("configBuilderSampleStartButton")
+        self.sample_start_button.setToolTip("선택한 프로파일 기준 샘플을 프로그램 안의 장비 변수 테이블에 불러옵니다.")
+        self.sample_start_button.clicked.connect(self._start_sample_for_current_profile)
+        self.open_file_button = make_action_button("장비 변수 파일 열기", ActionKind.BROWSE)
+        self.open_file_button.setObjectName("configBuilderOpenDeviceValuesButton")
+        self.open_file_button.clicked.connect(self.open_device_file_dialog)
+        self.add_row_button = make_action_button("빈 행 추가", ActionKind.ADD)
+        self.add_row_button.setObjectName("configBuilderAddRowButton")
+        self.add_row_button.clicked.connect(self.add_row)
+        self.advanced_toggle_button = make_action_button("고급 작업", ActionKind.UTILITY)
+        self.advanced_toggle_button.setObjectName("configBuilderAdvancedToggleButton")
+        self.advanced_toggle_button.setCheckable(True)
+        self.advanced_toggle_button.toggled.connect(self._toggle_embedded_advanced_panel)
+
+        layout.addWidget(profile_label)
+        layout.addWidget(self.add_profile_combo, 1)
+        layout.addWidget(self.sample_start_button)
+        layout.addWidget(self.open_file_button)
+        layout.addWidget(self.add_row_button)
+        layout.addWidget(self.advanced_toggle_button)
+        return bar
+
+    def _build_embedded_summary_chips(self) -> QWidget:
+        chips = QWidget()
+        chips.setObjectName("configBuilderSummaryChips")
+        layout = QHBoxLayout(chips)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        self.profile_count_chip = self._make_summary_chip("프로파일 0개")
+        self.total_rows_chip = self._make_summary_chip("전체 0행")
+        self.ready_rows_chip = self._make_summary_chip("CLI 가능 0행")
+        self.issue_rows_chip = self._make_summary_chip("확인 필요 0행")
+        self.save_mode_chip = self._make_summary_chip("저장: 수동")
+        for chip in (
+            self.profile_count_chip,
+            self.total_rows_chip,
+            self.ready_rows_chip,
+            self.issue_rows_chip,
+            self.save_mode_chip,
+        ):
+            layout.addWidget(chip)
+        layout.addStretch(1)
+        return chips
+
+    def _make_summary_chip(self, text: str) -> QLabel:
+        label = QLabel(text)
+        label.setStyleSheet("padding: 3px 8px; border: 1px solid #dbe3ef; border-radius: 6px; background: #f8fafc; color: #334155;")
+        return label
+
+    def _build_embedded_advanced_panel(self) -> QWidget:
+        panel = QWidget()
+        layout = QHBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        layout.addWidget(self._build_profile_actions_group(), 2)
+        layout.addWidget(self._build_block_toggle_group(), 3)
+        layout.addWidget(self._build_filter_group(), 3)
+        layout.addWidget(self._build_embedded_row_actions_group(), 2)
+        layout.addWidget(self._build_pin_group(), 3)
+        layout.addWidget(self._build_embedded_file_status_group(), 2)
+        return panel
+
+    def _build_profile_actions_group(self) -> QGroupBox:
+        group = QGroupBox("프로파일 관리")
+        layout = QVBoxLayout(group)
+        reload_button = make_action_button("새로고침", ActionKind.REFRESH)
+        reload_button.clicked.connect(self.reload_profiles)
+        new_button = make_action_button("새 프로파일", ActionKind.ADD)
+        new_button.clicked.connect(self.open_new_profile_dialog)
+        clone_button = make_action_button("프로파일 복사", ActionKind.COPY)
+        clone_button.clicked.connect(self.clone_current_profile_dialog)
+        edit_button = make_action_button("프로파일 편집", ActionKind.EDIT)
+        edit_button.clicked.connect(self.edit_current_profile_dialog)
+        delete_button = make_action_button("프로파일 삭제", ActionKind.DELETE)
+        delete_button.clicked.connect(self.delete_current_profile_dialog)
+        for button in (reload_button, new_button, clone_button, edit_button, delete_button):
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            layout.addWidget(button)
+        layout.addStretch(1)
+        return group
+
+    def _build_embedded_row_actions_group(self) -> QGroupBox:
+        group = QGroupBox("행 작업")
+        layout = QVBoxLayout(group)
+        self.duplicate_row_button = make_action_button("선택 행 복사", ActionKind.COPY)
+        self.duplicate_row_button.clicked.connect(self.duplicate_selected_rows)
+        self.increment_duplicate_row_button = make_action_button("연속 값 복사", ActionKind.COPY)
+        self.increment_duplicate_row_button.clicked.connect(self.duplicate_selected_rows_with_increment)
+        self.delete_row_button = make_action_button("선택 행 삭제", ActionKind.DELETE)
+        self.delete_row_button.clicked.connect(self.delete_selected_rows)
+        for button in (self.duplicate_row_button, self.increment_duplicate_row_button, self.delete_row_button):
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            layout.addWidget(button)
+        layout.addStretch(1)
+        return group
+
+    def _build_embedded_file_status_group(self) -> QGroupBox:
+        group = QGroupBox("파일 상태")
+        layout = QFormLayout(group)
+        self.file_path_label = QLabel("-")
+        self.file_path_label.setWordWrap(True)
+        self.file_path_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.profile_summary_label = QLabel("-")
+        self.profile_summary_label.setWordWrap(True)
+        self.profile_summary_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.auto_save_check = QCheckBox("실시간 파일 저장")
+        self.auto_save_check.setChecked(True)
+        self.auto_save_check.toggled.connect(self.on_auto_save_toggled)
+        self.allow_error_autosave_check = QCheckBox("오류 있어도 실시간 저장")
+        self.allow_error_autosave_check.setChecked(self.allow_error_autosave)
+        self.allow_error_autosave_check.toggled.connect(self.on_allow_error_autosave_toggled)
+        self.allow_error_autosave_check.setEnabled(self.auto_save_check.isChecked())
+        self.save_status_label = QLabel("-")
+        self.save_status_label.setWordWrap(True)
+        self.save_status_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        layout.addRow("현재 파일", self.file_path_label)
+        layout.addRow("프로파일 상태", self.profile_summary_label)
+        layout.addRow("저장 방식", self.auto_save_check)
+        layout.addRow("", self.allow_error_autosave_check)
+        layout.addRow("저장 상태", self.save_status_label)
+        return group
+
+    def _toggle_embedded_advanced_panel(self, checked: bool) -> None:
+        if hasattr(self, "advanced_panel"):
+            self.advanced_panel.setVisible(checked)
+        if hasattr(self, "advanced_toggle_button"):
+            self.advanced_toggle_button.setText("고급 닫기" if checked else "고급 작업")
 
     def _build_template_group(self) -> QGroupBox:
         group = QGroupBox("프로파일 작업")
@@ -1619,15 +1816,29 @@ class DesktopWindow(QMainWindow):
 
     def _build_block_toggle_group(self) -> QGroupBox:
         group = QGroupBox("명령 블록 선택")
+        group.setObjectName("configBuilderBlockToggleGroup")
+        group.setStyleSheet(
+            """
+            QGroupBox#configBuilderBlockToggleGroup,
+            QScrollArea#configBuilderBlockToggleScroll,
+            QWidget#configBuilderBlockToggleViewport,
+            QWidget#configBuilderBlockToggleContainer {
+                background: #ffffff;
+            }
+            """
+        )
         outer = QVBoxLayout(group)
         outer.setContentsMargins(6, 10, 6, 6)
         outer.setSpacing(0)
         self.block_toggle_container = QWidget()
+        self.block_toggle_container.setObjectName("configBuilderBlockToggleContainer")
         self.block_toggle_container_layout = QVBoxLayout(self.block_toggle_container)
         self.block_toggle_container_layout.setContentsMargins(0, 0, 0, 0)
         self.block_toggle_container_layout.setSpacing(1)
         scroll = QScrollArea()
+        scroll.setObjectName("configBuilderBlockToggleScroll")
         scroll.setWidgetResizable(True)
+        scroll.viewport().setObjectName("configBuilderBlockToggleViewport")
         scroll.setWidget(self.block_toggle_container)
         scroll.setFrameShape(QFrame.NoFrame)
         outer.addWidget(scroll)
@@ -1749,7 +1960,6 @@ class DesktopWindow(QMainWindow):
         toolbar.setMovable(False)
         toolbar.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self.main_toolbar = toolbar
-        self.addToolBar(toolbar)
         for text, handler in (
             ("저장", self.save_current_file),
             ("다른 이름 저장", self.save_current_file_as),
@@ -1781,6 +1991,8 @@ class DesktopWindow(QMainWindow):
         layout.setSpacing(8)
         title = QLabel("장비 설정 정보")
         layout.addWidget(title)
+        if self._embedded:
+            layout.addWidget(self._build_embedded_empty_state())
 
         self.pinned_table_view = SpreadsheetTableView()
         self.table_view = SpreadsheetTableView()
@@ -1854,6 +2066,34 @@ class DesktopWindow(QMainWindow):
         layout.addWidget(self.table_shell, 1)
         return panel
 
+    def _build_embedded_empty_state(self) -> QWidget:
+        empty = QWidget()
+        empty.setObjectName("configBuilderEmptyState")
+        empty.setStyleSheet("QWidget#configBuilderEmptyState { border: 1px dashed #cbd5e1; border-radius: 6px; background: #f8fafc; }")
+        layout = QVBoxLayout(empty)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(6)
+        title = QLabel("아직 장비 목록이 없습니다.")
+        title.setStyleSheet("font-weight: 700; color: #1e293b;")
+        message = QLabel("샘플로 시작하거나 장비 변수 파일(CSV/XLSX)을 여세요.")
+        message.setWordWrap(True)
+        message.setStyleSheet("color: #475569;")
+        action_row = QHBoxLayout()
+        sample_button = make_action_button("샘플로 시작", ActionKind.PRIMARY)
+        sample_button.clicked.connect(self._start_sample_for_current_profile)
+        open_button = make_action_button("장비 변수 파일 열기", ActionKind.BROWSE)
+        open_button.clicked.connect(self.open_device_file_dialog)
+        add_button = make_action_button("빈 행 추가", ActionKind.ADD)
+        add_button.clicked.connect(self.add_row)
+        action_row.addWidget(sample_button)
+        action_row.addWidget(open_button)
+        action_row.addWidget(add_button)
+        action_row.addStretch(1)
+        layout.addWidget(title)
+        layout.addWidget(message)
+        layout.addLayout(action_row)
+        return empty
+
     def _build_right_panel(self) -> QWidget:
         panel = QWidget()
         layout = QVBoxLayout(panel)
@@ -1877,7 +2117,7 @@ class DesktopWindow(QMainWindow):
         self.select_cli_button = make_action_button("전체 선택", ActionKind.COPY)
         self.select_cli_button.clicked.connect(self.select_cli_preview_text)
         self.copy_cli_button.setToolTip("현재 선택한 장비 CLI를 클립보드에 복사합니다.")
-        self.copy_next_cli_button.setToolTip("CLI를 복사한 뒤 바로 다음 장비로 이동합니다.")
+        self.copy_next_cli_button.setToolTip("장비에 자동 적용하지 않고 클립보드 복사 후 다음 행으로 이동합니다.")
         self.select_cli_button.setToolTip("CLI 미리보기 전체를 선택합니다.")
         navigation_row.addWidget(self.previous_device_button)
         navigation_row.addWidget(self.next_device_button)
@@ -1977,6 +2217,11 @@ class DesktopWindow(QMainWindow):
         self.cli_preview.setMinimumHeight(200)
         cli_layout.addWidget(self.cli_preview)
         self.detail_tabs.addTab(cli_tab, "CLI")
+        if self._embedded:
+            self.select_cli_button.hide()
+            self.mark_done_button.hide()
+            self.reset_work_state_button.hide()
+            self.detail_tabs.setCurrentWidget(cli_tab)
 
         layout.addWidget(self.detail_tabs, 1)
         return panel
@@ -2062,10 +2307,11 @@ class DesktopWindow(QMainWindow):
         self._remember_current_file_column_state()
         selected_row = self._current_source_row()
         geometry = ""
-        try:
-            geometry = bytes(self.saveGeometry().toBase64()).decode("ascii")
-        except Exception:
-            geometry = ""
+        if not self._embedded:
+            try:
+                geometry = bytes(self.saveGeometry().toBase64()).decode("ascii")
+            except Exception:
+                geometry = ""
         state = {
             "recent_files": self.recent_files[:DEFAULT_RECENT_LIMIT],
             "pinned_headers": self.pinned_headers,
@@ -2090,7 +2336,7 @@ class DesktopWindow(QMainWindow):
             self.auto_save_check.setChecked(self._restored_auto_save)
         if hasattr(self, "allow_error_autosave_check"):
             self.allow_error_autosave_check.setChecked(self.allow_error_autosave)
-        if self._restored_window_geometry:
+        if self._restored_window_geometry and not self._embedded:
             try:
                 geometry = QByteArray.fromBase64(self._restored_window_geometry.encode("ascii"))
                 if not geometry.isEmpty():
@@ -2145,12 +2391,41 @@ class DesktopWindow(QMainWindow):
             self.visible_headers = [header for header in saved_state.get("visible_headers", []) if header in headers]
             self.column_order = [header for header in saved_state.get("column_order", []) if header in headers]
             self._visible_headers_initialized = True
+            if not self.visible_headers:
+                self._ensure_headers_visible_by_default(headers, reset=True)
             return
         self.pinned_headers = [header for header in self.pinned_headers if header in headers]
-        self.visible_headers = [header for header in self.visible_headers if header in headers]
         self.column_order = [header for header in self.column_order if header in headers]
-        if self.visible_headers:
+        self._ensure_headers_visible_by_default(headers, reset=True)
+
+    def _ensure_headers_visible_by_default(self, headers: list[str], *, reset: bool = False) -> None:
+        normalized_headers = [header for header in headers if str(header).strip()]
+        if not normalized_headers:
+            self.visible_headers = []
+            self.pinned_headers = []
+            self.column_order = []
             self._visible_headers_initialized = True
+            return
+
+        if reset:
+            self.visible_headers = list(normalized_headers)
+        else:
+            visible = [header for header in self.visible_headers if header in normalized_headers]
+            if (
+                not self._visible_headers_initialized
+                or not visible
+                or (set(visible) == {"profile_id"} and len(normalized_headers) > 1)
+            ):
+                visible = list(normalized_headers)
+            else:
+                visible.extend(header for header in normalized_headers if header not in visible)
+            self.visible_headers = visible
+
+        ordered = [header for header in self.column_order if header in normalized_headers]
+        ordered.extend(header for header in normalized_headers if header not in ordered)
+        self.column_order = ordered
+        self.pinned_headers = [header for header in self.pinned_headers if header in self.visible_headers]
+        self._visible_headers_initialized = True
 
     def refresh_recent_files_widget(self) -> None:
         if not hasattr(self, "recent_files_combo"):
@@ -2369,6 +2644,7 @@ class DesktopWindow(QMainWindow):
         self.refresh_pinned_column_list()
         self.apply_pinned_columns()
         self.refresh_render_state()
+        self._update_empty_state_visibility()
         self._refresh_tutorial_dialog()
 
     def open_device_file_dialog(self) -> None:
@@ -2377,6 +2653,57 @@ class DesktopWindow(QMainWindow):
         file_path, _ = QFileDialog.getOpenFileName(self, "장비 설정 정보 열기", str(ROOT_DIR), "Device Data (*.csv *.xlsx)")
         if file_path:
             self.load_device_file(Path(file_path))
+
+    def _start_sample_for_current_profile(self) -> None:
+        if not self._confirm_discard_changes():
+            return
+        profile = self._selected_template_profile()
+        if not profile:
+            self.statusBar().showMessage("기준 프로파일을 먼저 선택하세요.", 3000)
+            return
+        try:
+            from netops_suite.modules.config_builder.service import ConfigBuilderService
+
+            sample_path = ConfigBuilderService(profiles_dir=self.profile_dir).sample_device_values_for_profile(profile)
+        except Exception:
+            sample_path = None
+        if sample_path and sample_path.exists():
+            self._load_sample_device_table(sample_path, profile)
+            return
+        self._set_empty_table()
+        self.add_row()
+        self.statusBar().showMessage(f"{profile.id} 기준 빈 행을 추가했습니다. 저장하려면 다른 이름 저장을 사용하세요.", 5000)
+
+    def _load_sample_device_table(self, path: Path, profile: Profile) -> None:
+        try:
+            table = load_device_table_from_path(path)
+        except Exception as exc:
+            QMessageBox.warning(self, "샘플 시작", str(exc))
+            return
+        expanded = expand_headers_for_referenced_profiles(table.headers, table.rows, self.profiles)
+        self._history_blocked = True
+        self._loading_table = True
+        try:
+            self.table_model.set_table(DeviceTable(path=None, headers=expanded, rows=table.rows))
+        finally:
+            self._loading_table = False
+            self._history_blocked = False
+        self.row_work_state = {}
+        self.current_file_path = None
+        self.file_path_label.setText(f"샘플: {path.name}")
+        self.file_path_label.setToolTip(str(path))
+        self.is_dirty = True
+        self._reset_history()
+        self._ensure_headers_visible_by_default(expanded, reset=True)
+        self.refresh_filter_fields()
+        self.refresh_pinned_column_list()
+        self.apply_pinned_columns()
+        self.refresh_render_state()
+        self.apply_filter()
+        self._update_empty_state_visibility()
+        self._select_first_visible_row()
+        self._update_empty_state_visibility()
+        self.statusBar().showMessage(f"{profile.id} 기준 샘플을 불러왔습니다. 저장하려면 다른 이름 저장을 사용하세요.", 5000)
 
     def prompt_start_tutorial(self) -> None:
         if self.tutorial_dialog is not None and self.tutorial_dialog.isVisible():
@@ -2438,6 +2765,14 @@ class DesktopWindow(QMainWindow):
             if str(row.get(header_name, "")).strip().casefold() == normalized_expected:
                 return row_index
         return None
+
+    def _select_first_visible_row(self) -> None:
+        if self.proxy_model.rowCount() <= 0:
+            return
+        proxy_index = self.proxy_model.index(0, 0)
+        source_index = self.proxy_model.mapToSource(proxy_index)
+        if source_index.isValid():
+            self._select_source_row(source_index.row())
 
     def tutorial_profile(self) -> Profile | None:
         return self.profiles.get(TUTORIAL_PROFILE_ID)
@@ -2646,6 +2981,8 @@ class DesktopWindow(QMainWindow):
         self._apply_saved_column_order()
         self.refresh_render_state()
         self.apply_filter()
+        self._select_first_visible_row()
+        self._update_empty_state_visibility()
         self._append_activity_log(f"장비 파일 열기: {path}")
         self._refresh_tutorial_dialog()
 
@@ -3171,6 +3508,7 @@ class DesktopWindow(QMainWindow):
             self._loading_table = True
             self.table_model.ensure_headers(headers)
             self._loading_table = False
+            self._ensure_headers_visible_by_default(headers)
             self.refresh_filter_fields()
             self.refresh_pinned_column_list()
             self.apply_pinned_columns()
@@ -3180,6 +3518,8 @@ class DesktopWindow(QMainWindow):
         if proxy_index.isValid():
             self.table_view.selectRow(proxy_index.row())
             self.table_view.scrollTo(proxy_index)
+        self._update_empty_state_visibility()
+        self.refresh_selected_preview()
 
     def duplicate_selected_rows(self) -> None:
         source_rows = self._selected_source_rows()
@@ -3277,6 +3617,7 @@ class DesktopWindow(QMainWindow):
         self._loading_table = True
         self.table_model.ensure_headers(expanded)
         self._loading_table = False
+        self._ensure_headers_visible_by_default(expanded)
         self.refresh_filter_fields()
         self.refresh_pinned_column_list()
         self.apply_pinned_columns()
@@ -4369,9 +4710,43 @@ class DesktopWindow(QMainWindow):
         self.summary_label.setText(
             f"프로파일 {len(self.profiles)}개 / 전체 {total_rows}행 / 필터 결과 {visible_rows}행 / CLI 생성 가능 {ready_count}행 / 확인 필요 {issue_rows}행 / 복사 완료 {copied_count}행 / 적용 완료 {done_count}행 / {save_mode}{dirty}"
         )
+        if hasattr(self, "profile_count_chip"):
+            self.profile_count_chip.setText(f"프로파일 {len(self.profiles)}개")
+            self.total_rows_chip.setText(f"전체 {total_rows}행")
+            self.ready_rows_chip.setText(f"CLI 가능 {ready_count}행")
+            self.issue_rows_chip.setText(f"확인 필요 {issue_rows}행")
+            self.save_mode_chip.setText(f"저장: {save_mode}{dirty}")
+        self._update_empty_state_visibility()
         self._update_save_status_label()
         self._update_navigation_buttons()
         self.statusBar().showMessage(self.summary_label.text())
+
+    def _update_empty_state_visibility(self) -> None:
+        empty = self.findChild(QWidget, "configBuilderEmptyState")
+        if empty is None:
+            return
+        empty.setVisible(self.table_model.rowCount() == 0)
+
+
+class DesktopWindow(QMainWindow):
+    def __init__(self, profiles_dir: str | Path | None = None) -> None:
+        super().__init__()
+        app = QApplication.instance()
+        self.setWindowIcon(app.windowIcon() if app and not app.windowIcon().isNull() else build_app_icon())
+        self.setWindowTitle("CLI 설정 생성 - 전체 편집기")
+        self.resize(1520, 840)
+        self.builder = SwitchConfigBuilderWidget(profiles_dir=profiles_dir, parent=self, embedded=False)
+        self.setCentralWidget(self.builder)
+
+    def __getattr__(self, name: str):
+        try:
+            builder = object.__getattribute__(self, "builder")
+        except AttributeError:
+            raise AttributeError(name) from None
+        return getattr(builder, name)
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self.builder.closeEvent(event)
 
 
 def main() -> None:

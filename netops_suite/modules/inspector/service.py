@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import importlib.util
+import logging
 import os
 import re
 import sys
@@ -14,6 +15,7 @@ import yaml
 
 
 InspectorMode = Literal["inspection", "backup", "inspection_backup", "custom_commands"]
+LOGGER = logging.getLogger("netops_suite.inspector")
 
 
 @dataclass(slots=True)
@@ -483,6 +485,7 @@ class InspectorService:
             try:
                 spec.loader.exec_module(module)
             except Exception:
+                LOGGER.exception("Failed to load user Python parser file: %s", path)
                 continue
             for name in dir(module):
                 if name.startswith("parsing_") and callable(getattr(module, name)):
@@ -500,13 +503,22 @@ class InspectorService:
     def test_custom_parser_code(self, function_name: str, code: str, sample_output: str) -> Any:
         function_name = self._normalize_parser_function_name(function_name)
         parser = self._load_custom_parser_function(function_name, code)
-        return parser(sample_output)
+        try:
+            return parser(sample_output)
+        except Exception:
+            LOGGER.exception("Python custom parser failed during test: %s", function_name)
+            raise
 
     def _load_custom_parser_function(self, function_name: str, code: str):
         namespace: dict[str, Any] = {}
-        exec(compile(code, f"<{function_name}>", "exec"), namespace)
+        try:
+            exec(compile(code, f"<{function_name}>", "exec"), namespace)
+        except Exception:
+            LOGGER.exception("Failed to compile or load Python custom parser: %s", function_name)
+            raise
         parser = namespace.get(function_name)
         if not callable(parser):
+            LOGGER.warning("Python custom parser function not found or not callable: %s", function_name)
             raise ValueError(f"{function_name} 함수를 찾을 수 없습니다.")
         return parser
 

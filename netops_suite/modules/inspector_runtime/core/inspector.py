@@ -187,11 +187,15 @@ class NetworkInspector:
                 
                 if parser_name in CUSTOM_PARSERS:
                     parser_func = CUSTOM_PARSERS[parser_name]
-                    parsed_value = parser_func(output)
+                    try:
+                        parsed_value = parser_func(output)
+                    except Exception:
+                        self.logger.exception("커스텀 파서 실행 실패: %s (명령어: %s)", parser_name, command)
+                        parsed_value = None
 
                     if isinstance(parsed_value, dict):
                         result.update(parsed_value)
-                    elif 'output_column' in rules:
+                    elif parsed_value is not None and 'output_column' in rules:
                         column = rules['output_column']
                         result[column] = parsed_value
                 else:
@@ -240,7 +244,10 @@ class NetworkInspector:
                         
                         if parser_name in CUSTOM_PARSERS:
                             parser_func = CUSTOM_PARSERS[parser_name]
-                            result[column] = parser_func(output)
+                            try:
+                                result[column] = parser_func(output)
+                            except Exception:
+                                self.logger.exception("커스텀 파서 실행 실패: %s (명령어: %s)", parser_name, command)
                         else:
                             self.logger.error("커스텀 파서 함수 '%s'를 찾을 수 없습니다.", parser_name)
                         continue

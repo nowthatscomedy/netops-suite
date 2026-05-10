@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSplitter,
     QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -27,6 +26,7 @@ from PySide6.QtWidgets import (
 from app.app_state import AppState
 from app.models.network_models import NetworkAdapterInfo
 from app.models.profile_models import IPProfile
+from app.ui.common import confirm_risky_action, make_empty_state, make_inline_status, make_step_hint, make_table_item
 from app.ui.dialogs.profile_editor_dialog import ProfileEditorDialog
 from app.utils.threading_utils import FunctionWorker
 from app.utils.validators import (
@@ -64,14 +64,21 @@ class InterfaceTab(QWidget):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
+        layout.addWidget(make_step_hint("작업 흐름: 어댑터 선택 → DHCP/수동 설정 → 변경 내용 확인 → 적용"))
 
+        self.admin_banner = QWidget()
+        admin_layout = QHBoxLayout(self.admin_banner)
+        admin_layout.setContentsMargins(0, 0, 0, 0)
         self.admin_label = QLabel()
         self.admin_label.setWordWrap(True)
-        self._update_admin_banner()
-        layout.addWidget(self.admin_label)
+        self.restart_admin_button = make_action_button("관리자 권한으로 다시 실행", ActionKind.START)
+        self.restart_admin_button.clicked.connect(self._request_admin_restart)
+        admin_layout.addWidget(self.admin_label, 1)
+        admin_layout.addWidget(self.restart_admin_button)
+        layout.addWidget(self.admin_banner)
 
         top_row = QHBoxLayout()
-        self.refresh_button = make_action_button("인터페이스 새로고침", ActionKind.REFRESH)
+        self.refresh_button = make_action_button("어댑터 목록 새로고침", ActionKind.REFRESH)
         self.loading_label = QLabel("인터페이스 정보를 불러오는 중입니다...")
         self.loading_label.hide()
         self.loading_bar = QProgressBar()
@@ -91,14 +98,16 @@ class InterfaceTab(QWidget):
         adapter_layout = QVBoxLayout(adapter_group)
         self.adapter_table = QTableWidget(0, 8)
         self.adapter_table.setHorizontalHeaderLabels(
-            ["이름", "설명", "상태", "DHCP", "IPv4", "Prefix", "Gateway", "DNS"]
+            ["이름", "설명", "상태", "DHCP", "IPv4", "프리픽스", "게이트웨이", "DNS"]
         )
         self.adapter_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.adapter_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.adapter_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.adapter_table.verticalHeader().setVisible(False)
         self.adapter_table.horizontalHeader().setStretchLastSection(True)
+        self.adapter_empty_label = make_empty_state("어댑터 목록 새로고침을 눌러 어댑터를 불러오세요.")
         adapter_layout.addWidget(self.adapter_table)
+        adapter_layout.addWidget(self.adapter_empty_label)
         splitter.addWidget(adapter_group)
 
         right_panel = QWidget()
@@ -117,11 +126,18 @@ class InterfaceTab(QWidget):
         self.gateway_edit = QLineEdit()
         self.gateway_edit.setPlaceholderText("예: 192.168.0.1")
         self.dns_edit = QPlainTextEdit()
-        self.dns_edit.setMaximumHeight(72)
+        self.dns_edit.setMaximumHeight(56)
         self.dns_edit.setPlaceholderText("예: 8.8.8.8, 1.1.1.1")
+        self.form_status_label = make_inline_status(
+            "info", "왼쪽에서 어댑터를 선택하면 현재 설정을 확인하고 변경할 수 있습니다."
+        )
 
         apply_row = QHBoxLayout()
-        self.apply_button = make_action_button("현재 설정 적용", ActionKind.PRIMARY)
+        self.apply_button = make_action_button(
+            "변경 내용 확인 후 적용",
+            ActionKind.PRIMARY,
+            tooltip="현재 설정과 적용 예정 설정을 비교한 뒤 네트워크 변경을 적용합니다.",
+        )
         self.save_current_button = make_action_button("프로파일로 저장", ActionKind.SAVE)
         apply_row.addWidget(self.apply_button)
         apply_row.addWidget(self.save_current_button)
@@ -129,9 +145,10 @@ class InterfaceTab(QWidget):
         form_layout.addRow("인터페이스", self.selected_interface_label)
         form_layout.addRow("적용 모드", self.mode_combo)
         form_layout.addRow("로컬 IPv4", self.ip_edit)
-        form_layout.addRow("Prefix / 마스크", self.prefix_edit)
+        form_layout.addRow("프리픽스 / 마스크", self.prefix_edit)
         form_layout.addRow("게이트웨이", self.gateway_edit)
         form_layout.addRow("DNS", self.dns_edit)
+        form_layout.addRow("", self.form_status_label)
         form_layout.addRow("", apply_row)
         right_layout.addWidget(form_group)
 
@@ -149,7 +166,11 @@ class InterfaceTab(QWidget):
         profile_layout.addLayout(detail_form)
 
         button_row = QHBoxLayout()
-        self.profile_apply_button = make_action_button("선택 프로파일 적용", ActionKind.PRIMARY)
+        self.profile_apply_button = make_action_button(
+            "프로파일 검토 후 적용",
+            ActionKind.PRIMARY,
+            tooltip="저장된 프로파일을 선택한 인터페이스에 적용하기 전 변경 내용을 확인합니다.",
+        )
         self.profile_add_button = make_action_button("프로파일 추가", ActionKind.ADD)
         self.profile_edit_button = make_action_button("프로파일 수정", ActionKind.EDIT)
         self.profile_delete_button = make_action_button("프로파일 삭제", ActionKind.DELETE)
@@ -175,7 +196,9 @@ class InterfaceTab(QWidget):
         self.profile_edit_button.clicked.connect(self.edit_selected_profile)
         self.profile_delete_button.clicked.connect(self.delete_selected_profile)
 
+        self._update_admin_banner()
         self._update_mode_state()
+        self._update_action_states()
 
     def _update_admin_banner(self) -> None:
         if self.state.is_admin:
@@ -185,6 +208,8 @@ class InterfaceTab(QWidget):
             self.admin_label.setStyleSheet(
                 "background:#e8f5e9; color:#1b5e20; padding:8px; border:1px solid #a5d6a7;"
             )
+            if hasattr(self, "restart_admin_button"):
+                self.restart_admin_button.hide()
         else:
             self.admin_label.setText(
                 "일반 권한으로 실행 중입니다. 네트워크 설정 변경 작업은 관리자 권한이 필요합니다."
@@ -192,6 +217,13 @@ class InterfaceTab(QWidget):
             self.admin_label.setStyleSheet(
                 "background:#fff8e1; color:#8d6e00; padding:8px; border:1px solid #ffe082;"
             )
+            if hasattr(self, "restart_admin_button"):
+                self.restart_admin_button.show()
+
+    def _request_admin_restart(self) -> None:
+        main_window = self.window()
+        if hasattr(main_window, "_restart_as_admin"):
+            main_window._restart_as_admin()
 
     def _reload_lists(self) -> None:
         selected_name = self._selected_profile().name if self._selected_profile() else ""
@@ -244,7 +276,7 @@ class InterfaceTab(QWidget):
                 adapter.dns_text() or "-",
             ]
             for column, value in enumerate(values):
-                item = QTableWidgetItem(value)
+                item = make_table_item(value)
                 if column == 2:
                     item.setForeground(
                         QColor("#1b5e20") if adapter.status.lower() == "up" else QColor("#b71c1c")
@@ -253,6 +285,7 @@ class InterfaceTab(QWidget):
             if preferred_name and adapter.name == preferred_name:
                 selected_row = row
 
+        self.adapter_empty_label.setVisible(not bool(adapters))
         if adapters:
             self.adapter_table.selectRow(selected_row)
             if self._pending_ui_state:
@@ -261,6 +294,7 @@ class InterfaceTab(QWidget):
             self.status_message.emit(f"네트워크 인터페이스 {len(adapters)}개를 불러왔습니다.")
         else:
             self.selected_interface_label.setText("-")
+            self._update_action_states()
             self.status_message.emit("네트워크 인터페이스를 찾지 못했습니다.")
 
     def _selected_adapter(self) -> NetworkAdapterInfo | None:
@@ -282,6 +316,7 @@ class InterfaceTab(QWidget):
         adapter = self._selected_adapter()
         if not adapter:
             self.selected_interface_label.setText("-")
+            self._update_action_states()
             return
         self.selected_interface_label.setText(adapter.name)
         self.mode_combo.setCurrentIndex(0 if adapter.dhcp_enabled else 1)
@@ -290,19 +325,45 @@ class InterfaceTab(QWidget):
         self.gateway_edit.setText(adapter.gateway or "")
         self.dns_edit.setPlainText(", ".join(adapter.dns_servers))
         self._update_mode_state()
+        self._update_action_states()
 
     def _update_mode_state(self) -> None:
-        is_static = self.mode_combo.currentData() == "static"
+        has_adapter = self._selected_adapter() is not None
+        is_static = has_adapter and self.mode_combo.currentData() == "static"
+        self.mode_combo.setEnabled(has_adapter)
         self.ip_edit.setEnabled(is_static)
         self.prefix_edit.setEnabled(is_static)
         self.gateway_edit.setEnabled(is_static)
         self.dns_edit.setEnabled(is_static)
+        self._update_action_states()
+
+    def _update_action_states(self) -> None:
+        if not hasattr(self, "apply_button"):
+            return
+        has_adapter = self._selected_adapter() is not None
+        has_profile = self._selected_profile() is not None
+        can_change_network = bool(self.state.is_admin)
+        self.apply_button.setEnabled(can_change_network and has_adapter)
+        self.profile_apply_button.setEnabled(can_change_network and has_profile)
+        self.save_current_button.setEnabled(has_adapter)
+        if not can_change_network:
+            admin_tip = "관리자 권한으로 다시 실행 후 사용할 수 있습니다."
+            self.apply_button.setToolTip(admin_tip)
+            self.profile_apply_button.setToolTip(admin_tip)
+        else:
+            self.apply_button.setToolTip("현재 설정과 적용 예정 설정을 비교한 뒤 네트워크 변경을 적용합니다.")
+            self.profile_apply_button.setToolTip("저장된 프로파일을 선택한 인터페이스에 적용하기 전 변경 내용을 확인합니다.")
+        if has_adapter:
+            self.form_status_label.hide()
+        else:
+            self.form_status_label.show()
 
     def _show_selected_profile_details(self) -> None:
         profile = self._selected_profile()
         if not profile:
             self.profile_mode_label.setText("-")
             self.profile_summary_label.setText("-")
+            self._update_action_states()
             return
 
         self.profile_mode_label.setText("자동 (DHCP)" if profile.mode == "dhcp" else "수동 IP")
@@ -313,6 +374,7 @@ class InterfaceTab(QWidget):
             self.profile_summary_label.setText(
                 f"IP {profile.local_ip}/{profile.prefix}, GW {profile.gateway or '-'}, DNS {dns_text}"
             )
+        self._update_action_states()
 
     def apply_current_settings(self) -> None:
         adapter = self._selected_adapter()
@@ -449,7 +511,15 @@ class InterfaceTab(QWidget):
         if not profile:
             QMessageBox.warning(self, "선택 필요", "먼저 IP 프로파일을 선택해 주세요.")
             return
-        if QMessageBox.question(self, "프로파일 삭제", f"'{profile.name}' 프로파일을 삭제할까요?") != QMessageBox.Yes:
+        if not confirm_risky_action(
+            self,
+            "프로파일 삭제",
+            impact=f"저장된 IP 프로파일 '{profile.name}'이 목록에서 삭제됩니다.",
+            reversibility="삭제 후 자동 복구는 제공되지 않습니다. 같은 설정이 필요하면 다시 만들어야 합니다.",
+            output_location="삭제 결과는 상태 표시줄과 애플리케이션 로그에 기록됩니다.",
+            question="이 프로파일을 삭제할까요?",
+            confirm_text="삭제",
+        ):
             return
 
         profiles = list(self.state.ip_profiles)
@@ -500,7 +570,7 @@ class InterfaceTab(QWidget):
         return [
             f"모드: {'자동 (DHCP)' if adapter.dhcp_enabled else '수동 IP'}",
             f"IPv4: {adapter.ipv4 or '-'}",
-            f"Prefix / 마스크: {format_prefix(adapter.prefix_length) if adapter.prefix_length else '-'}",
+            f"프리픽스 / 마스크: {format_prefix(adapter.prefix_length) if adapter.prefix_length else '-'}",
             f"게이트웨이: {adapter.gateway or '-'}",
             f"DNS: {adapter.dns_text() or '-'}",
         ]
@@ -515,7 +585,7 @@ class InterfaceTab(QWidget):
         return [
             "모드: 수동 IP",
             f"IPv4: {ip_value}",
-            f"Prefix / 마스크: {format_prefix(prefix_value)}",
+            f"프리픽스 / 마스크: {format_prefix(prefix_value)}",
             f"게이트웨이: {gateway_value or '-'}",
             f"DNS: {', '.join(dns_servers) if dns_servers else '-'}",
         ]
@@ -527,7 +597,7 @@ class InterfaceTab(QWidget):
         current_lines: list[str],
         target_lines: list[str],
     ) -> bool:
-        message = "\n".join(
+        settings = "\n".join(
             [
                 f"대상 인터페이스: {interface_name}",
                 "",
@@ -536,11 +606,17 @@ class InterfaceTab(QWidget):
                 "",
                 "[적용 후 설정]",
                 *target_lines,
-                "",
-                "이대로 적용할까요?",
             ]
         )
-        return QMessageBox.question(self, title, message) == QMessageBox.Yes
+        return confirm_risky_action(
+            self,
+            title,
+            impact=f"원격 접속 중인 세션이 끊길 수 있습니다.\n\n{settings}",
+            reversibility="저장된 프로파일 또는 DHCP 적용으로 되돌릴 수 있지만, 잘못된 게이트웨이/DNS 설정은 즉시 통신에 영향을 줄 수 있습니다.",
+            output_location="작업 결과는 하단 상태 표시줄과 애플리케이션 로그에 기록됩니다.",
+            question="현재 설정과 적용 예정 설정을 확인했습니다. 이대로 적용할까요?",
+            confirm_text="설정 적용",
+        )
 
     def _handle_operation_result(self, result, refresh_after: bool = False) -> None:
         if result.success:

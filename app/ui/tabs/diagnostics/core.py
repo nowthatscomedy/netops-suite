@@ -13,12 +13,15 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPlainTextEdit,
     QSizePolicy,
+    QSplitter,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -26,7 +29,7 @@ from PySide6.QtWidgets import (
 from app.app_state import AppState
 from app.models.network_models import PublicIperfServer
 from app.models.result_models import PingResult, TcpCheckResult
-from app.ui.common import JobRunner, nullable_number_sort_value, sortable_table_item
+from app.ui.common import JobRunner, make_step_hint, nullable_number_sort_value, sortable_table_item
 from app.ui.tabs.diagnostics.dns import DnsDiagnosticsMixin
 from app.ui.tabs.diagnostics.ftp import FtpDiagnosticsMixin
 from app.ui.tabs.diagnostics.iperf import IperfDiagnosticsMixin
@@ -116,22 +119,29 @@ class DiagnosticsTab(
 
         self.fixed_font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
         self._build_ui()
-        self.tab_widget.currentChanged.connect(self._handle_subtab_changed)
 
     def start_initial_refresh(self) -> None:
         self._startup_activated = True
-        self._start_subtab_initialization(self.tab_widget.currentIndex())
+        self._start_tool_initialization(self._current_tool_key())
 
-    def _handle_subtab_changed(self, index: int) -> None:
+    def _handle_tool_changed(self, index: int) -> None:
+        if not 0 <= index < len(self._diagnostic_tool_keys):
+            return
+        if self.diagnostic_stack.currentIndex() != index:
+            self.diagnostic_stack.setCurrentIndex(index)
         if not self._startup_activated:
             return
-        self._start_subtab_initialization(index)
+        self._start_tool_initialization(self._diagnostic_tool_keys[index])
 
-    def _start_subtab_initialization(self, index: int) -> None:
-        if index == 0:
+    def _sync_tool_list_to_stack(self, index: int) -> None:
+        if 0 <= index < self.diagnostic_tool_list.count() and self.diagnostic_tool_list.currentRow() != index:
+            self.diagnostic_tool_list.setCurrentRow(index)
+
+    def _start_tool_initialization(self, key: str) -> None:
+        if key in {"commands", "arp", "subnet", "oui"}:
             self._initialize_tools_tab()
             return
-        if index == 6:
+        if key == "iperf":
             self._initialize_iperf_tab()
 
     def _initialize_tools_tab(self) -> None:
@@ -150,16 +160,81 @@ class DiagnosticsTab(
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
-        self.tab_widget = QTabWidget()
-        self.tab_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
-        self.tab_widget.addTab(self._build_tools_tab(), "진단 도구")
-        self.tab_widget.addTab(self._build_ping_tab(), "Ping")
-        self.tab_widget.addTab(self._build_tcp_tab(), "TCPing")
-        self.tab_widget.addTab(self._build_dns_tab(), "nslookup")
-        self.tab_widget.addTab(self._build_trace_tab(), "tracert / pathping")
-        self.tab_widget.addTab(self._build_ftp_tab(), "파일 전송")
-        self.tab_widget.addTab(self._build_iperf_tab(), "iperf3")
-        layout.addWidget(self.tab_widget)
+        layout.addWidget(make_step_hint("작업 흐름: 도구 선택 → 대상 입력 → 실행 → 결과 저장"), 0)
+
+        self.diagnostic_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.diagnostic_splitter.setChildrenCollapsible(False)
+        self.diagnostic_tool_list = QListWidget()
+        self.diagnostic_tool_list.setObjectName("diagnosticToolList")
+        self.diagnostic_tool_list.setMinimumWidth(200)
+        self.diagnostic_tool_list.setMaximumWidth(320)
+        self.diagnostic_tool_list.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        self.diagnostic_tool_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.diagnostic_tool_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.diagnostic_tool_list.setTextElideMode(Qt.TextElideMode.ElideRight)
+        self.diagnostic_tool_list.setUniformItemSizes(True)
+        self.diagnostic_stack = QStackedWidget()
+        self.diagnostic_stack.setObjectName("diagnosticToolStack")
+        self.diagnostic_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
+        self.tab_widget = self.diagnostic_stack
+
+        self._diagnostic_tool_keys: list[str] = []
+        self._diagnostic_tool_index_by_key: dict[str, int] = {}
+        self._diagnostic_tool_labels: dict[str, str] = {}
+        tool_pages = [
+            ("ping", "Ping", self._build_ping_tab),
+            ("tcp", "포트 확인 (TCPing)", self._build_tcp_tab),
+            ("dns", "DNS 조회 (nslookup)", self._build_dns_tab),
+            ("trace", "경로 추적 (tracert/pathping)", self._build_trace_tab),
+            ("iperf", "대역폭 측정 (iperf3)", self._build_iperf_tab),
+            ("arp", "같은 대역 장비 찾기 (ARP 스캔)", self._build_arp_scan_page),
+            ("subnet", "서브넷 계산기", self._build_subnet_calc_page),
+            ("oui", "MAC 제조사 조회 (OUI)", self._build_oui_lookup_page),
+            ("transfer", "파일 전송", self._build_ftp_tab),
+            ("commands", "명령 출력", self._build_command_tools_page),
+        ]
+        for key, label, builder in tool_pages:
+            self._add_diagnostic_tool(key, builder(), label)
+        self._refresh_oui_status_labels()
+
+        self.diagnostic_splitter.addWidget(self.diagnostic_tool_list)
+        self.diagnostic_splitter.addWidget(self.diagnostic_stack)
+        self.diagnostic_splitter.setStretchFactor(0, 0)
+        self.diagnostic_splitter.setStretchFactor(1, 1)
+        self.diagnostic_splitter.setSizes([220, 1060])
+        layout.addWidget(self.diagnostic_splitter, 1)
+
+        self.diagnostic_tool_list.currentRowChanged.connect(self._handle_tool_changed)
+        self.diagnostic_stack.currentChanged.connect(self._sync_tool_list_to_stack)
+        self.diagnostic_tool_list.setCurrentRow(0)
+
+    def _add_diagnostic_tool(self, key: str, widget: QWidget, label: str) -> None:
+        index = len(self._diagnostic_tool_keys)
+        item = QListWidgetItem(label)
+        item.setToolTip(label)
+        item.setData(Qt.ItemDataRole.UserRole, key)
+        self.diagnostic_tool_list.addItem(item)
+        self.diagnostic_stack.addWidget(widget)
+        self._diagnostic_tool_keys.append(key)
+        self._diagnostic_tool_index_by_key[key] = index
+        self._diagnostic_tool_labels[key] = label
+
+    def _current_tool_key(self) -> str:
+        index = self.diagnostic_stack.currentIndex()
+        if 0 <= index < len(self._diagnostic_tool_keys):
+            return self._diagnostic_tool_keys[index]
+        return "ping"
+
+    def select_diagnostic_tab(self, key: str) -> bool:
+        index = self._diagnostic_tool_index_by_key.get(key)
+        if index is None:
+            return False
+        self.diagnostic_tool_list.setCurrentRow(index)
+        self.diagnostic_stack.setCurrentIndex(index)
+        return True
+
+    def select_quick_tool(self, key: str) -> bool:
+        return self.select_diagnostic_tab(key)
 
     def _setup_table(self, table: QTableWidget) -> None:
         table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -217,34 +292,44 @@ class DiagnosticsTab(
             """
         )
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setContentsMargins(12, 8, 12, 8)
         layout.setSpacing(4)
+        card.setMinimumHeight(58)
 
         title_label = QLabel(title)
         title_label.setStyleSheet("color:#667085; font-weight:600;")
         value_label = QLabel("-")
-        value_label.setStyleSheet(f"color:{accent_color}; font-size:18px; font-weight:700;")
+        value_label.setStyleSheet(f"color:{accent_color}; font-size:14px; font-weight:700;")
         value_label.setWordWrap(True)
 
         layout.addWidget(title_label)
         layout.addWidget(value_label)
-        layout.addStretch(1)
         return card, value_label
 
     def _clear_subnet_calc_results(self) -> None:
         if hasattr(self, "subnet_calc_summary_labels"):
             for label in self.subnet_calc_summary_labels.values():
                 label.setText("-")
+        if hasattr(self, "subnet_calc_summary_widget"):
+            self.subnet_calc_summary_widget.hide()
         if hasattr(self, "subnet_calc_result_hint"):
-            self.subnet_calc_result_hint.setText("계산 후 요약 카드와 상세 네트워크 정보를 아래에서 확인할 수 있습니다.")
+            self.subnet_calc_result_hint.hide()
+        if hasattr(self, "subnet_calc_empty_label"):
+            self.subnet_calc_empty_label.show()
         if hasattr(self, "subnet_calc_detail_table"):
             self.subnet_calc_detail_table.setRowCount(0)
+            self.subnet_calc_detail_table.hide()
 
     def _populate_subnet_calc_results(self, details: dict[str, str]) -> None:
+        if hasattr(self, "subnet_calc_summary_widget"):
+            self.subnet_calc_summary_widget.show()
+        if hasattr(self, "subnet_calc_empty_label"):
+            self.subnet_calc_empty_label.hide()
         self.subnet_calc_summary_labels["network_address"].setText(details["network_address"])
         self.subnet_calc_summary_labels["host_range"].setText(details["host_range"])
         self.subnet_calc_summary_labels["broadcast_address"].setText(details["broadcast_address"])
         self.subnet_calc_summary_labels["usable_hosts"].setText(details["usable_hosts"])
+        self.subnet_calc_result_hint.show()
         self.subnet_calc_result_hint.setText("중요 값은 위 카드에 요약되고, 상세 값은 아래 표에서 바로 확인할 수 있습니다.")
 
         rows = [
@@ -264,6 +349,7 @@ class DiagnosticsTab(
         ]
 
         self.subnet_calc_detail_table.setRowCount(len(rows))
+        self.subnet_calc_detail_table.show()
         for row, (label_text, value_text) in enumerate(rows):
             label_item = QTableWidgetItem(label_text)
             label_item.setForeground(QColor("#475467"))
@@ -363,10 +449,9 @@ class DiagnosticsTab(
         if hasattr(self, "_collect_tftp_runtime_state") and hasattr(self.state, "save_tftp_runtime"):
             self.state.save_tftp_runtime(self._collect_tftp_runtime_state())
         return {
-            "current_tab": self.tab_widget.currentIndex(),
+            "current_tool_key": self._current_tool_key(),
             "tools": {
                 "version": 2,
-                "current_subtab": self.tools_inner_tab.currentIndex(),
                 "subnet_ip": self.subnet_calc_ip_edit.text().strip(),
                 "subnet_prefix": self.subnet_calc_prefix_edit.text().strip(),
                 "arp_subnet": self.arp_subnet_edit.text().strip(),
@@ -425,19 +510,12 @@ class DiagnosticsTab(
         if not state:
             return
 
-        current_tab = int(state.get("current_tab", 0) or 0)
-        if current_tab == 7:
-            current_tab = 5
-        if 0 <= current_tab < self.tab_widget.count():
-            self.tab_widget.setCurrentIndex(current_tab)
-
         tools_state = state.get("tools", {})
-        tools_version = int(tools_state.get("version", 1) or 1)
-        tools_subtab = int(tools_state.get("current_subtab", 0) or 0)
-        if tools_version < 2 and tools_subtab >= 2:
-            tools_subtab += 1
-        if 0 <= tools_subtab < self.tools_inner_tab.count():
-            self.tools_inner_tab.setCurrentIndex(tools_subtab)
+        if not isinstance(tools_state, dict):
+            tools_state = {}
+        tool_key = self._tool_key_from_saved_state(state, tools_state)
+        self.select_diagnostic_tab(tool_key)
+
         self.subnet_calc_ip_edit.setText(str(tools_state.get("subnet_ip", "") or ""))
         self.subnet_calc_prefix_edit.setText(str(tools_state.get("subnet_prefix", "") or ""))
         self.arp_subnet_edit.setText(str(tools_state.get("arp_subnet", "") or ""))
@@ -522,6 +600,41 @@ class DiagnosticsTab(
         self.iperf_ipv6_check.setChecked(bool(iperf_state.get("ipv6", False)))
         self._sync_public_iperf_target(overwrite_port=not bool(self.iperf_port_edit.text().strip()))
         self._update_iperf_mode_state()
+
+    def _tool_key_from_saved_state(self, state: dict, tools_state: dict) -> str:
+        current_tool_key = str(state.get("current_tool_key", "") or "")
+        if current_tool_key in self._diagnostic_tool_index_by_key:
+            return current_tool_key
+
+        legacy_tools_map = ["commands", "arp", "subnet", "oui"]
+        legacy_tab_map = {
+            1: "ping",
+            2: "tcp",
+            3: "dns",
+            4: "trace",
+            5: "transfer",
+            6: "iperf",
+            7: "transfer",
+        }
+        if "current_tab" not in state:
+            return "ping"
+        try:
+            current_tab = int(state.get("current_tab", 0) or 0)
+        except (TypeError, ValueError):
+            current_tab = 0
+        if current_tab == 0:
+            try:
+                tools_version = int(tools_state.get("version", 1) or 1)
+                tools_subtab = int(tools_state.get("current_subtab", 0) or 0)
+            except (TypeError, ValueError):
+                tools_version = 1
+                tools_subtab = 0
+            if tools_version < 2 and tools_subtab >= 2:
+                tools_subtab += 1
+            if 0 <= tools_subtab < len(legacy_tools_map):
+                return legacy_tools_map[tools_subtab]
+            return "commands"
+        return legacy_tab_map.get(current_tab, "ping")
 
     def _start_worker(
         self,

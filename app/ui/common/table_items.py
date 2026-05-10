@@ -18,6 +18,8 @@ class SortableTableWidgetItem(QTableWidgetItem):
 
 def sortable_table_item(text: str, sort_value=None) -> QTableWidgetItem:
     item = SortableTableWidgetItem(text)
+    if text:
+        item.setToolTip(text)
     if sort_value is not None:
         item.setData(Qt.ItemDataRole.UserRole, sort_value)
     return item

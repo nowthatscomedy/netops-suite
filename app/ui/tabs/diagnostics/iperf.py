@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from app.models.network_models import PublicIperfServer
 from app.models.result_models import OperationResult
+from app.ui.common import confirm_risky_action
 from app.utils.validators import ValidationError
 
 
@@ -32,7 +33,7 @@ class IperfDiagnosticsMixin:
         page.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
         layout = QVBoxLayout(page)
 
-        group = QGroupBox("iperf3")
+        group = QGroupBox("대역폭 측정 (iperf3)")
         group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         group_layout = QVBoxLayout(group)
         group_layout.setContentsMargins(8, 8, 8, 8)
@@ -65,7 +66,7 @@ class IperfDiagnosticsMixin:
         self.iperf_udp_check = QCheckBox("UDP (-u)")
         self.iperf_ipv6_check = QCheckBox("IPv6 (-6)")
 
-        self.iperf_run_button = make_action_button("iperf 실행", ActionKind.START)
+        self.iperf_run_button = make_action_button("측정 시작", ActionKind.START)
         self.iperf_cancel_button = make_action_button("중지", ActionKind.STOP)
         self.iperf_cancel_button.setEnabled(False)
 
@@ -138,8 +139,9 @@ class IperfDiagnosticsMixin:
         layout.addWidget(group, 0)
 
         self.iperf_output = self._output()
-        self.iperf_output.setMinimumHeight(0)
-        self.iperf_output.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
+        self.iperf_output.setMinimumHeight(220)
+        self.iperf_output.setMaximumHeight(16777215)
+        self.iperf_output.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout.addWidget(self.iperf_output, 1)
 
         self.iperf_mode_combo.currentIndexChanged.connect(self._update_iperf_mode_state)
@@ -604,19 +606,18 @@ class IperfDiagnosticsMixin:
             return
 
         action_label = "업데이트" if bool(manage_state["installed"]) else "설치"
-        reply = QMessageBox.question(
+        if not confirm_risky_action(
             self,
             "iperf3 관리형 설치",
-            (
-                f"iperf3를 winget 패키지로 {action_label}하시겠습니까?\n\n"
-                f"패키지 ID: {manage_state['package_id']}\n"
-                f"패키지 페이지: {manage_state['package_url']}\n\n"
-                "현재 사용자 범위로 설치되며, 실행 파일이 준비되면 바로 앱에서 사용할 수 있습니다."
+            impact=(
+                f"winget으로 iperf3를 현재 사용자 범위에 {action_label}합니다. "
+                f"패키지 ID: {manage_state['package_id']} / 패키지 페이지: {manage_state['package_url']}"
             ),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.Yes,
-        )
-        if reply != QMessageBox.Yes:
+            reversibility="설치 후 제거는 winget 또는 Windows 앱 관리에서 별도로 수행해야 합니다.",
+            output_location="설치 진행 로그와 결과는 대역폭 측정 로그 영역과 애플리케이션 로그에 기록됩니다.",
+            question=f"iperf3를 winget 패키지로 {action_label}할까요?",
+            confirm_text="설치 실행" if action_label == "설치" else "업데이트 실행",
+        ):
             return
 
         self.iperf_output.clear()
@@ -636,15 +637,7 @@ class IperfDiagnosticsMixin:
         self.refresh_iperf_availability(deep_check=False)
         if not self._iperf_available:
             if self._iperf_manage_available:
-                reply = QMessageBox.question(
-                    self,
-                    "iperf3 설치 필요",
-                    "iperf3 실행 파일을 찾지 못했습니다.\n\n지금 winget으로 설치/업데이트하시겠습니까?",
-                    QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.Yes,
-                )
-                if reply == QMessageBox.Yes:
-                    self.manage_iperf_install()
+                self.manage_iperf_install()
                 return
 
             QMessageBox.information(

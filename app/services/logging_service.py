@@ -51,3 +51,10 @@ def configure_logging(log_path: Path, callback: Callable[[str], None] | None = N
     else:
         logger.info("Logging initialized without file output.")
     return logger
+
+
+def shutdown_logging(logger: logging.Logger | None = None) -> None:
+    target = logger or logging.getLogger("netops_suite")
+    for handler in list(target.handlers):
+        target.removeHandler(handler)
+        handler.close()
