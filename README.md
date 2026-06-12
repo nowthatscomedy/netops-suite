@@ -137,7 +137,7 @@ gitleaks detect --source . --verbose --redact
 ```powershell
 pip install -r requirements.txt
 pip install pyinstaller
-powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.0.5 -Clean
+powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.0.6 -Clean
 ```
 
 Windows 설치 파일 빌드에는 Inno Setup 6가 필요합니다.
@@ -154,7 +154,7 @@ Windows 설치 파일 코드 서명은 선택 사항입니다. 서명이 필요�
 ```powershell
 $env:WINDOWS_CODESIGN_CERT_PATH = "C:\path\codesign.pfx"
 $env:WINDOWS_CODESIGN_CERT_PASSWORD = "<pfx password>"
-powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.0.5 -Clean -RequireCodeSigning
+powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.0.6 -Clean -RequireCodeSigning
 ```
 
 ## 프로젝트 구조
