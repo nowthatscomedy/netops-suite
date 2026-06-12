@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.models.scp_models import ScpProfile
+from app.ui.common import make_dialog_intro, polish_dialog
 from app.utils.validators import ValidationError, parse_positive_int, validate_ftp_host, validate_ftp_username
 from netops_suite.ui.actions import polish_dialog_button_box
 
@@ -34,7 +35,11 @@ class ScpProfileDialog(QDialog):
         self.timeout_edit.setPlaceholderText("예: 15")
 
         layout = QVBoxLayout(self)
+        polish_dialog(self, layout)
+        layout.addWidget(make_dialog_intro("SCP 업로드/다운로드에 사용할 기본 접속 정보를 저장합니다. 인증 정보는 실행 시 입력합니다."))
         form = QFormLayout()
+        form.setVerticalSpacing(8)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         form.addRow("프로파일 이름", self.name_edit)
         form.addRow("호스트", self.host_edit)
         form.addRow("포트", self.port_edit)

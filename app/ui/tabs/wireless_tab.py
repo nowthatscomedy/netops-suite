@@ -71,6 +71,8 @@ class WirelessTab(QWidget):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
         layout.addWidget(make_step_hint("작업 흐름: 주변 AP 스캔 → 필터/정렬 → 채널 혼잡도 확인 → 필요한 컬럼만 보기"))
 
         self.wireless_main_splitter = QSplitter(Qt.Vertical)
@@ -128,13 +130,13 @@ class WirelessTab(QWidget):
             card_layout.setSpacing(2)
 
             title_label = QLabel(title)
-            title_label.setStyleSheet("color:#666; font-size:10px; font-weight:600;")
+            title_label.setStyleSheet("color:#667085; font-size:10px; font-weight:600;")
 
             value_label = QLabel("-")
             value_label.setWordWrap(False)
             value_label.setMinimumWidth(0)
             value_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-            value_label.setStyleSheet("font-size:13px; font-weight:600;")
+            value_label.setStyleSheet("color:#182230; font-size:13px; font-weight:600;")
 
             card_layout.addWidget(title_label)
             card_layout.addWidget(value_label)
@@ -143,7 +145,7 @@ class WirelessTab(QWidget):
             self.status_cards[key] = card
 
         self.status_group.setStyleSheet(
-            "#wirelessStatusCard { background:#fafafa; border:1px solid #dcdcdc; border-radius:6px; }"
+            "#wirelessStatusCard { background:transparent; border:0; border-bottom:1px solid #e4e7ec; border-radius:0; }"
         )
         status_layout.addLayout(self.status_grid)
         top_row.addWidget(self.status_group, 2)
@@ -169,7 +171,7 @@ class WirelessTab(QWidget):
         self.nearby_summary_label.setWordWrap(True)
         self.nearby_summary_label.setMinimumWidth(0)
         self.nearby_summary_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        self.nearby_summary_label.setStyleSheet("color:#666;")
+        self.nearby_summary_label.setStyleSheet("color:#475467;")
         nearby_controls.addWidget(self.nearby_refresh_button)
         nearby_controls.addWidget(self.nearby_refresh_oui_button)
         nearby_controls.addSpacing(8)

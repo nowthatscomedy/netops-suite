@@ -25,8 +25,8 @@ class ConfigBuilderTab(QWidget):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
 
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)

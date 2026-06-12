@@ -73,7 +73,10 @@ class ResultDockMixin:
         placeholder = QLabel("결과 표 분리됨. 보기 메뉴에서 복원할 수 있습니다.")
         placeholder.setAlignment(Qt.AlignCenter)
         placeholder.setWordWrap(True)
-        placeholder.setStyleSheet("color:#666; padding:6px 10px; border:1px dashed #bbb;")
+        placeholder.setStyleSheet(
+            "background:transparent; color:#667085; padding:12px 10px; "
+            "border:1px dashed #d0d5dd; border-radius:5px;"
+        )
         placeholder.hide()
 
         self._result_hosts[key] = result_host

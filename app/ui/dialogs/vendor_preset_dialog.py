@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.models.profile_models import VendorPreset
+from app.ui.common import make_dialog_intro, polish_dialog
 from app.utils.validators import ValidationError, parse_dns_servers, validate_ipv4, validate_optional_ipv4, validate_prefix
 from netops_suite.ui.actions import polish_dialog_button_box
 
@@ -34,7 +35,11 @@ class VendorPresetDialog(QDialog):
         self.notes_edit = QPlainTextEdit(preset.notes if preset else "")
 
         layout = QVBoxLayout(self)
+        polish_dialog(self, layout)
+        layout.addWidget(make_dialog_intro("벤더별로 자주 쓰는 로컬 IP와 대상 IP 값을 묶어 둡니다."))
         form = QFormLayout()
+        form.setVerticalSpacing(8)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         form.addRow("프리셋 이름", self.name_edit)
         form.addRow("벤더", self.vendor_edit)
         form.addRow("로컬 IPv4", self.local_ip_edit)

@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.models.ftp_models import FtpProfile
+from app.ui.common import make_dialog_intro, polish_dialog
 from app.utils.validators import (
     ValidationError,
     default_ftp_port,
@@ -62,7 +63,11 @@ class FtpProfileDialog(QDialog):
         self.timeout_edit.setPlaceholderText("예: 15")
 
         layout = QVBoxLayout(self)
+        polish_dialog(self, layout)
+        layout.addWidget(make_dialog_intro("자주 접속하는 파일 전송 서버를 저장합니다. 비밀번호는 프로파일에 저장하지 않습니다."))
         form = QFormLayout()
+        form.setVerticalSpacing(8)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         form.addRow("프로파일 이름", self.name_edit)
         form.addRow("프로토콜", self.protocol_combo)
         form.addRow("호스트", self.host_edit)

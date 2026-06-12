@@ -942,7 +942,9 @@ def test_main_window_uses_purpose_based_tab_labels_and_step_hints(qt_app, tmp_pa
         window.interface_tab._update_admin_banner()
         window.interface_tab._update_action_states()
         assert not window.interface_tab.apply_button.isEnabled()
-        assert not window.interface_tab.restart_admin_button.isHidden()
+        assert not window.interface_tab.admin_banner.isHidden()
+        assert "왼쪽 아래 '관리자'" in window.interface_tab.admin_label.text()
+        assert window.restart_admin_action.isEnabled()
         for tab in (
             window.interface_tab,
             window.diagnostics_tab,

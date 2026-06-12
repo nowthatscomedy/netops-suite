@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.models.profile_models import IPProfile
+from app.ui.common import make_dialog_intro, polish_dialog
 from app.utils.validators import (
     ValidationError,
     parse_dns_servers,
@@ -49,7 +50,11 @@ class ProfileEditorDialog(QDialog):
         self.dns_edit.setMaximumHeight(68)
 
         layout = QVBoxLayout(self)
+        polish_dialog(self, layout)
+        layout.addWidget(make_dialog_intro("현장에서 반복해서 쓰는 IP 설정을 저장합니다. DHCP와 수동 IP 설정을 같은 형식으로 관리할 수 있습니다."))
         form = QFormLayout()
+        form.setVerticalSpacing(8)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         form.addRow("프로파일 이름", self.name_edit)
         form.addRow("모드", self.mode_combo)
         form.addRow("기본 인터페이스", self.interface_edit)

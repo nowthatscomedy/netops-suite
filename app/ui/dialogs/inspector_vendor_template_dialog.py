@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.ui.common import make_dialog_intro, polish_dialog
 from netops_suite.modules.inspector import InspectorService
 
 
@@ -46,11 +47,11 @@ class PythonParserDialog(QDialog):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        hint = QLabel(
+        polish_dialog(self, layout)
+        hint = make_dialog_intro(
             "명령어 출력 전체가 output 문자열로 들어옵니다. Excel에 넣을 값 하나를 return 하거나, "
             "여러 컬럼을 만들 때는 {'컬럼명': '값'} 형태의 dict를 return 하세요."
         )
-        hint.setWordWrap(True)
         layout.addWidget(hint)
 
         warning = QLabel(
@@ -59,9 +60,15 @@ class PythonParserDialog(QDialog):
         )
         warning.setObjectName("pythonParserTrustWarning")
         warning.setWordWrap(True)
+        warning.setStyleSheet(
+            "background:transparent; color:#9a3412; border:0; "
+            "border-left:3px solid #fdba74; padding:4px 0 4px 9px;"
+        )
         layout.addWidget(warning)
 
         form = QFormLayout()
+        form.setVerticalSpacing(8)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.function_name_edit = QLineEdit("parsing_custom_value")
         self.function_name_edit.setPlaceholderText("예: parsing_cpu_usage")
         form.addRow("함수 이름", self.function_name_edit)
@@ -200,14 +207,15 @@ class InspectorVendorTemplateDialog(QDialog):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        intro = QLabel(
+        polish_dialog(self, layout)
+        intro = make_dialog_intro(
             "이 템플릿은 장비에 명령어를 실행하고, 출력값을 Excel 컬럼으로 정리합니다. "
             "명령어 출력 예시를 붙여넣고, Excel에 넣을 값을 선택하세요."
         )
-        intro.setWordWrap(True)
         layout.addWidget(intro)
 
         self.tabs = QTabWidget()
+        self.tabs.setDocumentMode(True)
         layout.addWidget(self.tabs, 1)
         self._build_device_tab()
         self._build_command_tab()
@@ -235,6 +243,8 @@ class InspectorVendorTemplateDialog(QDialog):
         hint.setWordWrap(True)
         layout.addWidget(hint)
         form = QFormLayout()
+        form.setVerticalSpacing(8)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.vendor_edit = QLineEdit()
         self.vendor_edit.setPlaceholderText("예: Cisco, Aruba, Juniper, Alcatel-Lucent")
         self.model_edit = QLineEdit()
@@ -281,6 +291,8 @@ class InspectorVendorTemplateDialog(QDialog):
 
         right = QVBoxLayout()
         form = QFormLayout()
+        form.setVerticalSpacing(8)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.command_edit = QLineEdit()
         self.command_edit.setPlaceholderText("예: show version")
         self.sample_output_edit = QPlainTextEdit()
@@ -325,6 +337,8 @@ class InspectorVendorTemplateDialog(QDialog):
 
         right = QVBoxLayout()
         form = QFormLayout()
+        form.setVerticalSpacing(8)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.column_name_edit = QLineEdit()
         self.column_name_edit.setPlaceholderText("예: OS버전, 시리얼번호, CPU 사용률")
         self.column_command_combo = QComboBox()
@@ -408,6 +422,8 @@ class InspectorVendorTemplateDialog(QDialog):
         actions.addStretch(1)
         layout.addLayout(actions)
         form = QFormLayout()
+        form.setVerticalSpacing(8)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.ssh_device_type_edit = QLineEdit()
         self.ssh_device_type_edit.setPlaceholderText("예: cisco_ios")
         self.telnet_device_type_edit = QLineEdit()

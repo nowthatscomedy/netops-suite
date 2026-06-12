@@ -926,7 +926,7 @@ def test_file_transfer_checkboxes_keep_visible_indicator_when_checked(qapp, tmp_
         style = checkbox.styleSheet()
         assert checkbox.isChecked()
         assert "QCheckBox::indicator:checked" in style
-        assert "background: #2563eb" in style
+        assert "background: #475467" in style
         assert checkbox.minimumHeight() >= 24
 
 

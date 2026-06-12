@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QCheckBox, QLabel, QMenu, QMessageBox, QSizePolicy
 
 
 _STATUS_STYLES = {
-    "info": ("#eff6ff", "#1d4ed8", "#bfdbfe"),
+    "info": ("#f3f4f6", "#344054", "#d0d5dd"),
     "success": ("#ecfdf3", "#166534", "#bbf7d0"),
     "warning": ("#fffbeb", "#92400e", "#fde68a"),
     "error": ("#fef2f2", "#991b1b", "#fecaca"),
@@ -21,11 +21,11 @@ QCheckBox::indicator {
     background: #ffffff;
 }
 QCheckBox::indicator:hover {
-    border-color: #2563eb;
+    border-color: #64748b;
 }
 QCheckBox::indicator:checked {
-    background: #2563eb;
-    border: 1px solid #1d4ed8;
+    background: #475467;
+    border: 1px solid #344054;
 }
 QCheckBox::indicator:checked:disabled {
     background: #94a3b8;
@@ -50,8 +50,8 @@ class _VisibleCheckBox(QCheckBox):
 
         checked = self.isChecked()
         enabled = self.isEnabled()
-        fill = QColor("#2563eb" if checked and enabled else "#94a3b8" if checked else "#ffffff")
-        border = QColor("#1d4ed8" if checked and enabled else "#64748b" if checked else "#94a3b8")
+        fill = QColor("#475467" if checked and enabled else "#94a3b8" if checked else "#ffffff")
+        border = QColor("#344054" if checked and enabled else "#64748b" if checked else "#94a3b8")
         if not enabled and not checked:
             fill = QColor("#f1f5f9")
             border = QColor("#cbd5e1")
@@ -95,8 +95,8 @@ def make_step_hint(text: str) -> QLabel:
     label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
     label.setMaximumHeight(42)
     label.setStyleSheet(
-        "background:#f8fafc; color:#334155; border:1px solid #d7dee7; "
-        "border-radius:5px; padding:6px 8px;"
+        "background:transparent; color:#475467; border:0; border-left:3px solid #d0d5dd; "
+        "padding:4px 0 4px 9px; font-weight:500;"
     )
     return label
 
@@ -106,8 +106,27 @@ def make_empty_state(text: str) -> QLabel:
     label.setObjectName("emptyState")
     label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     label.setWordWrap(True)
-    label.setStyleSheet("color:#64748b; padding:8px 10px; border:1px dashed #cbd5e1;")
+    label.setStyleSheet(
+        "background:transparent; color:#667085; padding:14px 12px; "
+        "border:1px dashed #d0d5dd; border-radius:5px;"
+    )
     return label
+
+
+def make_dialog_intro(text: str) -> QLabel:
+    label = QLabel(text)
+    label.setObjectName("dialogIntro")
+    label.setWordWrap(True)
+    label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+    return label
+
+
+def polish_dialog(dialog, layout=None) -> None:
+    dialog.setObjectName("subDialog")
+    dialog.setSizeGripEnabled(True)
+    if layout is not None:
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(12)
 
 
 def make_selectable_wrapped_label(text: str = "") -> QLabel:
@@ -132,7 +151,7 @@ def set_inline_status(label: QLabel, kind: str, text: str) -> None:
     label.setText(text)
     label.setStyleSheet(
         f"background:{background}; color:{color}; border:1px solid {border}; "
-        "border-radius:5px; padding:6px 8px;"
+        "border-radius:6px; padding:7px 9px;"
     )
     label.setVisible(bool(text))
 
@@ -142,7 +161,8 @@ def make_menu_button(text: str, menu: QMenu, tooltip: str = "") -> QToolButton:
     button.setText(text)
     button.setPopupMode(QToolButton.InstantPopup)
     button.setMenu(menu)
-    button.setMinimumHeight(28)
+    button.setProperty("actionKind", "utility")
+    button.setMinimumHeight(30)
     if tooltip:
         button.setToolTip(tooltip)
     return button

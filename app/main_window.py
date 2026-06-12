@@ -7,14 +7,20 @@ from PySide6.QtGui import QAction, QFont, QFontDatabase
 from PySide6.QtWidgets import (
     QApplication,
     QDockWidget,
+    QFrame,
+    QHBoxLayout,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMenu,
     QMessageBox,
     QPlainTextEdit,
     QStatusBar,
     QTabWidget,
-    QToolBar,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 from app.app_state import AppState
@@ -43,7 +49,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("NetOps Suite")
         self._apply_locale_font()
         self._apply_window_icon()
-        self.resize(1120, 720)
+        self.resize(1280, 800)
+        self.setMinimumSize(1024, 680)
         self.setDockOptions(
             QMainWindow.AnimatedDocks
             | QMainWindow.AllowNestedDocks
@@ -78,6 +85,10 @@ class MainWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         self.tab_widget = QTabWidget()
+        self.tab_widget.setDocumentMode(True)
+        self.tab_widget.setElideMode(Qt.TextElideMode.ElideRight)
+        self.tab_widget.setUsesScrollButtons(True)
+        self.tab_widget.tabBar().hide()
         self.interface_tab = InterfaceTab(self.state)
         self.diagnostics_tab = DiagnosticsTab(self.state)
         self.wireless_tab = WirelessTab(self.state)
@@ -93,12 +104,74 @@ class MainWindow(QMainWindow):
         self.tab_widget.addTab(self.config_builder_tab, "CLI 설정 생성")
         self.tab_widget.addTab(self.artifacts_tab, "결과 파일")
         self.tab_widget.addTab(self.settings_tab, "프로그램 설정")
-        self.setCentralWidget(self.tab_widget)
 
-        toolbar = QToolBar("메인 도구", self)
-        toolbar.setMovable(False)
-        self.addToolBar(toolbar)
-        self.restart_admin_action = toolbar.addAction("관리자 권한으로 다시 실행")
+        self.view_menu = QMenu("보기", self)
+        self.toggle_log_view_action = QAction("애플리케이션 로그", self)
+        self.toggle_log_view_action.setCheckable(True)
+        self.ping_result_view_action = QAction("Ping 결과 표", self)
+        self.ping_result_view_action.setCheckable(True)
+        self.tcp_result_view_action = QAction("포트 확인 결과 창 (TCPing)", self)
+        self.tcp_result_view_action.setCheckable(True)
+        self.view_menu.addAction(self.toggle_log_view_action)
+        self.view_menu.addSeparator()
+        self.view_menu.addAction(self.ping_result_view_action)
+        self.view_menu.addAction(self.tcp_result_view_action)
+
+        self.nav_list = QListWidget()
+        self.nav_list.setObjectName("mainNavigation")
+        self.nav_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self.nav_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.nav_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        for index in range(self.tab_widget.count()):
+            item = QListWidgetItem(self.tab_widget.tabText(index))
+            item.setData(Qt.ItemDataRole.UserRole, index)
+            self.nav_list.addItem(item)
+        self.nav_list.setCurrentRow(0)
+
+        nav_panel = QFrame()
+        nav_panel.setObjectName("sideNavigation")
+        nav_layout = QVBoxLayout(nav_panel)
+        nav_layout.setContentsMargins(14, 14, 14, 14)
+        nav_layout.setSpacing(10)
+        title_label = QLabel("NetOps Suite")
+        title_label.setObjectName("appTitle")
+        version_label = QLabel(f"v{__version__}")
+        version_label.setObjectName("appVersion")
+        nav_layout.addWidget(title_label)
+        nav_layout.addWidget(version_label)
+        nav_layout.addSpacing(8)
+        nav_layout.addWidget(self.nav_list, 1)
+        utility_row = QHBoxLayout()
+        utility_row.setContentsMargins(0, 0, 0, 0)
+        utility_row.setSpacing(6)
+        self.restart_admin_action = QAction("관리자", self)
+        self.restart_admin_action.setToolTip("관리자 권한으로 다시 실행")
+        self.admin_button = QToolButton()
+        self.admin_button.setObjectName("sideUtilityButton")
+        self.admin_button.setDefaultAction(self.restart_admin_action)
+        self.view_button = make_menu_button("보기", self.view_menu, "로그와 분리된 결과 표를 표시합니다.")
+        self.view_button.setObjectName("sideUtilityButton")
+        self.view_button.setMinimumHeight(24)
+        self.view_button.setMaximumHeight(26)
+        utility_row.addWidget(self.admin_button)
+        utility_row.addWidget(self.view_button)
+        utility_row.addStretch(1)
+        nav_layout.addLayout(utility_row)
+
+        content_panel = QFrame()
+        content_panel.setObjectName("workspacePanel")
+        content_layout = QVBoxLayout(content_panel)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.addWidget(self.tab_widget)
+
+        shell = QWidget()
+        shell.setObjectName("appShell")
+        shell_layout = QHBoxLayout(shell)
+        shell_layout.setContentsMargins(0, 0, 0, 0)
+        shell_layout.setSpacing(0)
+        shell_layout.addWidget(nav_panel)
+        shell_layout.addWidget(content_panel, 1)
+        self.setCentralWidget(shell)
 
         self.log_view = QPlainTextEdit()
         self.log_view.setReadOnly(True)
@@ -113,22 +186,6 @@ class MainWindow(QMainWindow):
         self.log_dock.setMinimumHeight(120)
         self.addDockWidget(Qt.BottomDockWidgetArea, self.log_dock)
 
-        self.view_menu = QMenu("보기", self)
-        self.toggle_log_view_action = QAction("애플리케이션 로그", self)
-        self.toggle_log_view_action.setCheckable(True)
-        self.ping_result_view_action = QAction("Ping 결과 표", self)
-        self.ping_result_view_action.setCheckable(True)
-        self.tcp_result_view_action = QAction("포트 확인 결과 창 (TCPing)", self)
-        self.tcp_result_view_action.setCheckable(True)
-        self.view_menu.addAction(self.toggle_log_view_action)
-        self.view_menu.addSeparator()
-        self.view_menu.addAction(self.ping_result_view_action)
-        self.view_menu.addAction(self.tcp_result_view_action)
-
-        self.view_button = make_menu_button("보기", self.view_menu, "로그와 분리된 결과 표를 표시합니다.")
-        self.view_button.setStyleSheet("QToolButton::menu-indicator { image: none; width: 0px; }")
-        toolbar.addWidget(self.view_button)
-
         self.log_dock.hide()
 
         status_bar = QStatusBar()
@@ -141,6 +198,8 @@ class MainWindow(QMainWindow):
     def _connect_signals(self) -> None:
         self.restart_admin_action.triggered.connect(self._restart_as_admin)
         self.tab_widget.currentChanged.connect(self._handle_main_tab_changed)
+        self.tab_widget.currentChanged.connect(self._sync_nav_to_tab)
+        self.nav_list.currentRowChanged.connect(self._handle_nav_changed)
         self.toggle_log_view_action.toggled.connect(self._set_log_dock_visible)
         self.ping_result_view_action.toggled.connect(
             lambda checked: self.diagnostics_tab.set_result_dock_visible("ping", checked)
@@ -160,12 +219,37 @@ class MainWindow(QMainWindow):
         self._sync_result_dock_action("ping", self.diagnostics_tab.is_result_dock_visible("ping"))
         self._sync_result_dock_action("tcp", self.diagnostics_tab.is_result_dock_visible("tcp"))
         self._sync_log_dock_state()
+        self._sync_nav_to_tab(self.tab_widget.currentIndex())
+
+    def _handle_nav_changed(self, row: int) -> None:
+        if 0 <= row < self.tab_widget.count() and self.tab_widget.currentIndex() != row:
+            self.tab_widget.setCurrentIndex(row)
+
+    def _sync_nav_to_tab(self, index: int) -> None:
+        if not hasattr(self, "nav_list"):
+            return
+        if 0 <= index < self.nav_list.count() and self.nav_list.currentRow() != index:
+            self.nav_list.blockSignals(True)
+            self.nav_list.setCurrentRow(index)
+            self.nav_list.blockSignals(False)
 
     def _update_admin_status(self) -> None:
-        text = "관리자 권한: 사용 중" if self.state.is_admin else "관리자 권한: 미사용"
-        color = "#1b5e20" if self.state.is_admin else "#b71c1c"
+        text = "관리자 권한 사용 중" if self.state.is_admin else "관리자 권한 미사용"
+        background = "#ecfdf3" if self.state.is_admin else "#fff7ed"
+        color = "#166534" if self.state.is_admin else "#9a3412"
+        border = "#bbf7d0" if self.state.is_admin else "#fed7aa"
         self.admin_status_label.setText(text)
-        self.admin_status_label.setStyleSheet(f"color:{color}; font-weight:bold;")
+        self.admin_status_label.setStyleSheet(
+            f"background:{background}; color:{color}; border:1px solid {border}; "
+            "border-radius:10px; padding:3px 8px; font-weight:600;"
+        )
+        if hasattr(self, "restart_admin_action"):
+            self.restart_admin_action.setEnabled(not self.state.is_admin)
+            self.restart_admin_action.setToolTip(
+                "이미 관리자 권한으로 실행 중입니다."
+                if self.state.is_admin
+                else "관리자 권한으로 다시 실행"
+            )
 
     def _restart_as_admin(self) -> None:
         if self.state.is_admin:

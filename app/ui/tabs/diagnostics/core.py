@@ -159,6 +159,8 @@ class DiagnosticsTab(
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
         layout.addWidget(make_step_hint("작업 흐름: 도구 선택 → 대상 입력 → 실행 → 결과 저장"), 0)
 
@@ -282,9 +284,10 @@ class DiagnosticsTab(
         card.setStyleSheet(
             """
             QWidget#subnetMetricCard {
-                background:#f8fafc;
-                border:1px solid #d7dee7;
-                border-radius:8px;
+                background:transparent;
+                border:0;
+                border-bottom:1px solid #e4e7ec;
+                border-radius:0;
             }
             QLabel {
                 border:none;

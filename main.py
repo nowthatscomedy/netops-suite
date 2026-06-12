@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from app.app_state import AppState
 from app.main_window import MainWindow
+from app.ui.common.theme import apply_app_theme
 from app.utils.app_icon import load_app_icon
 from app.version import __version__
 
@@ -27,6 +28,7 @@ def main() -> int:
     app.setApplicationName(APP_NAME)
     app.setOrganizationName(APP_NAME)
     app.setApplicationVersion(__version__)
+    apply_app_theme(app)
     app_icon = load_app_icon()
     if not app_icon.isNull():
         app.setWindowIcon(app_icon)

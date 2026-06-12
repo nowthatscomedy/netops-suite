@@ -123,7 +123,7 @@ class ToolsDiagnosticsMixin:
 
         self.subnet_calc_status_label = QLabel("IPv4와 프리픽스를 입력하면 서브넷 정보를 계산합니다.")
         self.subnet_calc_status_label.setWordWrap(True)
-        self.subnet_calc_status_label.setStyleSheet("color:#666;")
+        self.subnet_calc_status_label.setStyleSheet("color:#475467;")
         input_layout.addWidget(self.subnet_calc_status_label)
         layout.addWidget(input_group)
 
@@ -147,7 +147,7 @@ class ToolsDiagnosticsMixin:
         result_layout.addWidget(self.subnet_calc_summary_widget)
 
         self.subnet_calc_result_hint = QLabel("계산 후 요약 카드와 상세 네트워크 정보를 아래에서 확인할 수 있습니다.")
-        self.subnet_calc_result_hint.setStyleSheet("color:#666; padding:4px 2px 2px 2px;")
+        self.subnet_calc_result_hint.setStyleSheet("color:#475467; padding:4px 2px 2px 2px;")
         result_layout.addWidget(self.subnet_calc_result_hint)
         self.subnet_calc_empty_label = make_empty_state("IPv4와 프리픽스/마스크를 입력하고 서브넷 계산을 누르면 결과가 표시됩니다.")
         result_layout.addWidget(self.subnet_calc_empty_label)
@@ -199,7 +199,7 @@ class ToolsDiagnosticsMixin:
         self.arp_cancel_button.setEnabled(False)
         self.arp_refresh_oui_button = make_action_button("OUI 캐시 업데이트", ActionKind.REFRESH)
         self.arp_oui_status_label = QLabel()
-        self.arp_oui_status_label.setStyleSheet("color:#666;")
+        self.arp_oui_status_label.setStyleSheet("color:#475467;")
 
         subnet_button_row = QHBoxLayout()
         subnet_button_row.addWidget(self.arp_subnet_combo, 1)
@@ -273,7 +273,7 @@ class ToolsDiagnosticsMixin:
         self.oui_lookup_button = make_action_button("OUI 조회", ActionKind.PRIMARY)
         self.oui_refresh_button = make_action_button("OUI 캐시 업데이트", ActionKind.REFRESH)
         self.oui_status_label = QLabel()
-        self.oui_status_label.setStyleSheet("color:#666;")
+        self.oui_status_label.setStyleSheet("color:#475467;")
 
         action_row = QHBoxLayout()
         action_row.addWidget(self.oui_lookup_button)
@@ -346,7 +346,7 @@ class ToolsDiagnosticsMixin:
 
         if not ip_text and not prefix_text:
             self.subnet_calc_status_label.setText("IPv4와 프리픽스를 입력하면 서브넷 정보를 계산합니다.")
-            self.subnet_calc_status_label.setStyleSheet("color:#666;")
+            self.subnet_calc_status_label.setStyleSheet("color:#475467;")
             self._clear_subnet_calc_results()
             return
 
@@ -361,12 +361,12 @@ class ToolsDiagnosticsMixin:
         self.subnet_calc_status_label.setText(
             f"계산 완료: {details['address_scope']} | 네트워크 {details['network_address']} | 사용 가능 호스트 {details['usable_hosts']}"
         )
-        self.subnet_calc_status_label.setStyleSheet("color:#1b5e20;")
+        self.subnet_calc_status_label.setStyleSheet("color:#166534;")
         self._populate_subnet_calc_results(details)
 
     def refresh_subnet_calc_interfaces(self) -> None:
         self.subnet_calc_status_label.setText("인터페이스 목록을 불러오는 중입니다...")
-        self.subnet_calc_status_label.setStyleSheet("color:#666;")
+        self.subnet_calc_status_label.setStyleSheet("color:#475467;")
         self._start_worker(
             self.state.network_interface_service.list_adapters,
             on_result=self._populate_subnet_calc_interfaces,
@@ -413,7 +413,7 @@ class ToolsDiagnosticsMixin:
 
         if candidates:
             self.subnet_calc_status_label.setText(f"사용 가능한 인터페이스 {len(candidates)}개를 찾았습니다.")
-            self.subnet_calc_status_label.setStyleSheet("color:#666;")
+            self.subnet_calc_status_label.setStyleSheet("color:#475467;")
         else:
             self.subnet_calc_status_label.setText("사용 가능한 인터페이스를 찾지 못했습니다.")
             self.subnet_calc_status_label.setStyleSheet("color:#b71c1c;")

@@ -50,7 +50,7 @@ class IperfDiagnosticsMixin:
         self.iperf_public_server_combo = QComboBox()
         self.iperf_public_server_combo.addItem("공개 서버 목록 확인 중...", "")
         self.iperf_public_info_label = QLabel("목록 상태 확인 중")
-        self.iperf_public_info_label.setStyleSheet("color:#666;")
+        self.iperf_public_info_label.setStyleSheet("color:#475467;")
         self.iperf_server_edit = QLineEdit()
         self.iperf_server_edit.setPlaceholderText("예: 192.168.0.10")
         self.iperf_port_edit = QLineEdit()
@@ -75,7 +75,7 @@ class IperfDiagnosticsMixin:
         self.iperf_status_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.iperf_server_listen_label = QLabel()
         self.iperf_server_listen_label.setWordWrap(True)
-        self.iperf_server_listen_label.setStyleSheet("color:#1565c0;")
+        self.iperf_server_listen_label.setStyleSheet("color:#475467;")
         self.iperf_server_listen_label.hide()
 
         self.iperf_refresh_button = make_action_button("상태 새로고침", ActionKind.REFRESH)
@@ -543,7 +543,7 @@ class IperfDiagnosticsMixin:
                     )
                 self.iperf_status_label.setText(" | ".join(parts))
                 self.iperf_status_label.setToolTip(tooltip)
-                self.iperf_status_label.setStyleSheet("color:#a33;")
+                self.iperf_status_label.setStyleSheet("color:#b42318;")
                 self.iperf_status_label.show()
             self._set_iperf_running(self.iperf_cancel_button.isEnabled())
             return
@@ -560,7 +560,7 @@ class IperfDiagnosticsMixin:
                     text += f" (현재 {version})"
                 self.iperf_status_label.setText(text)
                 self.iperf_status_label.setToolTip(executable_path or "")
-                self.iperf_status_label.setStyleSheet("color:#8d6e00;")
+                self.iperf_status_label.setStyleSheet("color:#9a3412;")
                 self.iperf_status_label.show()
             else:
                 self.iperf_status_label.clear()
@@ -583,7 +583,7 @@ class IperfDiagnosticsMixin:
                 )
             self.iperf_status_label.setText(" | ".join(parts))
             self.iperf_status_label.setToolTip(tooltip)
-            self.iperf_status_label.setStyleSheet("color:#a33;")
+            self.iperf_status_label.setStyleSheet("color:#b42318;")
             self.iperf_status_label.show()
 
         self._set_iperf_running(self.iperf_cancel_button.isEnabled())

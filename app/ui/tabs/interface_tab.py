@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -16,6 +17,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
+    QScrollArea,
+    QSizePolicy,
     QPushButton,
     QSplitter,
     QTableWidget,
@@ -64,6 +67,8 @@ class InterfaceTab(QWidget):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
         layout.addWidget(make_step_hint("작업 흐름: 어댑터 선택 → DHCP/수동 설정 → 변경 내용 확인 → 적용"))
 
         self.admin_banner = QWidget()
@@ -71,13 +76,11 @@ class InterfaceTab(QWidget):
         admin_layout.setContentsMargins(0, 0, 0, 0)
         self.admin_label = QLabel()
         self.admin_label.setWordWrap(True)
-        self.restart_admin_button = make_action_button("관리자 권한으로 다시 실행", ActionKind.START)
-        self.restart_admin_button.clicked.connect(self._request_admin_restart)
         admin_layout.addWidget(self.admin_label, 1)
-        admin_layout.addWidget(self.restart_admin_button)
         layout.addWidget(self.admin_banner)
 
         top_row = QHBoxLayout()
+        top_row.setSpacing(8)
         self.refresh_button = make_action_button("어댑터 목록 새로고침", ActionKind.REFRESH)
         self.loading_label = QLabel("인터페이스 정보를 불러오는 중입니다...")
         self.loading_label.hide()
@@ -112,9 +115,17 @@ class InterfaceTab(QWidget):
 
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(10)
 
         form_group = QGroupBox("선택 인터페이스 설정")
-        form_layout = QFormLayout(form_group)
+        form_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        form_group_layout = QVBoxLayout(form_group)
+        form_group_layout.setContentsMargins(10, 8, 10, 10)
+        form_group_layout.setSpacing(6)
+        form_layout = QFormLayout()
+        form_layout.setVerticalSpacing(6)
+        form_group_layout.addLayout(form_layout)
         self.selected_interface_label = QLabel("-")
         self.mode_combo = QComboBox()
         self.mode_combo.addItem("자동 (DHCP)", "dhcp")
@@ -126,11 +137,12 @@ class InterfaceTab(QWidget):
         self.gateway_edit = QLineEdit()
         self.gateway_edit.setPlaceholderText("예: 192.168.0.1")
         self.dns_edit = QPlainTextEdit()
-        self.dns_edit.setMaximumHeight(56)
+        self.dns_edit.setMaximumHeight(46)
         self.dns_edit.setPlaceholderText("예: 8.8.8.8, 1.1.1.1")
         self.form_status_label = make_inline_status(
             "info", "왼쪽에서 어댑터를 선택하면 현재 설정을 확인하고 변경할 수 있습니다."
         )
+        self.form_status_label.setMaximumHeight(38)
 
         apply_row = QHBoxLayout()
         self.apply_button = make_action_button(
@@ -139,8 +151,8 @@ class InterfaceTab(QWidget):
             tooltip="현재 설정과 적용 예정 설정을 비교한 뒤 네트워크 변경을 적용합니다.",
         )
         self.save_current_button = make_action_button("프로파일로 저장", ActionKind.SAVE)
-        apply_row.addWidget(self.apply_button)
-        apply_row.addWidget(self.save_current_button)
+        apply_row.addWidget(self.apply_button, 1)
+        apply_row.addWidget(self.save_current_button, 1)
 
         form_layout.addRow("인터페이스", self.selected_interface_label)
         form_layout.addRow("적용 모드", self.mode_combo)
@@ -148,11 +160,12 @@ class InterfaceTab(QWidget):
         form_layout.addRow("프리픽스 / 마스크", self.prefix_edit)
         form_layout.addRow("게이트웨이", self.gateway_edit)
         form_layout.addRow("DNS", self.dns_edit)
-        form_layout.addRow("", self.form_status_label)
-        form_layout.addRow("", apply_row)
+        form_group_layout.addWidget(self.form_status_label)
+        form_group_layout.addLayout(apply_row)
         right_layout.addWidget(form_group)
 
         profile_group = QGroupBox("저장된 IP 프로파일")
+        profile_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         profile_layout = QVBoxLayout(profile_group)
         self.profile_list = QListWidget()
         profile_layout.addWidget(self.profile_list)
@@ -165,7 +178,7 @@ class InterfaceTab(QWidget):
         detail_form.addRow("설정", self.profile_summary_label)
         profile_layout.addLayout(detail_form)
 
-        button_row = QHBoxLayout()
+        button_row = QGridLayout()
         self.profile_apply_button = make_action_button(
             "프로파일 검토 후 적용",
             ActionKind.PRIMARY,
@@ -174,15 +187,21 @@ class InterfaceTab(QWidget):
         self.profile_add_button = make_action_button("프로파일 추가", ActionKind.ADD)
         self.profile_edit_button = make_action_button("프로파일 수정", ActionKind.EDIT)
         self.profile_delete_button = make_action_button("프로파일 삭제", ActionKind.DELETE)
-        button_row.addWidget(self.profile_apply_button)
-        button_row.addWidget(self.profile_add_button)
-        button_row.addWidget(self.profile_edit_button)
-        button_row.addWidget(self.profile_delete_button)
+        button_row.addWidget(self.profile_apply_button, 0, 0, 1, 2)
+        button_row.addWidget(self.profile_add_button, 1, 0)
+        button_row.addWidget(self.profile_edit_button, 1, 1)
+        button_row.addWidget(self.profile_delete_button, 2, 0, 1, 2)
         profile_layout.addLayout(button_row)
 
         right_layout.addWidget(profile_group)
         right_layout.addStretch(1)
-        splitter.addWidget(right_panel)
+        right_scroll = QScrollArea()
+        right_scroll.setWidgetResizable(True)
+        right_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        right_scroll.setWidget(right_panel)
+        right_scroll.setMinimumWidth(320)
+        splitter.addWidget(right_scroll)
         splitter.setSizes([760, 360])
 
         self.refresh_button.clicked.connect(self.refresh_adapters)
@@ -202,28 +221,16 @@ class InterfaceTab(QWidget):
 
     def _update_admin_banner(self) -> None:
         if self.state.is_admin:
-            self.admin_label.setText(
-                "관리자 권한으로 실행 중입니다. IP, DNS, 어댑터 변경 작업을 바로 적용할 수 있습니다."
-            )
-            self.admin_label.setStyleSheet(
-                "background:#e8f5e9; color:#1b5e20; padding:8px; border:1px solid #a5d6a7;"
-            )
-            if hasattr(self, "restart_admin_button"):
-                self.restart_admin_button.hide()
+            self.admin_banner.hide()
         else:
+            self.admin_banner.show()
             self.admin_label.setText(
-                "일반 권한으로 실행 중입니다. 네트워크 설정 변경 작업은 관리자 권한이 필요합니다."
+                "일반 권한으로 실행 중입니다. 네트워크 설정 변경은 왼쪽 아래 '관리자'에서 다시 실행한 뒤 사용할 수 있습니다."
             )
             self.admin_label.setStyleSheet(
-                "background:#fff8e1; color:#8d6e00; padding:8px; border:1px solid #ffe082;"
+                "background:transparent; color:#9a3412; padding:4px 0 4px 9px; "
+                "border:0; border-left:3px solid #fdba74; font-weight:500;"
             )
-            if hasattr(self, "restart_admin_button"):
-                self.restart_admin_button.show()
-
-    def _request_admin_restart(self) -> None:
-        main_window = self.window()
-        if hasattr(main_window, "_restart_as_admin"):
-            main_window._restart_as_admin()
 
     def _reload_lists(self) -> None:
         selected_name = self._selected_profile().name if self._selected_profile() else ""

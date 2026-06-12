@@ -57,6 +57,8 @@ class InspectorTab(QWidget):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
         layout.addWidget(make_step_hint("작업 흐름: 장비 템플릿 확인/관리 → 인벤토리 선택 → 실행 방식 선택 → 검증 → 실행 → 결과 열기"))
         self.inspector_splitter = QSplitter(Qt.Vertical)
         self.inspector_splitter.setChildrenCollapsible(False)

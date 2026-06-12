@@ -48,6 +48,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.ui.common import make_dialog_intro, polish_dialog
+from app.utils.file_utils import build_app_paths, save_json
+from netops_suite.ui.actions import ActionKind, make_action_button, polish_dialog_button_box, polish_existing_button
 from .engine import ConfigEngine, build_bundle_text
 from .io_utils import load_profiles_from_directory
 from .models import BlockSpec, DeviceRecord, Profile, RenderedConfig, ValidationIssue, VariableSpec
@@ -60,15 +63,21 @@ from .profile_builder_dialog import ProfileBuilderDialog
 from .table_data import DeviceTable, load_device_table_from_path, make_blank_table_row, save_device_table_to_path
 from .app_icon import build_app_icon, set_windows_app_id
 
-
-from netops_suite.ui.actions import ActionKind, make_action_button, polish_dialog_button_box, polish_existing_button
-
 ROOT_DIR = Path(__file__).resolve().parent.parent
+
+
+def _default_config_builder_data_dir() -> Path:
+    return build_app_paths().data_root / "config_builder"
+
+
+CONFIG_BUILDER_DATA_DIR = _default_config_builder_data_dir()
 PROFILE_DIR = ROOT_DIR / "profiles"
-OUTPUT_DIR = ROOT_DIR / "outputs"
+OUTPUT_DIR = CONFIG_BUILDER_DATA_DIR / "outputs"
 BACKUP_DIR = OUTPUT_DIR / "backups"
 ACTIVITY_LOG_PATH = OUTPUT_DIR / "desktop_activity.log"
-APP_STATE_PATH = ROOT_DIR / ".desktop_state.json"
+DEFAULT_APP_STATE_PATH = CONFIG_BUILDER_DATA_DIR / ".desktop_state.json"
+LEGACY_APP_STATE_PATH = ROOT_DIR / ".desktop_state.json"
+APP_STATE_PATH = DEFAULT_APP_STATE_PATH
 TUTORIAL_WORKSPACE_DIR = OUTPUT_DIR / "tutorial"
 TUTORIAL_WORKSPACE_PATH = TUTORIAL_WORKSPACE_DIR / "tutorial_hands_on_devices.csv"
 TUTORIAL_PROFILE_ID = "TUTORIAL_HANDS_ON_SWITCH"
@@ -77,6 +86,18 @@ TUTORIAL_HOSTNAME = "SW-TUTORIAL-01"
 TUTORIAL_MGMT_IP = "192.168.10.11"
 TUTORIAL_MGMT_MASK = "255.255.255.0"
 MAX_WIDGET_WIDTH = 16777215
+
+
+def _app_state_read_paths() -> list[Path]:
+    paths = [Path(APP_STATE_PATH)]
+    try:
+        uses_default_state_path = Path(APP_STATE_PATH).resolve() == DEFAULT_APP_STATE_PATH.resolve()
+    except OSError:
+        uses_default_state_path = Path(APP_STATE_PATH) == DEFAULT_APP_STATE_PATH
+    if uses_default_state_path and LEGACY_APP_STATE_PATH not in paths:
+        paths.append(LEGACY_APP_STATE_PATH)
+    return paths
+
 
 DEFAULT_PIN_ORDER = ["device_id", "profile_id", "hostname", "mgmt_ip", "mgmt_vlan", "access_interface"]
 DEFAULT_RECENT_LIMIT = 8
@@ -90,23 +111,23 @@ ROW_STATE_DONE = "done"
 TABLE_STYLE = """
 QTableView {
     background: #ffffff;
-    alternate-background-color: #f8f5ed;
-    border: 1px solid #d7ccb8;
-    border-radius: 8px;
-    gridline-color: #e2d8c6;
-    selection-background-color: #17212b;
-    selection-color: #ffffff;
+    alternate-background-color: #f8fafc;
+    border: 1px solid #d9e2ec;
+    border-radius: 5px;
+    gridline-color: #e4e7ec;
+    selection-background-color: #e5e7eb;
+    selection-color: #182230;
 }
 QTableView::item { padding: 4px 6px; }
-QTableView::item:hover { background: #e9dfcf; color: #221b12; }
-QTableView::item:selected { background: #17212b; color: #ffffff; }
+QTableView::item:hover { background: #f3f4f6; color: #182230; }
+QTableView::item:selected { background: #e5e7eb; color: #182230; }
 QHeaderView::section {
-    background: #efe8da;
-    color: #221b12;
+    background: #eef2f6;
+    color: #344054;
     padding: 6px 8px;
     border: 0;
-    border-bottom: 1px solid #d7ccb8;
-    border-right: 1px solid #e2d8c6;
+    border-bottom: 1px solid #d9e2ec;
+    border-right: 1px solid #d9e2ec;
     font-weight: 600;
 }
 """
@@ -114,22 +135,22 @@ QHeaderView::section {
 EMBEDDED_TABLE_STYLE = """
 QTableView {
     background: #ffffff;
-    alternate-background-color: #f8f5ed;
+    alternate-background-color: #f8fafc;
     border: 0;
-    gridline-color: #e2d8c6;
-    selection-background-color: #17212b;
-    selection-color: #ffffff;
+    gridline-color: #e4e7ec;
+    selection-background-color: #e5e7eb;
+    selection-color: #182230;
 }
 QTableView::item { padding: 4px 6px; }
-QTableView::item:hover { background: #e9dfcf; color: #221b12; }
-QTableView::item:selected { background: #17212b; color: #ffffff; }
+QTableView::item:hover { background: #f3f4f6; color: #182230; }
+QTableView::item:selected { background: #e5e7eb; color: #182230; }
 QHeaderView::section {
-    background: #efe8da;
-    color: #221b12;
+    background: #eef2f6;
+    color: #344054;
     padding: 6px 8px;
     border: 0;
-    border-bottom: 1px solid #d7ccb8;
-    border-right: 1px solid #e2d8c6;
+    border-bottom: 1px solid #d9e2ec;
+    border-right: 1px solid #d9e2ec;
     font-weight: 600;
 }
 """
@@ -142,13 +163,17 @@ QWidget#configBuilderAdvancedPanel {
 }
 QGroupBox {
     font-weight: 600;
-    margin-top: 8px;
-    background: #ffffff;
+    margin-top: 14px;
+    padding: 10px 0 0 0;
+    background: transparent;
+    border: 0;
+    border-top: 1px solid #e4e7ec;
 }
 QGroupBox::title {
     subcontrol-origin: margin;
-    left: 8px;
-    padding: 0 4px;
+    left: 0;
+    padding: 0 8px 0 0;
+    background: transparent;
 }
 QPushButton {
     padding: 2px 7px;
@@ -159,7 +184,7 @@ QComboBox, QLineEdit {
     padding: 2px 6px;
 }
 QLabel {
-    color: #221b12;
+    color: #182230;
 }
 QStatusBar {
     font-size: 11px;
@@ -173,53 +198,54 @@ QTabWidget::pane {
     margin-top: 2px;
 }
 QTabBar::tab {
-    background: #f5efe4;
-    color: #6a6258;
-    border: 1px solid #d7ccb8;
-    border-radius: 6px;
-    padding: 2px 8px;
+    background: transparent;
+    color: #475467;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    padding: 5px 8px;
     min-width: 32px;
     margin-right: 3px;
 }
 QTabBar::tab:selected {
-    background: #ffffff;
-    color: #221b12;
+    background: transparent;
+    color: #111827;
+    border-bottom-color: #111827;
 }
 QLabel#GuideTitle {
     font-size: 11px;
     font-weight: 700;
-    color: #1f1912;
+    color: #182230;
 }
 QLabel#GuideMeta {
-    color: #6a6258;
+    color: #667085;
     padding: 0;
 }
-QLabel#GuideCard {
-    color: #3f392f;
+QLabel#GuideBody {
+    color: #475467;
     padding: 0;
 }
 QLabel#GuideHint {
-    background: #f5f7fa;
-    color: #27415a;
-    border: 1px solid #dce5f0;
-    border-radius: 6px;
-    padding: 4px 6px;
+    background: transparent;
+    color: #475467;
+    border: 0;
+    border-left: 3px solid #d0d5dd;
+    padding: 4px 0 4px 9px;
 }
 QLabel#SelectionName {
     font-weight: 700;
-    color: #1f1912;
+    color: #182230;
 }
 QFrame#DeviceTableShell {
     background: #ffffff;
-    border: 1px solid #d7ccb8;
-    border-radius: 8px;
+    border: 1px solid #d9e2ec;
+    border-radius: 5px;
 }
 QFrame#PinnedDivider {
-    background: #efe4d2;
+    background: #e5e7eb;
     min-width: 8px;
     max-width: 8px;
-    border-left: 1px solid #cebca0;
-    border-right: 1px solid #cebca0;
+    border-left: 1px solid #d0d5dd;
+    border-right: 1px solid #d0d5dd;
 }
 """
 
@@ -380,7 +406,7 @@ class AutoScrollHeaderView(QHeaderView):
     def paintSection(self, painter: QPainter, rect, logicalIndex: int) -> None:  # type: ignore[override]
         if logicalIndex in self._highlighted_sections:
             painter.save()
-            painter.fillRect(rect, QColor("#17212b"))
+            painter.fillRect(rect, QColor("#475467"))
             painter.setPen(QColor("#ffffff"))
             text = str(self.model().headerData(logicalIndex, self.orientation(), Qt.DisplayRole) or "")
             sort_arrow = ""
@@ -391,7 +417,7 @@ class AutoScrollHeaderView(QHeaderView):
                 text_rect = rect.adjusted(8, 0, -22, 0)
                 painter.drawText(rect.adjusted(rect.width() - 18, 0, -6, 0), Qt.AlignVCenter | Qt.AlignRight, sort_arrow)
             painter.drawText(text_rect, Qt.AlignCenter, text)
-            painter.setPen(QColor("#d7ccb8"))
+            painter.setPen(QColor("#d0d5dd"))
             painter.drawLine(rect.bottomLeft(), rect.bottomRight())
             painter.drawLine(rect.topRight(), rect.bottomRight())
             painter.restore()
@@ -527,15 +553,15 @@ class SpreadsheetTableView(QTableView):
         handle_rect = self._fill_handle_rect()
         if selection_rect.isValid() and not selection_rect.isNull():
             painter.save()
-            painter.setPen(QPen(QColor("#17212b"), 1, Qt.DashLine if self._fill_drag_active else Qt.SolidLine))
+            painter.setPen(QPen(QColor("#475467"), 1, Qt.DashLine if self._fill_drag_active else Qt.SolidLine))
             painter.drawRect(selection_rect.adjusted(0, 0, -1, -1))
             if handle_rect.isValid() and not handle_rect.isNull():
-                painter.fillRect(handle_rect, QColor("#17212b"))
+                painter.fillRect(handle_rect, QColor("#475467"))
                 painter.setPen(QColor("#ffffff"))
                 painter.drawRect(handle_rect.adjusted(0, 0, -1, -1))
             if self._fill_drag_active and self._fill_target_index.isValid():
                 preview_rect = selection_rect.united(self.visualRect(self._fill_target_index))
-                painter.setPen(QPen(QColor("#8c5a00"), 1, Qt.DashLine))
+                painter.setPen(QPen(QColor("#f59e0b"), 1, Qt.DashLine))
                 painter.drawRect(preview_rect.adjusted(0, 0, -1, -1))
             painter.restore()
 
@@ -570,9 +596,9 @@ class IncrementCopyDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("연속 값 복사")
         layout = QVBoxLayout(self)
+        polish_dialog(self, layout)
 
-        description = QLabel("선택한 행을 복사하면서, 프로파일 변수에 지정된 연속 값 규칙을 적용합니다.")
-        description.setWordWrap(True)
+        description = make_dialog_intro("선택한 행을 복사하면서, 프로파일 변수에 지정된 연속 값 규칙을 적용합니다.")
         layout.addWidget(description)
 
         rules_label = QLabel(rules_text)
@@ -580,6 +606,8 @@ class IncrementCopyDialog(QDialog):
         layout.addWidget(rules_label)
 
         form = QFormLayout()
+        form.setVerticalSpacing(8)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.copy_count_spin = QSpinBox()
         self.copy_count_spin.setRange(1, 50)
         self.copy_count_spin.setValue(1)
@@ -617,8 +645,7 @@ class InAppTutorialDialog(QDialog):
         self.resize(470, 360)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(10)
+        polish_dialog(self, layout)
 
         self.progress_label = QLabel("")
         self.progress_label.setObjectName("GuideMeta")
@@ -632,7 +659,7 @@ class InAppTutorialDialog(QDialog):
         self.body_label = QLabel("")
         self.body_label.setWordWrap(True)
         self.body_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.body_label.setObjectName("GuideCard")
+        self.body_label.setObjectName("GuideBody")
         layout.addWidget(self.body_label, 1)
 
         self.status_label = QLabel("")
@@ -1321,7 +1348,7 @@ class DeviceCellDelegate(QStyledItemDelegate):
             editor.setMaxVisibleItems(12)
             editor.setStyleSheet(
                 "QComboBox { padding: 2px 6px; background: #ffffff; }"
-                "QComboBox QAbstractItemView { selection-background-color: #17212b; selection-color: #ffffff; }"
+                "QComboBox QAbstractItemView { selection-background-color: #e5e7eb; selection-color: #182230; }"
             )
             return editor
         variable = self._variable_spec_for_index(index)
@@ -1332,7 +1359,7 @@ class DeviceCellDelegate(QStyledItemDelegate):
             editor.setMaxVisibleItems(3)
             editor.setStyleSheet(
                 "QComboBox { padding: 2px 6px; background: #ffffff; }"
-                "QComboBox QAbstractItemView { selection-background-color: #17212b; selection-color: #ffffff; }"
+                "QComboBox QAbstractItemView { selection-background-color: #e5e7eb; selection-color: #182230; }"
             )
             return editor
         if is_secret_header(header):
@@ -1700,7 +1727,7 @@ class SwitchConfigBuilderWidget(QWidget):
 
     def _make_summary_chip(self, text: str) -> QLabel:
         label = QLabel(text)
-        label.setStyleSheet("padding: 3px 8px; border: 1px solid #dbe3ef; border-radius: 6px; background: #f8fafc; color: #334155;")
+        label.setStyleSheet("padding: 2px 8px; border: 0; border-left: 2px solid #d0d5dd; background: transparent; color: #475467;")
         return label
 
     def _build_embedded_advanced_panel(self) -> QWidget:
@@ -2069,7 +2096,7 @@ class SwitchConfigBuilderWidget(QWidget):
     def _build_embedded_empty_state(self) -> QWidget:
         empty = QWidget()
         empty.setObjectName("configBuilderEmptyState")
-        empty.setStyleSheet("QWidget#configBuilderEmptyState { border: 1px dashed #cbd5e1; border-radius: 6px; background: #f8fafc; }")
+        empty.setStyleSheet("QWidget#configBuilderEmptyState { border: 1px dashed #d0d5dd; border-radius: 5px; background: transparent; }")
         layout = QVBoxLayout(empty)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(6)
@@ -2175,7 +2202,7 @@ class SwitchConfigBuilderWidget(QWidget):
         self.profile_meta_label.setObjectName("GuideMeta")
         self.profile_description_label = QLabel("설명 없음")
         self.profile_description_label.setWordWrap(True)
-        self.profile_description_label.setObjectName("GuideCard")
+        self.profile_description_label.setObjectName("GuideBody")
         self.entry_rules_label = QLabel("규칙: 프로파일 ID 필수")
         self.entry_rules_label.setWordWrap(True)
         self.entry_rules_label.setObjectName("GuideHint")
@@ -2267,10 +2294,11 @@ class SwitchConfigBuilderWidget(QWidget):
         self._restored_detail_tab_index = 0
         self._restored_selected_row = None
         self._restored_auto_save = True
-        if not APP_STATE_PATH.exists():
+        state_path = next((path for path in _app_state_read_paths() if path.exists()), None)
+        if state_path is None:
             return
         try:
-            state = json.loads(APP_STATE_PATH.read_text(encoding="utf-8"))
+            state = json.loads(state_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return
         self.recent_files = [str(path) for path in state.get("recent_files", []) if str(path).strip()][:DEFAULT_RECENT_LIMIT]
@@ -2329,7 +2357,10 @@ class SwitchConfigBuilderWidget(QWidget):
             "main_splitter_sizes": self.main_splitter.sizes() if hasattr(self, "main_splitter") else self._restored_splitter_sizes,
             "window_geometry": geometry,
         }
-        APP_STATE_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        try:
+            save_json(Path(APP_STATE_PATH), state)
+        except OSError:
+            return
 
     def _apply_restored_window_state(self) -> None:
         if hasattr(self, "auto_save_check"):

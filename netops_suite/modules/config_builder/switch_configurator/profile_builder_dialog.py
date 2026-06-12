@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.ui.common import make_dialog_intro, polish_dialog
 from .authoring import (
     build_profile_yaml_from_state,
     make_empty_block_row,
@@ -89,17 +90,16 @@ class ProfileBuilderDialog(QDialog):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(10)
+        polish_dialog(self, layout)
 
-        intro = QLabel(
+        intro = make_dialog_intro(
             "프로파일 ID는 장비 설정 정보 파일의 profile_id 컬럼 값과 연결됩니다. "
             "장비 파일에는 프로파일 ID(profile_id) 컬럼이 필수이고, device_id 컬럼은 선택입니다. 아래 변수명이 장비 파일 컬럼으로 들어갑니다."
         )
-        intro.setWordWrap(True)
         layout.addWidget(intro)
 
         self.tabs = QTabWidget()
+        self.tabs.setDocumentMode(True)
         layout.addWidget(self.tabs, 1)
 
         self._build_basic_tab()
@@ -131,6 +131,8 @@ class ProfileBuilderDialog(QDialog):
         layout.addWidget(example)
 
         form = QFormLayout()
+        form.setVerticalSpacing(8)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.profile_id_edit = QLineEdit()
         self.profile_id_edit.setPlaceholderText("예: CISCO_IOS_L2_ACCESS_BASE")
         self.vendor_edit = QLineEdit()
@@ -185,6 +187,8 @@ class ProfileBuilderDialog(QDialog):
 
         right = QVBoxLayout()
         form = QFormLayout()
+        form.setVerticalSpacing(8)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.variable_name_edit = QLineEdit()
         self.variable_name_edit.setPlaceholderText("예: hostname")
         self.variable_type_combo = QComboBox()
@@ -242,6 +246,8 @@ class ProfileBuilderDialog(QDialog):
 
         right = QVBoxLayout()
         form = QFormLayout()
+        form.setVerticalSpacing(8)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.block_name_edit = QLineEdit()
         self.block_name_edit.setPlaceholderText("예: base")
         self.block_lines_edit = QPlainTextEdit()

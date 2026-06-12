@@ -31,6 +31,8 @@ class SettingsTab(QWidget):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
 
         update_group = QGroupBox("프로그램 업데이트")
         update_layout = QVBoxLayout(update_group)
