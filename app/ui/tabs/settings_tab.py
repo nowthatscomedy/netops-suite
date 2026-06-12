@@ -53,7 +53,7 @@ class SettingsTab(QWidget):
         update_layout.addLayout(form)
 
         button_row = QHBoxLayout()
-        self.check_update_button = make_action_button("업데이트 확인", ActionKind.START)
+        self.check_update_button = make_action_button("확인", ActionKind.START, tooltip="새 버전 업데이트를 확인합니다.")
         button_row.addWidget(self.check_update_button)
         button_row.addStretch(1)
         update_layout.addLayout(button_row)
@@ -77,9 +77,9 @@ class SettingsTab(QWidget):
         path_layout.addWidget(self.log_dir_label)
 
         folder_button_row = QHBoxLayout()
-        self.open_config_button = make_action_button("설정 폴더 열기", ActionKind.OPEN)
-        self.open_logs_button = make_action_button("로그 폴더 열기", ActionKind.OPEN)
-        self.reload_button = make_action_button("다시 불러오기", ActionKind.REFRESH)
+        self.open_config_button = make_action_button("설정 폴더", ActionKind.OPEN)
+        self.open_logs_button = make_action_button("로그 폴더", ActionKind.OPEN)
+        self.reload_button = make_action_button("새로고침", ActionKind.REFRESH)
         folder_button_row.addWidget(self.open_config_button)
         folder_button_row.addWidget(self.open_logs_button)
         folder_button_row.addWidget(self.reload_button)

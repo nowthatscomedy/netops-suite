@@ -81,7 +81,11 @@ class InterfaceTab(QWidget):
 
         top_row = QHBoxLayout()
         top_row.setSpacing(8)
-        self.refresh_button = make_action_button("어댑터 목록 새로고침", ActionKind.REFRESH)
+        self.refresh_button = make_action_button(
+            "새로고침",
+            ActionKind.REFRESH,
+            tooltip="네트워크 어댑터 목록을 다시 불러옵니다.",
+        )
         self.loading_label = QLabel("인터페이스 정보를 불러오는 중입니다...")
         self.loading_label.hide()
         self.loading_bar = QProgressBar()
@@ -146,13 +150,18 @@ class InterfaceTab(QWidget):
 
         apply_row = QHBoxLayout()
         self.apply_button = make_action_button(
-            "변경 내용 확인 후 적용",
+            "검토 후 적용",
             ActionKind.PRIMARY,
             tooltip="현재 설정과 적용 예정 설정을 비교한 뒤 네트워크 변경을 적용합니다.",
         )
-        self.save_current_button = make_action_button("프로파일로 저장", ActionKind.SAVE)
-        apply_row.addWidget(self.apply_button, 1)
-        apply_row.addWidget(self.save_current_button, 1)
+        self.save_current_button = make_action_button(
+            "저장",
+            ActionKind.SAVE,
+            tooltip="현재 입력값을 IP 프로파일로 저장합니다.",
+        )
+        apply_row.addWidget(self.apply_button)
+        apply_row.addWidget(self.save_current_button)
+        apply_row.addStretch(1)
 
         form_layout.addRow("인터페이스", self.selected_interface_label)
         form_layout.addRow("적용 모드", self.mode_combo)
@@ -180,17 +189,19 @@ class InterfaceTab(QWidget):
 
         button_row = QGridLayout()
         self.profile_apply_button = make_action_button(
-            "프로파일 검토 후 적용",
+            "적용",
             ActionKind.PRIMARY,
             tooltip="저장된 프로파일을 선택한 인터페이스에 적용하기 전 변경 내용을 확인합니다.",
         )
-        self.profile_add_button = make_action_button("프로파일 추가", ActionKind.ADD)
-        self.profile_edit_button = make_action_button("프로파일 수정", ActionKind.EDIT)
-        self.profile_delete_button = make_action_button("프로파일 삭제", ActionKind.DELETE)
-        button_row.addWidget(self.profile_apply_button, 0, 0, 1, 2)
-        button_row.addWidget(self.profile_add_button, 1, 0)
-        button_row.addWidget(self.profile_edit_button, 1, 1)
-        button_row.addWidget(self.profile_delete_button, 2, 0, 1, 2)
+        self.profile_add_button = make_action_button("추가", ActionKind.ADD, tooltip="새 IP 프로파일을 추가합니다.")
+        self.profile_edit_button = make_action_button("수정", ActionKind.EDIT, tooltip="선택한 IP 프로파일을 수정합니다.")
+        self.profile_delete_button = make_action_button("삭제", ActionKind.DELETE, tooltip="선택한 IP 프로파일을 삭제합니다.")
+        button_row.setHorizontalSpacing(6)
+        button_row.setVerticalSpacing(6)
+        button_row.addWidget(self.profile_apply_button, 0, 0)
+        button_row.addWidget(self.profile_add_button, 0, 1)
+        button_row.addWidget(self.profile_edit_button, 1, 0)
+        button_row.addWidget(self.profile_delete_button, 1, 1)
         profile_layout.addLayout(button_row)
 
         right_layout.addWidget(profile_group)

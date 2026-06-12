@@ -106,7 +106,7 @@ class TcpDiagnosticsMixin:
         button_row.setContentsMargins(0, 0, 0, 0)
         button_row.setSpacing(8)
         button_row.addWidget(self.tcp_continuous_check)
-        self.tcp_start_button = make_action_button("포트 확인 실행", ActionKind.START, tooltip="TCPing 방식으로 포트 연결 여부를 확인합니다.")
+        self.tcp_start_button = make_action_button("실행", ActionKind.START, tooltip="TCPing 방식으로 포트 연결 여부를 확인합니다.")
         self.tcp_cancel_button = make_action_button("중지", ActionKind.STOP)
         self.tcp_cancel_button.setEnabled(False)
         button_row.addWidget(self.tcp_start_button)
@@ -132,7 +132,7 @@ class TcpDiagnosticsMixin:
         self._setup_table(self.tcp_table)
         self._set_stretch_columns(self.tcp_table, 1)
         self.tcp_table.setSortingEnabled(True)
-        self.tcp_empty_label = make_empty_state("대상과 포트를 입력하고 포트 확인 실행을 누르면 결과가 표시됩니다.")
+        self.tcp_empty_label = make_empty_state("대상과 포트를 입력하고 실행을 누르면 결과가 표시됩니다.")
 
         self.tcp_log = self._output()
         self.tcp_log_panel = self._build_log_panel("실시간 로그", self.tcp_log)

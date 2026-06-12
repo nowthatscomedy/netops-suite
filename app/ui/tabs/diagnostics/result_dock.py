@@ -63,8 +63,8 @@ class ResultDockMixin:
         result_layout.addWidget(table, 1)
 
         button_row = QHBoxLayout()
-        csv_button = make_action_button("전체 결과 CSV 저장", ActionKind.EXPORT)
-        log_button = make_action_button("선택 항목 로그 저장", ActionKind.EXPORT)
+        csv_button = make_action_button("CSV 저장", ActionKind.EXPORT, tooltip="전체 결과를 CSV로 저장합니다.")
+        log_button = make_action_button("로그 저장", ActionKind.EXPORT, tooltip="선택 항목 로그를 저장합니다.")
         button_row.addWidget(csv_button)
         button_row.addWidget(log_button)
         button_row.addStretch(1)

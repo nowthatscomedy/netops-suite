@@ -281,7 +281,7 @@ class FtpDiagnosticsMixin:
             widget.setMinimumWidth(width)
             widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
-    def _set_transfer_button_min_width(self, *buttons: QPushButton, width: int = 84) -> None:
+    def _set_transfer_button_min_width(self, *buttons: QPushButton, width: int = 64) -> None:
         for button in buttons:
             button.setMinimumWidth(max(width, button.minimumSizeHint().width()))
             button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
@@ -357,7 +357,7 @@ class FtpDiagnosticsMixin:
         self.ftp_client_remote_path_edit.setPlaceholderText("/")
         self.ftp_client_local_folder_edit = QLineEdit()
         self.ftp_client_local_folder_edit.setPlaceholderText("예: C:\\Temp")
-        self.ftp_client_local_browse_button = make_action_button("로컬 폴더", ActionKind.BROWSE)
+        self.ftp_client_local_browse_button = make_action_button("찾기", ActionKind.BROWSE, tooltip="로컬 폴더를 선택합니다.")
         self._set_transfer_field_min_width(
             self.ftp_profile_combo,
             self.ftp_client_protocol_combo,
@@ -406,11 +406,11 @@ class FtpDiagnosticsMixin:
         button_row = QHBoxLayout()
         self.ftp_client_connect_button = make_action_button("연결", ActionKind.START)
         self.ftp_client_refresh_button = make_action_button("새로고침", ActionKind.REFRESH)
-        self.ftp_client_disconnect_button = make_action_button("연결 종료", ActionKind.STOP)
+        self.ftp_client_disconnect_button = make_action_button("종료", ActionKind.STOP, tooltip="현재 FTP 연결을 종료합니다.")
         self.ftp_client_upload_button = make_action_button("업로드", ActionKind.START)
         self.ftp_client_download_button = make_action_button("다운로드", ActionKind.START)
-        self.ftp_client_mkdir_button = make_action_button("새 폴더", ActionKind.ADD)
-        self.ftp_client_rename_button = make_action_button("이름 변경", ActionKind.EDIT)
+        self.ftp_client_mkdir_button = make_action_button("폴더", ActionKind.ADD, tooltip="원격 새 폴더를 만듭니다.")
+        self.ftp_client_rename_button = make_action_button("이름", ActionKind.EDIT, tooltip="선택 항목 이름을 변경합니다.")
         self.ftp_client_delete_button = make_action_button("삭제", ActionKind.DELETE)
         self.ftp_client_cancel_button = make_action_button("취소", ActionKind.CANCEL)
         self._set_transfer_button_min_width(
@@ -484,12 +484,12 @@ class FtpDiagnosticsMixin:
         self.ftp_client_result_log_splitter.addWidget(self.ftp_transfer_table)
 
         result_button_row = QHBoxLayout()
-        self.ftp_transfer_export_button = make_action_button("전송 결과 CSV 저장", ActionKind.EXPORT)
-        self.ftp_client_log_export_button = make_action_button("로그 TXT 저장", ActionKind.EXPORT)
+        self.ftp_transfer_export_button = make_action_button("CSV 저장", ActionKind.EXPORT)
+        self.ftp_client_log_export_button = make_action_button("로그 저장", ActionKind.EXPORT)
         self._set_transfer_button_min_width(
             self.ftp_transfer_export_button,
             self.ftp_client_log_export_button,
-            width=140,
+            width=84,
         )
         result_button_row.addWidget(self.ftp_transfer_export_button)
         result_button_row.addWidget(self.ftp_client_log_export_button)
@@ -562,7 +562,7 @@ class FtpDiagnosticsMixin:
         self.ftp_server_port_edit.setPlaceholderText("2121")
         self.ftp_server_root_edit = QLineEdit()
         self.ftp_server_root_edit.setPlaceholderText("예: C:\\Transfer")
-        self.ftp_server_root_browse_button = make_action_button("루트 폴더", ActionKind.BROWSE)
+        self.ftp_server_root_browse_button = make_action_button("찾기", ActionKind.BROWSE, tooltip="공유 루트 폴더를 선택합니다.")
         self.ftp_server_username_edit = QLineEdit()
         self.ftp_server_username_edit.setPlaceholderText("예: netops")
         self.ftp_server_password_edit = QLineEdit()
@@ -599,7 +599,7 @@ class FtpDiagnosticsMixin:
         button_row = QHBoxLayout()
         self.ftp_server_start_button = make_action_button("시작", ActionKind.START)
         self.ftp_server_stop_button = make_action_button("중지", ActionKind.STOP)
-        self.ftp_server_open_root_button = make_action_button("루트 폴더 열기", ActionKind.OPEN)
+        self.ftp_server_open_root_button = make_action_button("열기", ActionKind.OPEN, tooltip="공유 루트 폴더를 엽니다.")
         button_row.addWidget(self.ftp_server_start_button)
         button_row.addWidget(self.ftp_server_stop_button)
         button_row.addWidget(self.ftp_server_open_root_button)
@@ -631,7 +631,7 @@ class FtpDiagnosticsMixin:
         self.ftp_server_log_output.setMaximumHeight(16777215)
         server_log_layout.addWidget(self.ftp_server_log_output)
         server_log_button_row = QHBoxLayout()
-        self.ftp_server_log_export_button = make_action_button("서버 로그 저장", ActionKind.EXPORT)
+        self.ftp_server_log_export_button = make_action_button("로그 저장", ActionKind.EXPORT)
         server_log_button_row.addWidget(self.ftp_server_log_export_button)
         server_log_button_row.addStretch(1)
         server_log_layout.addLayout(server_log_button_row)

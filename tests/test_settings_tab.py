@@ -42,7 +42,7 @@ def test_settings_tab_update_controls_are_simplified(qapp, tmp_path):
         checkbox_texts = {checkbox.text() for checkbox in tab.findChildren(QCheckBox)}
 
         assert "업데이트 옵션 저장" not in button_texts
-        assert "업데이트 확인" in button_texts
+        assert "확인" in button_texts
         assert "사전 배포(prerelease) 포함" not in checkbox_texts
         assert "프로그램 시작 시 업데이트 확인" in checkbox_texts
         assert not hasattr(tab, "save_update_button")
@@ -90,8 +90,8 @@ def test_settings_tab_update_check_emits_stable_config_without_saving(qapp, tmp_
 def test_settings_tab_path_labels_wrap_and_are_selectable(qapp, tmp_path):
     tab = SettingsTab(DummySettingsState(tmp_path))
     try:
-        assert tab.open_config_button.text() == "설정 폴더 열기"
-        assert tab.reload_button.text() == "다시 불러오기"
+        assert tab.open_config_button.text() == "설정 폴더"
+        assert tab.reload_button.text() == "새로고침"
         for label in (tab.config_dir_label, tab.ip_profile_label, tab.log_dir_label):
             assert isinstance(label, QLabel)
             assert label.wordWrap()

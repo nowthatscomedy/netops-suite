@@ -8,7 +8,7 @@ APP_STYLE_SHEET = """
 QWidget {
     color: #1f2933;
     background: #f7f7f5;
-    font-size: 12px;
+    font-size: 11px;
 }
 QMainWindow,
 QDialog {
@@ -21,11 +21,11 @@ QWidget#appShell {
     background: #fbfbfa;
 }
 QFrame#sideNavigation {
-    background: #f3f2ef;
+    background: #f2f1ee;
     border: 0;
     border-right: 1px solid #e4e2dd;
-    min-width: 172px;
-    max-width: 210px;
+    min-width: 164px;
+    max-width: 196px;
 }
 QFrame#workspacePanel {
     background: #fbfbfa;
@@ -49,8 +49,8 @@ QListWidget#mainNavigation {
 QListWidget#mainNavigation::item {
     color: #475467;
     border: 0;
-    border-radius: 5px;
-    padding: 8px 10px;
+    border-radius: 4px;
+    padding: 7px 9px;
     margin: 1px 0;
 }
 QListWidget#mainNavigation::item:hover {
@@ -171,8 +171,8 @@ QGroupBox {
     border: 0;
     border-top: 1px solid #e4e7ec;
     border-radius: 0;
-    margin-top: 16px;
-    padding: 12px 2px 0 2px;
+    margin-top: 12px;
+    padding: 9px 2px 0 2px;
     font-weight: 600;
 }
 QGroupBox::title {
@@ -200,14 +200,15 @@ QSpinBox,
 QDoubleSpinBox {
     background: #ffffff;
     border: 1px solid #cbd5e1;
-    border-radius: 5px;
-    padding: 5px 8px;
+    border-radius: 4px;
+    padding: 3px 7px;
+    min-height: 20px;
     selection-background-color: #64748b;
     selection-color: #ffffff;
 }
 QPlainTextEdit,
 QTextEdit {
-    padding: 7px 8px;
+    padding: 6px 7px;
 }
 QLineEdit:focus,
 QPlainTextEdit:focus,
@@ -243,9 +244,10 @@ QToolButton {
     background: #ffffff;
     color: #182230;
     border: 1px solid #cbd5e1;
-    border-radius: 5px;
-    padding: 5px 11px;
-    min-height: 28px;
+    border-radius: 4px;
+    padding: 3px 8px;
+    min-height: 22px;
+    font-size: 11px;
     font-weight: 500;
 }
 QPushButton:hover:!disabled,
@@ -278,7 +280,7 @@ QTreeView {
     background: #ffffff;
     alternate-background-color: #fafafa;
     border: 1px solid #e4e7ec;
-    border-radius: 5px;
+    border-radius: 4px;
     gridline-color: #e4e7ec;
     selection-background-color: #e5e7eb;
     selection-color: #182230;
@@ -288,7 +290,7 @@ QTableWidget::item,
 QTableView::item,
 QListWidget::item,
 QTreeView::item {
-    padding: 5px 7px;
+    padding: 4px 6px;
 }
 QTableWidget::item:hover,
 QTableView::item:hover,
@@ -306,21 +308,22 @@ QTreeView::item:selected {
 QHeaderView::section {
     background: #f3f4f6;
     color: #344054;
-    padding: 7px 8px;
+    padding: 5px 7px;
     border: 0;
     border-right: 1px solid #e4e7ec;
     border-bottom: 1px solid #e4e7ec;
     font-weight: 600;
 }
 QListWidget#diagnosticToolList {
-    background: #ffffff;
-    border: 1px solid #e4e7ec;
-    border-radius: 5px;
-    padding: 6px;
+    background: transparent;
+    border: 0;
+    border-right: 1px solid #e4e7ec;
+    border-radius: 0;
+    padding: 2px 8px 2px 0;
 }
 QListWidget#diagnosticToolList::item {
-    border-radius: 6px;
-    padding: 8px 10px;
+    border-radius: 4px;
+    padding: 7px 9px;
     margin: 1px 0;
 }
 QListWidget#diagnosticToolList::item:selected {

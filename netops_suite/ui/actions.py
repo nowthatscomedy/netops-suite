@@ -40,22 +40,22 @@ _ICON_MAP = {
 }
 
 _PALETTE = {
-    ActionKind.PRIMARY: ("#111827", "#ffffff", "#111827", "#2f3744"),
-    ActionKind.START: ("#111827", "#ffffff", "#111827", "#2f3744"),
-    ActionKind.SAVE: ("#111827", "#ffffff", "#111827", "#2f3744"),
-    ActionKind.DANGER: ("#dc2626", "#ffffff", "#dc2626", "#b91c1c"),
-    ActionKind.DELETE: ("#dc2626", "#ffffff", "#dc2626", "#b91c1c"),
-    ActionKind.STOP: ("#dc2626", "#ffffff", "#dc2626", "#b91c1c"),
-    ActionKind.CANCEL: ("#fff7ed", "#9a3412", "#fdba74", "#ffedd5"),
-    ActionKind.UTILITY: ("#ffffff", "#344054", "#cbd5e1", "#f8fafc"),
-    ActionKind.SECONDARY: ("#ffffff", "#344054", "#cbd5e1", "#f8fafc"),
-    ActionKind.BROWSE: ("#ffffff", "#344054", "#cbd5e1", "#f8fafc"),
-    ActionKind.OPEN: ("#ffffff", "#344054", "#cbd5e1", "#f8fafc"),
-    ActionKind.EXPORT: ("#ffffff", "#344054", "#cbd5e1", "#f8fafc"),
-    ActionKind.COPY: ("#ffffff", "#344054", "#cbd5e1", "#f8fafc"),
+    ActionKind.PRIMARY: ("#f8fafc", "#182230", "#cbd5e1", "#eef2f6"),
+    ActionKind.START: ("#ecfdf3", "#166534", "#bbf7d0", "#dcfce7"),
+    ActionKind.SAVE: ("#eef2f6", "#344054", "#cbd5e1", "#e4e7ec"),
+    ActionKind.DANGER: ("#fff1f2", "#b42318", "#fecdd3", "#ffe4e6"),
+    ActionKind.DELETE: ("#fff1f2", "#b42318", "#fecdd3", "#ffe4e6"),
+    ActionKind.STOP: ("#fff1f2", "#b42318", "#fecdd3", "#ffe4e6"),
+    ActionKind.CANCEL: ("#ffffff", "#667085", "#d0d5dd", "#f8fafc"),
+    ActionKind.UTILITY: ("#ffffff", "#475467", "#d0d5dd", "#f8fafc"),
+    ActionKind.SECONDARY: ("#ffffff", "#475467", "#d0d5dd", "#f8fafc"),
+    ActionKind.BROWSE: ("#ffffff", "#475467", "#d0d5dd", "#f8fafc"),
+    ActionKind.OPEN: ("#ffffff", "#475467", "#d0d5dd", "#f8fafc"),
+    ActionKind.EXPORT: ("#ffffff", "#475467", "#d0d5dd", "#f8fafc"),
+    ActionKind.COPY: ("#ffffff", "#475467", "#d0d5dd", "#f8fafc"),
     ActionKind.ADD: ("#ecfdf3", "#166534", "#bbf7d0", "#dcfce7"),
-    ActionKind.EDIT: ("#ffffff", "#344054", "#cbd5e1", "#f8fafc"),
-    ActionKind.REFRESH: ("#ffffff", "#344054", "#cbd5e1", "#f8fafc"),
+    ActionKind.EDIT: ("#ffffff", "#475467", "#d0d5dd", "#f8fafc"),
+    ActionKind.REFRESH: ("#ffffff", "#475467", "#d0d5dd", "#f8fafc"),
 }
 
 
@@ -71,8 +71,9 @@ def make_action_button(
     action_kind = ActionKind(kind)
     button = QPushButton(text)
     button.setProperty("actionKind", action_kind.value)
-    button.setMinimumHeight(30)
-    button.setIconSize(QSize(16, 16))
+    button.setMinimumHeight(24)
+    button.setMaximumHeight(26)
+    button.setIconSize(QSize(13, 13))
     button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
     if min_width is not None:
         button.setMinimumWidth(min_width)
@@ -122,8 +123,9 @@ def _polish_existing_button(button: QPushButton, text: str | None, kind: ActionK
     if text is not None:
         button.setText(text)
     button.setProperty("actionKind", kind.value)
-    button.setMinimumHeight(max(button.minimumHeight(), 30))
-    button.setIconSize(QSize(16, 16))
+    button.setMinimumHeight(max(button.minimumHeight(), 24))
+    button.setMaximumHeight(26)
+    button.setIconSize(QSize(13, 13))
     icon = _standard_icon(kind)
     if icon is not None:
         button.setIcon(icon)
@@ -148,12 +150,18 @@ QPushButton {{
     background: {background};
     color: {color};
     border: 1px solid {border};
-    border-radius: 6px;
-    padding: 5px 11px;
+    border-radius: 4px;
+    padding: 3px 8px;
+    min-height: 20px;
+    font-size: 11px;
     font-weight: 500;
 }}
 QPushButton:hover:!disabled {{
     background: {hover};
+    border-color: #98a2b3;
+}}
+QPushButton:pressed {{
+    background: #e4e7ec;
 }}
 QPushButton:disabled {{
     background: #eef2f6;

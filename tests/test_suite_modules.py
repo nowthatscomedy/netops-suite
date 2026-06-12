@@ -429,7 +429,7 @@ def test_config_builder_tab_embeds_full_builder_and_removes_legacy_shortcuts(qt_
         assert button("configBuilderGuideButton") is None
         assert button("configBuilderSampleDeviceValuesButton") is None
         assert button("configBuilderRequiredColumnsButton") is None
-        assert tab.full_editor_button.text() == "전체 편집기 열기"
+        assert tab.full_editor_button.text() == "전체 창"
         assert tab.full_editor_button.property("actionKind") == ActionKind.EDIT.value
         assert "별도 창" in tab.full_editor_button.toolTip()
         assert builder._embedded is True
@@ -811,9 +811,9 @@ def test_inspector_tab_buttons_use_clear_workflow_labels(qt_app, tmp_path: Path)
         assert result_group is not None
         assert result_group.title() == "5. 결과"
         assert tab.validate_button.text() == "먼저 검증"
-        assert tab.run_button.text() == "점검/백업 실행"
+        assert tab.run_button.text() == "실행"
         assert not tab.run_button.isEnabled()
-        assert tab.template_editor_button.text() == "장비 템플릿 관리"
+        assert tab.template_editor_button.text() == "템플릿 관리"
         assert has_ancestor(tab.template_editor_button, template_group)
         assert not has_ancestor(tab.template_editor_button, validation_group)
         assert has_ancestor(tab.supported_toggle_button, template_group)
@@ -823,7 +823,7 @@ def test_inspector_tab_buttons_use_clear_workflow_labels(qt_app, tmp_path: Path)
         assert tab.supported_table.minimumHeight() >= 160
         assert tab.log_view.minimumHeight() >= 140
         assert not tab.supported_toggle_button.isChecked()
-        assert tab.supported_toggle_button.text() == "지원 템플릿 보기"
+        assert tab.supported_toggle_button.text() == "지원 보기"
         assert tab.supported_label.isHidden()
         assert tab.supported_table.isHidden()
         assert not tab.command_path_edit.isEnabled()

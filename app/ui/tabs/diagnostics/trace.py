@@ -39,8 +39,8 @@ class TraceDiagnosticsMixin:
         self.trace_no_resolve_check = QCheckBox("호스트 이름 해석 안 함 (-d / -n)")
 
         button_row = QHBoxLayout()
-        self.tracert_button = make_action_button("경로 추적 실행 (tracert)", ActionKind.START)
-        self.pathping_button = make_action_button("손실률 측정 (pathping)", ActionKind.UTILITY)
+        self.tracert_button = make_action_button("tracert", ActionKind.START, tooltip="tracert로 경로를 추적합니다.")
+        self.pathping_button = make_action_button("pathping", ActionKind.UTILITY, tooltip="pathping으로 손실률을 측정합니다.")
         self.trace_cancel_button = make_action_button("중지", ActionKind.STOP)
         self.trace_cancel_button.setEnabled(False)
         button_row.addWidget(self.tracert_button)

@@ -96,7 +96,7 @@ def make_step_hint(text: str) -> QLabel:
     label.setMaximumHeight(42)
     label.setStyleSheet(
         "background:transparent; color:#475467; border:0; border-left:3px solid #d0d5dd; "
-        "padding:4px 0 4px 9px; font-weight:500;"
+        "padding:3px 0 3px 8px; font-weight:500;"
     )
     return label
 
@@ -107,8 +107,8 @@ def make_empty_state(text: str) -> QLabel:
     label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     label.setWordWrap(True)
     label.setStyleSheet(
-        "background:transparent; color:#667085; padding:14px 12px; "
-        "border:1px dashed #d0d5dd; border-radius:5px;"
+        "background:transparent; color:#667085; padding:10px 8px; "
+        "border:1px dashed #d0d5dd; border-radius:4px;"
     )
     return label
 
@@ -125,8 +125,8 @@ def polish_dialog(dialog, layout=None) -> None:
     dialog.setObjectName("subDialog")
     dialog.setSizeGripEnabled(True)
     if layout is not None:
-        layout.setContentsMargins(18, 16, 18, 16)
-        layout.setSpacing(12)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(10)
 
 
 def make_selectable_wrapped_label(text: str = "") -> QLabel:
@@ -151,7 +151,7 @@ def set_inline_status(label: QLabel, kind: str, text: str) -> None:
     label.setText(text)
     label.setStyleSheet(
         f"background:{background}; color:{color}; border:1px solid {border}; "
-        "border-radius:6px; padding:7px 9px;"
+        "border-radius:4px; padding:5px 8px;"
     )
     label.setVisible(bool(text))
 
@@ -162,7 +162,8 @@ def make_menu_button(text: str, menu: QMenu, tooltip: str = "") -> QToolButton:
     button.setPopupMode(QToolButton.InstantPopup)
     button.setMenu(menu)
     button.setProperty("actionKind", "utility")
-    button.setMinimumHeight(30)
+    button.setMinimumHeight(24)
+    button.setMaximumHeight(26)
     if tooltip:
         button.setToolTip(tooltip)
     return button

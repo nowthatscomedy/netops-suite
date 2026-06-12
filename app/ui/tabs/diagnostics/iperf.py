@@ -43,7 +43,7 @@ class IperfDiagnosticsMixin:
         self.iperf_mode_combo.addItem("클라이언트", "client")
         self.iperf_mode_combo.addItem("서버", "server")
         self.iperf_use_public_server_check = QCheckBox("공개 서버 사용")
-        self.iperf_public_refresh_button = make_action_button("목록 갱신", ActionKind.REFRESH)
+        self.iperf_public_refresh_button = make_action_button("갱신", ActionKind.REFRESH, tooltip="공개 iperf3 서버 목록을 갱신합니다.")
         self.iperf_public_region_combo = QComboBox()
         self.iperf_public_region_combo.addItem("전체 지역", "")
         self.iperf_public_region_combo.setMinimumWidth(130)
@@ -66,7 +66,7 @@ class IperfDiagnosticsMixin:
         self.iperf_udp_check = QCheckBox("UDP (-u)")
         self.iperf_ipv6_check = QCheckBox("IPv6 (-6)")
 
-        self.iperf_run_button = make_action_button("측정 시작", ActionKind.START)
+        self.iperf_run_button = make_action_button("시작", ActionKind.START, tooltip="iperf3 측정을 시작합니다.")
         self.iperf_cancel_button = make_action_button("중지", ActionKind.STOP)
         self.iperf_cancel_button.setEnabled(False)
 
@@ -78,7 +78,7 @@ class IperfDiagnosticsMixin:
         self.iperf_server_listen_label.setStyleSheet("color:#475467;")
         self.iperf_server_listen_label.hide()
 
-        self.iperf_refresh_button = make_action_button("상태 새로고침", ActionKind.REFRESH)
+        self.iperf_refresh_button = make_action_button("상태", ActionKind.REFRESH, tooltip="iperf3 실행 파일 상태를 다시 확인합니다.")
         self.iperf_manage_button = make_action_button("winget 설치", ActionKind.UTILITY)
 
         mode_row = QHBoxLayout()

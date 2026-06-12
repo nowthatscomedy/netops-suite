@@ -37,11 +37,11 @@ class ArtifactsTab(QWidget):
         layout.addWidget(make_step_hint("작업 흐름: 최근 생성된 결과, 백업, 로그, 원본 명령 출력(raw output)을 확인합니다"))
 
         actions = QHBoxLayout()
-        self.refresh_button = make_action_button("목록 새로고침", ActionKind.REFRESH)
+        self.refresh_button = make_action_button("새로고침", ActionKind.REFRESH)
         self.refresh_button.clicked.connect(self.refresh)
-        self.open_file_button = make_action_button("선택 파일 열기", ActionKind.OPEN, enabled=False)
+        self.open_file_button = make_action_button("파일 열기", ActionKind.OPEN, enabled=False)
         self.open_file_button.clicked.connect(self._open_selected_file)
-        self.open_folder_button = make_action_button("선택 폴더 열기", ActionKind.OPEN, enabled=False)
+        self.open_folder_button = make_action_button("폴더 열기", ActionKind.OPEN, enabled=False)
         self.open_folder_button.clicked.connect(self._open_selected_folder)
         actions.addWidget(self.refresh_button)
         actions.addWidget(self.open_file_button)
@@ -51,8 +51,8 @@ class ArtifactsTab(QWidget):
         notice = QLabel("결과 파일에는 장비 IP, 설정 백업, 원본 명령 출력(raw output) 등 민감정보가 포함될 수 있습니다. 외부 공유 전 IP/계정/설정값을 확인하세요.")
         notice.setWordWrap(True)
         notice.setStyleSheet(
-            "background:#fff7ed; color:#9a3412; padding:8px 10px; "
-            "border:1px solid #fed7aa; border-radius:6px;"
+            "background:transparent; color:#9a3412; padding:4px 0 4px 9px; "
+            "border:0; border-left:3px solid #fdba74;"
         )
         layout.addWidget(notice)
         self.table = QTableWidget(0, 4)

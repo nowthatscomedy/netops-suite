@@ -81,7 +81,7 @@ class PingDiagnosticsMixin:
         button_row.setContentsMargins(0, 0, 0, 0)
         button_row.setSpacing(8)
         button_row.addWidget(self.ping_continuous_check)
-        self.ping_start_button = make_action_button("Ping 실행", ActionKind.START)
+        self.ping_start_button = make_action_button("실행", ActionKind.START, tooltip="입력한 대상에 Ping을 실행합니다.")
         self.ping_cancel_button = make_action_button("중지", ActionKind.STOP)
         self.ping_cancel_button.setEnabled(False)
         button_row.addWidget(self.ping_start_button)
@@ -104,7 +104,7 @@ class PingDiagnosticsMixin:
         self._setup_table(self.ping_table)
         self._set_stretch_columns(self.ping_table, 1)
         self.ping_table.setSortingEnabled(True)
-        self.ping_empty_label = make_empty_state("대상을 입력하고 Ping 실행을 누르면 결과가 표시됩니다.")
+        self.ping_empty_label = make_empty_state("대상을 입력하고 실행을 누르면 Ping 결과가 표시됩니다.")
 
         self.ping_log = self._output()
         self.ping_log_panel = self._build_log_panel("실시간 로그", self.ping_log)

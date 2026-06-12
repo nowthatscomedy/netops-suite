@@ -35,7 +35,7 @@ class ConfigBuilderTab(QWidget):
             1,
         )
         self.full_editor_button = make_action_button(
-            "전체 편집기 열기",
+            "전체 창",
             ActionKind.EDIT,
             tooltip="같은 CLI 설정 생성 화면을 별도 창으로 크게 열 때 사용합니다.",
             object_name="configBuilderFullEditorButton",

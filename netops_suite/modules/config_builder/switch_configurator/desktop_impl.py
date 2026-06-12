@@ -595,6 +595,7 @@ class IncrementCopyDialog(QDialog):
     def __init__(self, rules_text: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("연속 값 복사")
+        self.resize(360, 180)
         layout = QVBoxLayout(self)
         polish_dialog(self, layout)
 

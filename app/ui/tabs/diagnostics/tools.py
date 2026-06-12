@@ -45,12 +45,12 @@ class ToolsDiagnosticsMixin:
         layout = QVBoxLayout(page)
 
         button_row = QHBoxLayout()
-        self.public_ip_button = make_action_button("공인 IP 확인", ActionKind.PRIMARY)
+        self.public_ip_button = make_action_button("공인 IP", ActionKind.PRIMARY, tooltip="현재 공인 IP를 확인합니다.")
         self.snapshot_button = make_action_button("현재 인터페이스", ActionKind.UTILITY)
         self.ipconfig_button = make_action_button("ipconfig /all", ActionKind.UTILITY)
         self.route_button = make_action_button("route print", ActionKind.UTILITY)
         self.arp_button = make_action_button("arp -a", ActionKind.UTILITY)
-        self.flush_dns_button = make_action_button("DNS 캐시 비우기", ActionKind.DANGER)
+        self.flush_dns_button = make_action_button("DNS 캐시", ActionKind.DANGER, tooltip="Windows DNS 캐시를 비웁니다.")
         for button in (
             self.public_ip_button,
             self.snapshot_button,
@@ -103,8 +103,8 @@ class ToolsDiagnosticsMixin:
         self.subnet_calc_prefix_edit.setPlaceholderText("예: 24 또는 255.255.255.0")
         self.subnet_calc_interface_combo = QComboBox()
         self.subnet_calc_interface_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        self.subnet_calc_refresh_button = make_action_button("어댑터 목록 불러오기", ActionKind.REFRESH)
-        self.subnet_calc_use_selected_button = make_action_button("선택 값 자동 입력", ActionKind.UTILITY)
+        self.subnet_calc_refresh_button = make_action_button("목록", ActionKind.REFRESH, tooltip="어댑터 목록을 불러옵니다.")
+        self.subnet_calc_use_selected_button = make_action_button("자동 입력", ActionKind.UTILITY, tooltip="선택한 어댑터 값을 입력합니다.")
         subnet_form.addRow("IPv4", self.subnet_calc_ip_edit)
         subnet_form.addRow("프리픽스 / 마스크", self.subnet_calc_prefix_edit)
 
@@ -116,7 +116,7 @@ class ToolsDiagnosticsMixin:
         input_layout.addLayout(subnet_form)
 
         subnet_button_row = QHBoxLayout()
-        self.subnet_calc_button = make_action_button("서브넷 계산", ActionKind.PRIMARY)
+        self.subnet_calc_button = make_action_button("계산", ActionKind.PRIMARY, tooltip="서브넷 정보를 계산합니다.")
         subnet_button_row.addWidget(self.subnet_calc_button)
         subnet_button_row.addStretch(1)
         input_layout.addLayout(subnet_button_row)
@@ -185,8 +185,8 @@ class ToolsDiagnosticsMixin:
         self.arp_subnet_edit.setPlaceholderText("예: 192.168.0.0/24")
         self.arp_subnet_combo = QComboBox()
         self.arp_subnet_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        self.arp_refresh_subnets_button = make_action_button("어댑터 목록 불러오기", ActionKind.REFRESH)
-        self.arp_use_selected_subnet_button = make_action_button("선택 값 자동 입력", ActionKind.UTILITY)
+        self.arp_refresh_subnets_button = make_action_button("목록", ActionKind.REFRESH, tooltip="어댑터 목록을 불러옵니다.")
+        self.arp_use_selected_subnet_button = make_action_button("자동 입력", ActionKind.UTILITY, tooltip="선택한 서브넷을 입력합니다.")
         self.arp_timeout_edit = QLineEdit()
         self.arp_timeout_edit.setPlaceholderText("800")
         self.arp_workers_edit = QLineEdit()
@@ -194,10 +194,10 @@ class ToolsDiagnosticsMixin:
         self.arp_workers_edit.setToolTip(
             "ARP 스캔은 각 대상에 동시에 Ping을 보내는 방식입니다. 값이 높을수록 빨라지지만 부하도 커집니다."
         )
-        self.arp_start_button = make_action_button("ARP 스캔", ActionKind.START)
+        self.arp_start_button = make_action_button("스캔", ActionKind.START, tooltip="선택한 대역을 ARP 방식으로 스캔합니다.")
         self.arp_cancel_button = make_action_button("중지", ActionKind.STOP)
         self.arp_cancel_button.setEnabled(False)
-        self.arp_refresh_oui_button = make_action_button("OUI 캐시 업데이트", ActionKind.REFRESH)
+        self.arp_refresh_oui_button = make_action_button("OUI 갱신", ActionKind.REFRESH, tooltip="OUI 캐시를 업데이트합니다.")
         self.arp_oui_status_label = QLabel()
         self.arp_oui_status_label.setStyleSheet("color:#475467;")
 
@@ -270,8 +270,8 @@ class ToolsDiagnosticsMixin:
             "0011.2233.4455\n"
             "58 86 94 A1 5A BA"
         )
-        self.oui_lookup_button = make_action_button("OUI 조회", ActionKind.PRIMARY)
-        self.oui_refresh_button = make_action_button("OUI 캐시 업데이트", ActionKind.REFRESH)
+        self.oui_lookup_button = make_action_button("조회", ActionKind.PRIMARY, tooltip="MAC 주소의 제조사를 조회합니다.")
+        self.oui_refresh_button = make_action_button("OUI 갱신", ActionKind.REFRESH, tooltip="OUI 캐시를 업데이트합니다.")
         self.oui_status_label = QLabel()
         self.oui_status_label.setStyleSheet("color:#475467;")
 

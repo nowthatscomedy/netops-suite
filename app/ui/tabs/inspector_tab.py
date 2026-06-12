@@ -76,12 +76,12 @@ class InspectorTab(QWidget):
         template_layout.addWidget(template_guide)
         template_action_row = QHBoxLayout()
         self.template_editor_button = make_action_button(
-            "장비 템플릿 관리",
+            "템플릿 관리",
             ActionKind.EDIT,
             tooltip="지원 제조사(vendor), 모델, OS별 점검 명령과 Excel 출력 컬럼을 관리합니다.",
         )
         self.template_editor_button.clicked.connect(self._open_template_editor)
-        self.supported_toggle_button = make_action_button("지원 템플릿 보기", ActionKind.UTILITY)
+        self.supported_toggle_button = make_action_button("지원 보기", ActionKind.UTILITY)
         self.supported_toggle_button.setCheckable(True)
         self.supported_toggle_button.toggled.connect(self._set_supported_templates_visible)
         template_action_row.addWidget(self.template_editor_button)
@@ -108,7 +108,7 @@ class InspectorTab(QWidget):
         inventory_row = QHBoxLayout()
         inventory_row.addWidget(self.inventory_path_edit, 1)
         inventory_button = make_action_button(
-            "인벤토리 선택",
+            "선택",
             ActionKind.BROWSE,
             tooltip="점검 대상 장비 목록 Excel 파일을 선택합니다.",
         )
@@ -148,7 +148,7 @@ class InspectorTab(QWidget):
         command_row = QHBoxLayout()
         command_row.addWidget(self.command_path_edit, 1)
         self.command_button = make_action_button(
-            "명령 파일 선택",
+            "선택",
             ActionKind.BROWSE,
             tooltip="사용자 명령 모드에서 실행할 명령 파일을 선택합니다.",
         )
@@ -192,7 +192,7 @@ class InspectorTab(QWidget):
             tooltip="선택한 Excel의 필수 컬럼과 지원 제조사(vendor)/OS 값을 확인합니다.",
         )
         self.validate_button.clicked.connect(self._validate_inventory)
-        self.run_button = make_action_button("점검/백업 실행", ActionKind.START, tooltip="선택한 모드로 장비 점검/백업 작업을 시작합니다.")
+        self.run_button = make_action_button("실행", ActionKind.START, tooltip="선택한 모드로 장비 점검/백업 작업을 시작합니다.")
         self.run_button.clicked.connect(self._run_inspector)
         action_row.addWidget(self.validate_button)
         action_row.addWidget(self.run_button)
@@ -205,10 +205,10 @@ class InspectorTab(QWidget):
         result_group.setObjectName("inspectorResultGroup")
         result_layout = QVBoxLayout(result_group)
         result_button_row = QHBoxLayout()
-        self.open_result_button = make_action_button("결과 Excel 열기", ActionKind.OPEN)
+        self.open_result_button = make_action_button("Excel 열기", ActionKind.OPEN)
         self.open_result_button.clicked.connect(self._open_result)
         self.open_result_button.setEnabled(False)
-        self.open_artifacts_button = make_action_button("결과 파일 폴더 열기", ActionKind.OPEN)
+        self.open_artifacts_button = make_action_button("폴더 열기", ActionKind.OPEN)
         self.open_artifacts_button.clicked.connect(self._open_artifacts)
         self.open_artifacts_button.setEnabled(False)
         result_button_row.addWidget(self.open_result_button)
@@ -294,7 +294,7 @@ class InspectorTab(QWidget):
     def _set_supported_templates_visible(self, visible: bool) -> None:
         self.supported_label.setVisible(visible)
         self.supported_table.setVisible(visible)
-        self.supported_toggle_button.setText("지원 템플릿 숨기기" if visible else "지원 템플릿 보기")
+        self.supported_toggle_button.setText("지원 숨김" if visible else "지원 보기")
 
     def _pick_inventory(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "인벤토리 선택", "", "Excel Files (*.xlsx *.xls *.xlsm)")
