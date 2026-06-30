@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Callable
 
 from PySide6.QtCore import QObject, QThreadPool, Signal
 
@@ -43,13 +44,22 @@ class AppState(QObject):
     log_message = Signal(str)
     config_reloaded = Signal()
 
-    def __init__(self, root_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        root_dir: Path | None = None,
+        startup_callback: Callable[[str, str], None] | None = None,
+    ) -> None:
         super().__init__()
+        report = startup_callback or (lambda _message, _detail="": None)
+        report("데이터 저장 위치 확인", "설정, 로그, 내보내기 폴더 경로를 계산합니다.")
         self.paths: AppPaths = build_app_paths(root_dir)
+        report("기본 파일 준비", "필수 설정 파일과 런타임 폴더를 확인합니다.")
         ensure_runtime_files(self.paths)
 
+        report("로깅 준비", "앱 로그 파일과 화면 로그 전달자를 연결합니다.")
         self.logger: logging.Logger = configure_logging(self.paths.app_log, self._emit_log_message)
         self.thread_pool = QThreadPool.globalInstance()
+        report("권한 상태 확인", "관리자 권한 실행 여부를 확인합니다.")
         self.is_admin = is_running_as_admin()
 
         self.app_config: dict = {}
@@ -59,10 +69,13 @@ class AppState(QObject):
         self.scp_profiles: list[ScpProfile] = []
         self.scp_runtime: dict = {}
         self.tftp_runtime: dict = {}
+        report("설정 파일 읽기", "프로파일, 전송 설정, UI 상태를 불러옵니다.")
         self.reload_config_files()
 
+        report("네트워크 명령 서비스 준비", "PowerShell 기반 네트워크 작업 서비스를 초기화합니다.")
         self.powershell_service = PowerShellService(self.logger)
         self.network_interface_service = NetworkInterfaceService(self.powershell_service, self.logger)
+        report("진단 서비스 준비", "Ping, TCP, DNS, 경로 추적 기능을 준비합니다.")
         self.oui_service = OuiService(self.paths, self.logger)
         self.arp_scan_service = ArpScanService(self.oui_service, self.logger)
         self.ping_service = PingService(self.logger)
@@ -71,6 +84,7 @@ class AppState(QObject):
         self.public_ip_service = PublicIpService(self.logger)
         self.trace_service = TraceService(self.logger)
         self.wireless_service = WirelessService(self.powershell_service, self.logger, self.oui_service)
+        report("파일 전송 서비스 준비", "FTP, SCP, TFTP, iperf 관련 런타임을 초기화합니다.")
         self.ftp_client_service = FtpClientService(self.paths, self.logger)
         self.ftp_server_service = FtpServerService(self.paths, self.logger)
         self.scp_client_service = ScpClientService(self.paths, self.logger)
@@ -78,6 +92,7 @@ class AppState(QObject):
         self.tftp_service = TftpService(self.paths, self.logger)
         self.iperf_service = IperfService(self.paths, self.logger)
         self.public_iperf_service = PublicIperfService(self.paths, self.logger)
+        report("업데이트 서비스 준비", "릴리스 확인과 설치 파일 검증 기능을 준비합니다.")
         self.update_service = UpdateService(self.logger)
 
     def _emit_log_message(self, message: str) -> None:

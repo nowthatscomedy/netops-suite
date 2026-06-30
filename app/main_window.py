@@ -39,9 +39,16 @@ from app.version import __version__
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, state: AppState, parent=None) -> None:
+    def __init__(
+        self,
+        state: AppState,
+        parent=None,
+        startup_callback: Callable[[str, str], None] | None = None,
+    ) -> None:
         super().__init__(parent)
         self.state = state
+        self._startup_callback = startup_callback or (lambda _message, _detail="": None)
+        self._report_startup("메인 창 준비", "윈도우 기본 속성과 작업 실행기를 준비합니다.")
         self._job_runner = JobRunner(self.state.thread_pool, self)
         self._active_workers = self._job_runner._active_workers
         self._update_busy = False
@@ -59,9 +66,14 @@ class MainWindow(QMainWindow):
         )
 
         self._build_ui()
+        self._report_startup("이벤트 연결", "탭, 메뉴, 로그, 설정 변경 신호를 연결합니다.")
         self._connect_signals()
+        self._report_startup("이전 화면 상태 복원", "마지막으로 열었던 탭과 도킹 패널 상태를 불러옵니다.")
         self._restore_ui_state()
         QTimer.singleShot(1200, self._maybe_check_updates_on_startup)
+
+    def _report_startup(self, message: str, detail: str = "") -> None:
+        self._startup_callback(message, detail)
 
     def _apply_window_icon(self) -> None:
         app = QApplication.instance()
@@ -84,17 +96,25 @@ class MainWindow(QMainWindow):
             return
 
     def _build_ui(self) -> None:
+        self._report_startup("작업 영역 생성", "주요 기능 탭과 사이드 내비게이션을 구성합니다.")
         self.tab_widget = QTabWidget()
         self.tab_widget.setDocumentMode(True)
         self.tab_widget.setElideMode(Qt.TextElideMode.ElideRight)
         self.tab_widget.setUsesScrollButtons(True)
         self.tab_widget.tabBar().hide()
+        self._report_startup("네트워크 설정 화면 구성", "IP 프로파일과 어댑터 설정 화면을 준비합니다.")
         self.interface_tab = InterfaceTab(self.state)
+        self._report_startup("연결 진단 화면 구성", "Ping, TCP, DNS, 파일 전송 도구 화면을 준비합니다.")
         self.diagnostics_tab = DiagnosticsTab(self.state)
+        self._report_startup("Wi-Fi 분석 화면 구성", "무선 인터페이스와 주변 AP 분석 화면을 준비합니다.")
         self.wireless_tab = WirelessTab(self.state)
+        self._report_startup("장비 점검 화면 구성", "인벤토리 점검과 백업 작업 화면을 준비합니다.")
         self.inspector_tab = InspectorTab(self.state)
+        self._report_startup("CLI 설정 생성 화면 구성", "장비 설정 생성 도구를 포함합니다.")
         self.config_builder_tab = ConfigBuilderTab(self.state)
+        self._report_startup("결과 파일 화면 구성", "로그와 내보내기 결과 탐색 화면을 준비합니다.")
         self.artifacts_tab = ArtifactsTab(self.state)
+        self._report_startup("프로그램 설정 화면 구성", "업데이트와 저장 위치 설정 화면을 준비합니다.")
         self.settings_tab = SettingsTab(self.state)
 
         self.tab_widget.addTab(self.interface_tab, "네트워크 설정")

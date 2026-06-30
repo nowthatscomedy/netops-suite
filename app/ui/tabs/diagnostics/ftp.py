@@ -86,8 +86,8 @@ class FtpDiagnosticsMixin:
         selector_layout.setContentsMargins(0, 0, 0, 0)
 
         self.file_transfer_role_combo = QComboBox()
-        self.file_transfer_role_combo.addItem("이 PC에서 접속", 0)
-        self.file_transfer_role_combo.addItem("이 PC에서 서버 열기", 1)
+        self.file_transfer_role_combo.addItem("클라이언트", 0)
+        self.file_transfer_role_combo.addItem("서버", 1)
         self.file_transfer_role_combo.setMinimumWidth(120)
         self.file_transfer_mode_combo = QComboBox()
         self.file_transfer_mode_combo.addItem("FTP/FTPS/SFTP", 0)
@@ -245,9 +245,9 @@ class FtpDiagnosticsMixin:
         role = self.file_transfer_role_combo.currentIndex()
         mode = self.file_transfer_mode_combo.currentText()
         if role == 0:
-            self.file_transfer_hint_label.setText(f"{mode}: 이 PC에서 원격 장비/서버에 접속해 파일을 업로드하거나 다운로드합니다.")
+            self.file_transfer_hint_label.setText(f"{mode} 클라이언트: 원격 장비/서버에 접속해 파일을 업로드하거나 다운로드합니다.")
             return
-        self.file_transfer_hint_label.setText(f"{mode}: 이 PC에서 임시 서버를 열어 다른 장비가 접속하도록 합니다. 방화벽과 바인드 IP를 확인하세요.")
+        self.file_transfer_hint_label.setText(f"{mode} 서버: 이 PC에서 임시 서버를 열어 다른 장비가 접속하도록 합니다. 방화벽과 바인드 IP를 확인하세요.")
 
     def _sync_file_transfer_page_minimum_size(self) -> None:
         current_page = self.file_transfer_page_stack.currentWidget()

@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from app.app_state import AppState
 from app.main_window import MainWindow
 from app.ui.common.theme import apply_app_theme
+from app.ui.startup_loading import StartupLoadingWindow
 from app.utils.app_icon import load_app_icon
 from app.version import __version__
 
@@ -33,19 +34,56 @@ def main() -> int:
     if not app_icon.isNull():
         app.setWindowIcon(app_icon)
 
-    state = AppState()
-    window = MainWindow(state)
+    loading = StartupLoadingWindow(__version__)
     if not app_icon.isNull():
-        window.setWindowIcon(app_icon)
-    window.show()
-    window.activate_startup_loading()
+        loading.setWindowIcon(app_icon)
+    loading.show()
+    loading.set_step(0, "실행 환경 확인", "Windows 앱 식별자와 Qt 런타임을 준비했습니다.", 8)
+    loading.set_step(1, "테마와 아이콘 준비", "앱 테마와 창 아이콘을 적용했습니다.", 16)
 
-    if not state.paths.config_dir.exists():
-        QMessageBox.warning(
-            window,
-            "Config Error",
-            "Configuration directory could not be initialized. Some features may be unavailable.",
+    state_progress = {"value": 20}
+
+    def report_state_startup(message: str, detail: str = "") -> None:
+        state_progress["value"] = min(state_progress["value"] + 4, 62)
+        service_keywords = ("서비스", "진단", "파일 전송", "업데이트", "PowerShell")
+        step = 3 if any(keyword in message for keyword in service_keywords) else 2
+        loading.set_step(step, message, detail, state_progress["value"])
+
+    window_progress = {"value": 64}
+
+    def report_window_startup(message: str, detail: str = "") -> None:
+        window_progress["value"] = min(window_progress["value"] + 3, 92)
+        loading.set_step(4, message, detail, window_progress["value"])
+
+    try:
+        loading.set_step(2, "설정 파일 준비", "사용자 설정과 기본 프로파일을 확인합니다.", 20)
+        state = AppState(startup_callback=report_state_startup)
+        loading.set_step(3, "서비스 초기화 완료", "네트워크 진단과 파일 전송 기능을 사용할 준비가 됐습니다.", 62)
+
+        window = MainWindow(state, startup_callback=report_window_startup)
+        if not app_icon.isNull():
+            window.setWindowIcon(app_icon)
+
+        loading.set_step(5, "시작 데이터 갱신", "첫 화면에 필요한 네트워크 정보를 불러올 준비를 합니다.", 94)
+        window.show()
+        window.activate_startup_loading()
+        loading.complete()
+        loading.finish_after_minimum()
+
+        if not state.paths.config_dir.exists():
+            QMessageBox.warning(
+                window,
+                "Config Error",
+                "Configuration directory could not be initialized. Some features may be unavailable.",
+            )
+    except Exception as exc:
+        loading.fail("시작 실패", str(exc))
+        QMessageBox.critical(
+            loading,
+            "Startup Error",
+            f"NetOps Suite를 시작할 수 없습니다.\n\n{exc}",
         )
+        return 1
 
     return app.exec()
 

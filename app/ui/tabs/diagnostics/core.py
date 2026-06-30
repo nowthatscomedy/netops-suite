@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import ipaddress
 import re
 from datetime import datetime
 from threading import Event
@@ -10,6 +11,9 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QFontDatabase
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
@@ -18,7 +22,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QSizePolicy,
-    QSplitter,
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -41,7 +44,8 @@ from app.ui.tabs.diagnostics.tftp import TftpDiagnosticsMixin
 from app.ui.tabs.diagnostics.tools import ToolsDiagnosticsMixin
 from app.ui.tabs.diagnostics.trace import TraceDiagnosticsMixin
 from app.utils.file_utils import timestamped_export_path
-from app.utils.validators import parse_positive_int
+from app.utils.validators import ValidationError, parse_positive_int, validate_host_input
+from netops_suite.ui.actions import ActionKind, make_action_button
 
 
 class DiagnosticsTab(
@@ -163,9 +167,8 @@ class DiagnosticsTab(
         layout.setSpacing(10)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
         layout.addWidget(make_step_hint("작업 흐름: 도구 선택 → 대상 입력 → 실행 → 결과 저장"), 0)
+        layout.addWidget(self._build_quick_diagnostics_bar(), 0)
 
-        self.diagnostic_splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.diagnostic_splitter.setChildrenCollapsible(False)
         self.diagnostic_tool_list = QListWidget()
         self.diagnostic_tool_list.setObjectName("diagnosticToolList")
         self.diagnostic_tool_list.setMinimumWidth(200)
@@ -192,23 +195,106 @@ class DiagnosticsTab(
             ("arp", "같은 대역 장비 찾기 (ARP 스캔)", self._build_arp_scan_page),
             ("subnet", "서브넷 계산기", self._build_subnet_calc_page),
             ("oui", "MAC 제조사 조회 (OUI)", self._build_oui_lookup_page),
-            ("transfer", "파일 전송", self._build_ftp_tab),
+            ("transfer", "파일전송(FTP/SCP)", self._build_ftp_tab),
             ("commands", "명령 출력", self._build_command_tools_page),
         ]
         for key, label, builder in tool_pages:
             self._add_diagnostic_tool(key, builder(), label)
         self._refresh_oui_status_labels()
 
-        self.diagnostic_splitter.addWidget(self.diagnostic_tool_list)
-        self.diagnostic_splitter.addWidget(self.diagnostic_stack)
-        self.diagnostic_splitter.setStretchFactor(0, 0)
-        self.diagnostic_splitter.setStretchFactor(1, 1)
-        self.diagnostic_splitter.setSizes([220, 1060])
-        layout.addWidget(self.diagnostic_splitter, 1)
+        self.diagnostic_tool_list.hide()
+        layout.addWidget(self.diagnostic_stack, 1)
 
         self.diagnostic_tool_list.currentRowChanged.connect(self._handle_tool_changed)
         self.diagnostic_stack.currentChanged.connect(self._sync_tool_list_to_stack)
         self.diagnostic_tool_list.setCurrentRow(0)
+
+    def _build_quick_diagnostics_bar(self) -> QWidget:
+        bar = QFrame()
+        bar.setObjectName("quickDiagnosticsBar")
+        bar.setStyleSheet(
+            """
+            QFrame#quickDiagnosticsBar {
+                background:#ffffff;
+                border:1px solid #e4e7ec;
+                border-radius:4px;
+            }
+            QLabel#quickDiagnosticsTitle {
+                color:#344054;
+                font-weight:700;
+            }
+            QLabel#quickDiagnosticsStatus {
+                color:#667085;
+            }
+            """
+        )
+        layout = QVBoxLayout(bar)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(6)
+
+        input_row = QHBoxLayout()
+        input_row.setContentsMargins(0, 0, 0, 0)
+        input_row.setSpacing(8)
+
+        title = QLabel("빠른 진단")
+        title.setObjectName("quickDiagnosticsTitle")
+        self.quick_target_edit = QLineEdit()
+        self.quick_target_edit.setObjectName("quickDiagnosticsTarget")
+        self.quick_target_edit.setPlaceholderText("IP/호스트 또는 CIDR")
+        self.quick_target_edit.setMinimumWidth(240)
+        self.quick_target_edit.setToolTip("예: 8.8.8.8, 192.168.0.1:443, 192.168.0.10/24")
+        self.quick_port_edit = QLineEdit()
+        self.quick_port_edit.setObjectName("quickDiagnosticsPort")
+        self.quick_port_edit.setPlaceholderText("포트")
+        self.quick_port_edit.setMaximumWidth(72)
+        self.quick_port_edit.setToolTip("TCPing/iperf에 사용할 포트입니다.")
+        self.quick_status_label = QLabel("준비")
+        self.quick_status_label.setObjectName("quickDiagnosticsStatus")
+        self.quick_status_label.setWordWrap(True)
+        self.quick_status_label.setMinimumWidth(140)
+        self.quick_status_label.setMaximumWidth(260)
+
+        input_row.addWidget(title)
+        input_row.addWidget(self.quick_target_edit, 1)
+        input_row.addWidget(self.quick_port_edit)
+        input_row.addWidget(self.quick_status_label)
+        layout.addLayout(input_row)
+
+        action_grid = QGridLayout()
+        action_grid.setContentsMargins(0, 0, 0, 0)
+        action_grid.setHorizontalSpacing(6)
+        action_grid.setVerticalSpacing(4)
+        quick_actions = [
+            ("quick_ping_button", "Ping", ActionKind.START, self.run_quick_ping, "입력한 대상으로 Ping을 실행합니다."),
+            ("quick_tcp_button", "TCPing", ActionKind.START, self.run_quick_tcp_check, "입력한 대상과 포트로 TCP 연결을 확인합니다."),
+            ("quick_dns_button", "DNS", ActionKind.PRIMARY, self.run_quick_dns_lookup, "입력한 도메인/IP를 nslookup으로 조회합니다."),
+            ("quick_tracert_button", "tracert -d", ActionKind.UTILITY, self.run_quick_tracert_no_resolve, "DNS 역조회 없이 tracert를 실행합니다."),
+            ("quick_pathping_button", "pathping -n", ActionKind.UTILITY, self.run_quick_pathping_no_resolve, "DNS 역조회 없이 pathping을 실행합니다."),
+            ("quick_iperf_button", "iperf3", ActionKind.START, self.run_quick_iperf_client, "입력한 서버와 포트로 iperf3 클라이언트를 실행합니다."),
+            ("quick_arp_scan_button", "ARP 스캔", ActionKind.START, self.run_quick_arp_scan, "입력한 IPv4 CIDR 대역을 스캔합니다."),
+            ("quick_subnet_button", "서브넷 계산기", ActionKind.PRIMARY, self.run_quick_subnet, "입력한 CIDR 또는 IP/Prefix를 계산합니다."),
+            ("quick_oui_button", "OUI", ActionKind.PRIMARY, self.run_quick_oui_lookup, "입력한 MAC 주소의 제조사를 조회합니다."),
+            ("quick_public_ip_button", "공인 IP", ActionKind.UTILITY, self.run_quick_public_ip, "현재 공인 IP를 확인합니다."),
+            ("quick_snapshot_button", "인터페이스", ActionKind.UTILITY, self.run_quick_interface_snapshot, "현재 인터페이스 정보를 불러옵니다."),
+            ("quick_ipconfig_button", "ipconfig", ActionKind.UTILITY, self.run_quick_ipconfig, "ipconfig /all을 실행합니다."),
+            ("quick_route_button", "route", ActionKind.UTILITY, self.run_quick_route_print, "route print를 실행합니다."),
+            ("quick_arp_table_button", "arp -a", ActionKind.UTILITY, self.run_quick_arp_table, "arp -a를 실행합니다."),
+            ("quick_flush_dns_button", "DNS 캐시", ActionKind.DANGER, self.run_quick_flush_dns_cache, "Windows DNS 캐시를 비웁니다."),
+            ("quick_transfer_button", "파일전송(FTP/SCP)", ActionKind.UTILITY, self.run_quick_file_transfer, "FTP/SCP 파일 전송 도구로 이동합니다."),
+        ]
+        self.quick_action_buttons = []
+        for index, (attr_name, text, kind, handler, tooltip) in enumerate(quick_actions):
+            button = make_action_button(text, kind, tooltip=tooltip)
+            setattr(self, attr_name, button)
+            self.quick_action_buttons.append(button)
+            action_grid.addWidget(button, index // 8, index % 8)
+        action_grid.setColumnStretch(7, 1)
+        layout.addLayout(action_grid)
+
+        self.quick_target_edit.returnPressed.connect(self.run_quick_ping)
+        for button, (_attr_name, _text, _kind, handler, _tooltip) in zip(self.quick_action_buttons, quick_actions):
+            button.clicked.connect(handler)
+        return bar
 
     def _add_diagnostic_tool(self, key: str, widget: QWidget, label: str) -> None:
         index = len(self._diagnostic_tool_keys)
@@ -220,6 +306,292 @@ class DiagnosticsTab(
         self._diagnostic_tool_keys.append(key)
         self._diagnostic_tool_index_by_key[key] = index
         self._diagnostic_tool_labels[key] = label
+
+    def run_quick_ping(self) -> None:
+        target = self._quick_host_target()
+        if not target:
+            return
+        if not self.ping_start_button.isEnabled():
+            self.select_diagnostic_tab("ping")
+            self._set_quick_status("Ping이 이미 실행 중입니다.", "warning")
+            return
+
+        self.select_diagnostic_tab("ping")
+        self.ping_targets_edit.setPlainText(target)
+        self._set_quick_status(f"Ping 실행: {target}", "success")
+        self.start_ping()
+
+    def run_quick_tcp_check(self) -> None:
+        target, port = self._quick_host_and_port()
+        if not target:
+            return
+        if not port:
+            self.select_diagnostic_tab("tcp")
+            self.tcp_targets_edit.setPlainText(target)
+            self.quick_port_edit.setFocus()
+            self._set_quick_status("TCPing에는 포트가 필요합니다.", "warning")
+            return
+        if not self.tcp_start_button.isEnabled():
+            self.select_diagnostic_tab("tcp")
+            self._set_quick_status("TCPing이 이미 실행 중입니다.", "warning")
+            return
+
+        self.select_diagnostic_tab("tcp")
+        self.tcp_targets_edit.setPlainText(target)
+        self.tcp_ports_edit.setText(port)
+        self._set_quick_status(f"TCPing 실행: {target}:{port}", "success")
+        self.start_tcp_check()
+
+    def run_quick_dns_lookup(self) -> None:
+        target = self._quick_host_target()
+        if not target:
+            return
+        if not self.dns_run_button.isEnabled():
+            self.select_diagnostic_tab("dns")
+            self._set_quick_status("DNS 조회가 이미 실행 중입니다.", "warning")
+            return
+
+        self.select_diagnostic_tab("dns")
+        self.dns_query_edit.setText(target)
+        self._set_quick_status(f"DNS 조회: {target}", "success")
+        self.run_dns_lookup()
+
+    def run_quick_tracert_no_resolve(self) -> None:
+        target = self._quick_host_target()
+        if not target:
+            return
+        if not self.tracert_button.isEnabled():
+            self.select_diagnostic_tab("trace")
+            self._set_quick_status("경로 추적이 이미 실행 중입니다.", "warning")
+            return
+
+        self.select_diagnostic_tab("trace")
+        self.trace_target_edit.setText(target)
+        self.trace_no_resolve_check.setChecked(True)
+        self._set_quick_status(f"tracert -d 실행: {target}", "success")
+        self.start_trace("tracert")
+
+    def run_quick_pathping_no_resolve(self) -> None:
+        target = self._quick_host_target()
+        if not target:
+            return
+        if not self.pathping_button.isEnabled():
+            self.select_diagnostic_tab("trace")
+            self._set_quick_status("경로 추적이 이미 실행 중입니다.", "warning")
+            return
+
+        self.select_diagnostic_tab("trace")
+        self.trace_target_edit.setText(target)
+        self.trace_no_resolve_check.setChecked(True)
+        self._set_quick_status(f"pathping -n 실행: {target}", "success")
+        self.start_trace("pathping")
+
+    def run_quick_iperf_client(self) -> None:
+        target, port = self._quick_host_and_port(default_port="5201")
+        if not target:
+            return
+        if not self.iperf_run_button.isEnabled():
+            self.select_diagnostic_tab("iperf")
+            self._set_quick_status("iperf3를 실행할 수 없는 상태입니다.", "warning")
+            return
+
+        self.select_diagnostic_tab("iperf")
+        client_index = self.iperf_mode_combo.findData("client")
+        if client_index >= 0:
+            self.iperf_mode_combo.setCurrentIndex(client_index)
+        self.iperf_use_public_server_check.setChecked(False)
+        self.iperf_server_edit.setText(target)
+        self.iperf_port_edit.setText(port or "5201")
+        self._set_quick_status(f"iperf3 실행: {target}:{port or '5201'}", "success")
+        self.run_iperf_test()
+
+    def run_quick_arp_scan(self) -> None:
+        payload = self._quick_payload_text()
+        if not payload:
+            return
+
+        subnet_text = self._quick_subnet_cidr(payload)
+        if not subnet_text:
+            self.select_diagnostic_tab("arp")
+            self._set_quick_status("ARP 스캔에는 CIDR 대역이 필요합니다.", "warning")
+            return
+        if not self.arp_start_button.isEnabled():
+            self.select_diagnostic_tab("arp")
+            self._set_quick_status("ARP 스캔이 이미 실행 중입니다.", "warning")
+            return
+
+        self.select_diagnostic_tab("arp")
+        self.arp_subnet_edit.setText(subnet_text)
+        self._set_quick_status(f"ARP 스캔: {subnet_text}", "success")
+        self.start_arp_scan()
+
+    def run_quick_subnet(self) -> None:
+        payload = self._quick_payload_text()
+        if not payload:
+            return
+
+        ip_text, prefix_text = self._split_quick_subnet_payload(payload)
+        self.select_diagnostic_tab("subnet")
+        self.subnet_calc_ip_edit.setText(ip_text)
+        if prefix_text:
+            self.subnet_calc_prefix_edit.setText(prefix_text)
+            self._set_quick_status(f"서브넷 계산: {ip_text}/{prefix_text}", "success")
+            self.calculate_subnet_from_tools_inputs()
+            return
+
+        self.subnet_calc_prefix_edit.clear()
+        self._clear_subnet_calc_results()
+        self.subnet_calc_status_label.setText("Prefix 또는 서브넷 마스크를 입력하면 계산합니다.")
+        self.subnet_calc_status_label.setStyleSheet("color:#475467;")
+        self.subnet_calc_prefix_edit.setFocus()
+        self._set_quick_status("서브넷 계산에는 Prefix가 필요합니다.", "warning")
+
+    def run_quick_oui_lookup(self) -> None:
+        text = self._quick_input_text()
+        if not text:
+            return
+
+        self.select_diagnostic_tab("oui")
+        self.oui_mac_edit.setPlainText(text)
+        self._set_quick_status("OUI 조회", "success")
+        self.lookup_oui_vendor()
+
+    def run_quick_public_ip(self) -> None:
+        self.select_diagnostic_tab("commands")
+        self._set_quick_status("공인 IP 확인", "success")
+        self.check_public_ip()
+
+    def run_quick_interface_snapshot(self) -> None:
+        self.select_diagnostic_tab("commands")
+        self._set_quick_status("인터페이스 정보 조회", "success")
+        self.load_interface_snapshot()
+
+    def run_quick_ipconfig(self) -> None:
+        self.select_diagnostic_tab("commands")
+        self._set_quick_status("ipconfig /all 실행", "success")
+        self._run_tools_command(self.state.trace_service.run_ipconfig_all)
+
+    def run_quick_route_print(self) -> None:
+        self.select_diagnostic_tab("commands")
+        self._set_quick_status("route print 실행", "success")
+        self._run_tools_command(self.state.trace_service.run_route_print)
+
+    def run_quick_arp_table(self) -> None:
+        self.select_diagnostic_tab("commands")
+        self._set_quick_status("arp -a 실행", "success")
+        self._run_tools_command(self.state.trace_service.run_arp_table)
+
+    def run_quick_flush_dns_cache(self) -> None:
+        self.select_diagnostic_tab("commands")
+        self._set_quick_status("DNS 캐시 비우기", "warning")
+        self._confirm_and_flush_dns_cache()
+
+    def run_quick_file_transfer(self) -> None:
+        self.select_diagnostic_tab("transfer")
+        self._set_quick_status("파일전송(FTP/SCP)", "info")
+
+    def _quick_input_text(self) -> str:
+        text = self.quick_target_edit.text().strip()
+        if text:
+            return text
+        self.quick_target_edit.setFocus()
+        self._set_quick_status("IP 또는 호스트를 입력하세요.", "error")
+        return ""
+
+    def _quick_payload_text(self) -> str:
+        text = self._quick_input_text()
+        if not text:
+            return ""
+        first_line = text.splitlines()[0].strip()
+        if "," in first_line:
+            _label, value = first_line.split(",", 1)
+            if value.strip():
+                first_line = value.strip()
+        return first_line
+
+    def _quick_host_target(self) -> str:
+        payload = self._quick_payload_text()
+        if not payload:
+            return ""
+
+        target, _port = self._split_quick_host_port_payload(payload)
+        try:
+            return validate_host_input(target)
+        except ValidationError as exc:
+            self._set_quick_status(str(exc), "error")
+            self.quick_target_edit.setFocus()
+            return ""
+
+    def _quick_host_and_port(self, default_port: str = "") -> tuple[str, str]:
+        payload = self._quick_payload_text()
+        if not payload:
+            return "", ""
+
+        target, parsed_port = self._split_quick_host_port_payload(payload)
+        port = self.quick_port_edit.text().strip() or parsed_port or default_port
+        try:
+            target = validate_host_input(target)
+        except ValidationError as exc:
+            self._set_quick_status(str(exc), "error")
+            self.quick_target_edit.setFocus()
+            return "", ""
+
+        if port and all(separator not in port for separator in (",", "-", " ")):
+            try:
+                parse_positive_int(port, "포트", minimum=1, maximum=65535)
+            except ValidationError as exc:
+                self._set_quick_status(str(exc), "error")
+                self.quick_port_edit.setFocus()
+                return "", ""
+        return target, port
+
+    def _split_quick_host_port_payload(self, payload: str) -> tuple[str, str]:
+        parts = payload.split()
+        target = parts[0].strip() if parts else payload.strip()
+        port = parts[1].strip() if len(parts) > 1 else ""
+        if "/" in target:
+            target = target.split("/", 1)[0].strip()
+        if ":" in target and target.count(":") == 1:
+            host_part, port_part = target.rsplit(":", 1)
+            if host_part and port_part:
+                target = host_part.strip()
+                port = port or port_part.strip()
+        return target, port
+
+    def _split_quick_subnet_payload(self, payload: str) -> tuple[str, str]:
+        first_token = payload.split()[0].strip()
+        if "/" in first_token:
+            ip_text, prefix_text = first_token.split("/", 1)
+            return ip_text.strip(), prefix_text.strip()
+
+        parts = payload.split()
+        ip_text = parts[0].strip() if parts else payload.strip()
+        prefix_text = parts[1].strip() if len(parts) > 1 else ""
+        return ip_text, prefix_text
+
+    def _quick_subnet_cidr(self, payload: str) -> str:
+        ip_text, prefix_text = self._split_quick_subnet_payload(payload)
+        if not ip_text or not prefix_text:
+            return ""
+        try:
+            network = ipaddress.ip_network(f"{ip_text}/{prefix_text}", strict=False)
+        except ValueError:
+            self._set_quick_status("유효한 IPv4 CIDR을 입력하세요.", "error")
+            return ""
+        if network.version != 4:
+            self._set_quick_status("IPv4 CIDR만 지원합니다.", "error")
+            return ""
+        return network.with_prefixlen
+
+    def _set_quick_status(self, message: str, kind: str = "info") -> None:
+        colors = {
+            "info": "#667085",
+            "success": "#166534",
+            "warning": "#92400e",
+            "error": "#b42318",
+        }
+        self.quick_status_label.setText(message)
+        self.quick_status_label.setStyleSheet(f"color:{colors.get(kind, colors['info'])};")
 
     def _current_tool_key(self) -> str:
         index = self.diagnostic_stack.currentIndex()

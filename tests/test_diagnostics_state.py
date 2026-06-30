@@ -540,7 +540,7 @@ def test_diagnostics_sidebar_labels_navigation_and_legacy_tools_migration(qapp, 
         "같은 대역 장비 찾기 (ARP 스캔)",
         "서브넷 계산기",
         "MAC 제조사 조회 (OUI)",
-        "파일 전송",
+        "파일전송(FTP/SCP)",
         "명령 출력",
     ]
     assert [tab.diagnostic_tool_list.item(index).text() for index in range(tab.diagnostic_tool_list.count())] == expected_labels
@@ -742,6 +742,10 @@ def test_file_transfer_client_pages_remain_readable_at_compact_size(
     tab = DiagnosticsTab(build_fake_state(tmp_path))
     _show_compact_file_transfer_tab(tab, qapp)
 
+    assert [tab.file_transfer_role_combo.itemText(index) for index in range(tab.file_transfer_role_combo.count())] == [
+        "클라이언트",
+        "서버",
+    ]
     tab.file_transfer_role_combo.setCurrentIndex(0)
     tab.file_transfer_mode_combo.setCurrentIndex(mode_index)
     if protocol is not None:
@@ -752,6 +756,7 @@ def test_file_transfer_client_pages_remain_readable_at_compact_size(
 
     assert tab.file_transfer_role_combo.currentData() == 0
     assert tab.file_transfer_mode_combo.currentIndex() == mode_index
+    assert "클라이언트" in tab.file_transfer_hint_label.text()
     if protocol is not None:
         assert tab.ftp_client_protocol_combo.currentData() == protocol
 
@@ -858,6 +863,169 @@ def test_quick_tools_remove_symptom_shortcuts_and_subnet_results_are_progressive
     assert tab.subnet_calc_detail_table.rowCount() > 0
 
 
+def test_quick_diagnostics_ping_uses_single_target_entry(qapp, tmp_path, monkeypatch):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    calls: list[str] = []
+    monkeypatch.setattr(tab, "start_ping", lambda: calls.append(tab.ping_targets_edit.toPlainText()))
+
+    tab.quick_target_edit.setText("8.8.8.8")
+    tab.run_quick_ping()
+
+    assert tab._current_tool_key() == "ping"
+    assert calls == ["8.8.8.8"]
+    assert "8.8.8.8" in tab.quick_status_label.text()
+
+
+def test_quick_diagnostics_exposes_all_connection_tools(qapp, tmp_path):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+
+    labels = [button.text() for button in tab.quick_action_buttons]
+
+    assert labels == [
+        "Ping",
+        "TCPing",
+        "DNS",
+        "tracert -d",
+        "pathping -n",
+        "iperf3",
+        "ARP 스캔",
+        "서브넷 계산기",
+        "OUI",
+        "공인 IP",
+        "인터페이스",
+        "ipconfig",
+        "route",
+        "arp -a",
+        "DNS 캐시",
+        "파일전송(FTP/SCP)",
+    ]
+
+
+def test_diagnostics_tool_list_is_hidden_after_quick_launcher_expansion(qapp, tmp_path):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+
+    assert tab.diagnostic_tool_list.isHidden()
+    assert tab.diagnostic_stack.parentWidget() is tab
+
+
+def test_quick_diagnostics_tcp_uses_target_and_port(qapp, tmp_path, monkeypatch):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(tab, "start_tcp_check", lambda: calls.append((tab.tcp_targets_edit.toPlainText(), tab.tcp_ports_edit.text())))
+
+    tab.quick_target_edit.setText("192.168.0.1:443")
+    tab.run_quick_tcp_check()
+
+    assert tab._current_tool_key() == "tcp"
+    assert calls == [("192.168.0.1", "443")]
+    assert "TCPing" in tab.quick_status_label.text()
+
+
+def test_quick_diagnostics_dns_and_pathping_use_target(qapp, tmp_path, monkeypatch):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    dns_calls: list[str] = []
+    trace_calls: list[tuple[str, str, bool]] = []
+    monkeypatch.setattr(tab, "run_dns_lookup", lambda: dns_calls.append(tab.dns_query_edit.text()))
+    monkeypatch.setattr(
+        tab,
+        "start_trace",
+        lambda mode: trace_calls.append((mode, tab.trace_target_edit.text(), tab.trace_no_resolve_check.isChecked())),
+    )
+
+    tab.quick_target_edit.setText("example.com")
+    tab.run_quick_dns_lookup()
+    tab.run_quick_pathping_no_resolve()
+
+    assert dns_calls == ["example.com"]
+    assert trace_calls == [("pathping", "example.com", True)]
+
+
+def test_quick_diagnostics_tracert_uses_no_resolve_and_strips_label(qapp, tmp_path, monkeypatch):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    calls: list[tuple[str, str, bool]] = []
+    monkeypatch.setattr(
+        tab,
+        "start_trace",
+        lambda mode: calls.append((mode, tab.trace_target_edit.text(), tab.trace_no_resolve_check.isChecked())),
+    )
+
+    tab.quick_target_edit.setText("GW,192.168.0.1")
+    tab.run_quick_tracert_no_resolve()
+
+    assert tab._current_tool_key() == "trace"
+    assert calls == [("tracert", "192.168.0.1", True)]
+    assert "tracert -d" in tab.quick_status_label.text()
+
+
+def test_quick_diagnostics_iperf_arp_oui_and_file_transfer(qapp, tmp_path, monkeypatch):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    iperf_calls: list[tuple[str, str]] = []
+    arp_calls: list[str] = []
+    oui_calls: list[str] = []
+    monkeypatch.setattr(tab, "run_iperf_test", lambda: iperf_calls.append((tab.iperf_server_edit.text(), tab.iperf_port_edit.text())))
+    monkeypatch.setattr(tab, "start_arp_scan", lambda: arp_calls.append(tab.arp_subnet_edit.text()))
+    monkeypatch.setattr(tab, "lookup_oui_vendor", lambda: oui_calls.append(tab.oui_mac_edit.toPlainText()))
+
+    tab.quick_target_edit.setText("iperf.example.com")
+    tab.quick_port_edit.setText("5202")
+    tab.run_quick_iperf_client()
+    tab.quick_target_edit.setText("192.168.10.5/24")
+    tab.quick_port_edit.clear()
+    tab.run_quick_arp_scan()
+    tab.quick_target_edit.setText("AP,58:86:94:A1:5A:BA")
+    tab.run_quick_oui_lookup()
+    tab.run_quick_file_transfer()
+
+    assert iperf_calls == [("iperf.example.com", "5202")]
+    assert arp_calls == ["192.168.10.0/24"]
+    assert oui_calls == ["AP,58:86:94:A1:5A:BA"]
+    assert tab._current_tool_key() == "transfer"
+
+
+def test_quick_diagnostics_command_tools_delegate_to_existing_actions(qapp, tmp_path, monkeypatch):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    calls: list[str] = []
+
+    monkeypatch.setattr(tab, "check_public_ip", lambda: calls.append("public_ip"))
+    monkeypatch.setattr(tab, "load_interface_snapshot", lambda: calls.append("interfaces"))
+    monkeypatch.setattr(tab, "_confirm_and_flush_dns_cache", lambda: calls.append("flush_dns"))
+
+    def fake_run_tools_command(fn):
+        calls.append(fn.__name__)
+
+    monkeypatch.setattr(tab, "_run_tools_command", fake_run_tools_command)
+
+    tab.run_quick_public_ip()
+    tab.run_quick_interface_snapshot()
+    tab.run_quick_ipconfig()
+    tab.run_quick_route_print()
+    tab.run_quick_arp_table()
+    tab.run_quick_flush_dns_cache()
+
+    assert calls == [
+        "public_ip",
+        "interfaces",
+        "run_ipconfig_all",
+        "run_route_print",
+        "run_arp_table",
+        "flush_dns",
+    ]
+    assert tab._current_tool_key() == "commands"
+
+
+def test_quick_diagnostics_subnet_accepts_cidr(qapp, tmp_path):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+
+    tab.quick_target_edit.setText("192.168.10.5/24")
+    tab.run_quick_subnet()
+
+    assert tab._current_tool_key() == "subnet"
+    assert tab.subnet_calc_ip_edit.text() == "192.168.10.5"
+    assert tab.subnet_calc_prefix_edit.text() == "24"
+    assert tab.subnet_calc_summary_labels["network_address"].text() == "192.168.10.0"
+    assert not tab.subnet_calc_detail_table.isHidden()
+
+
 def test_file_transfer_tables_have_empty_states_and_table_first_splitters(qapp, tmp_path):
     tab = DiagnosticsTab(build_fake_state(tmp_path))
     _show_compact_file_transfer_tab(tab, qapp)
@@ -886,6 +1054,7 @@ def test_file_transfer_tables_have_empty_states_and_table_first_splitters(qapp, 
 
     tab.file_transfer_role_combo.setCurrentIndex(1)
     qapp.processEvents()
+    assert "서버" in tab.file_transfer_hint_label.text()
     _assert_splitter_ratio(tab.ftp_server_splitter, first_larger=False)
     tab.file_transfer_mode_combo.setCurrentIndex(1)
     qapp.processEvents()

@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QApplication
 APP_STYLE_SHEET = """
 QWidget {
     color: #1f2933;
-    background: #f7f7f5;
+    background: #ffffff;
     font-size: 11px;
 }
 QMainWindow,
@@ -18,7 +18,7 @@ QDialog#subDialog {
     background: #fbfbfa;
 }
 QWidget#appShell {
-    background: #fbfbfa;
+    background: #ffffff;
 }
 QFrame#sideNavigation {
     background: #f2f1ee;
@@ -28,7 +28,7 @@ QFrame#sideNavigation {
     max-width: 196px;
 }
 QFrame#workspacePanel {
-    background: #fbfbfa;
+    background: #ffffff;
     border: 0;
 }
 QLabel#appTitle {
@@ -144,7 +144,7 @@ QMenu::item:selected {
 }
 QTabWidget::pane {
     border: 0;
-    background: transparent;
+    background: #ffffff;
     top: 0;
 }
 QTabBar::tab {
@@ -408,7 +408,7 @@ QToolTip {
 def apply_app_theme(app: QApplication) -> None:
     app.setStyle("Fusion")
     palette = QPalette(app.palette())
-    palette.setColor(QPalette.ColorRole.Window, QColor("#f7f7f5"))
+    palette.setColor(QPalette.ColorRole.Window, QColor("#ffffff"))
     palette.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
     palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#f8fafc"))
     palette.setColor(QPalette.ColorRole.Text, QColor("#182230"))

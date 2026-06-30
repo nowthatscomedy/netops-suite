@@ -158,7 +158,10 @@ QHeaderView::section {
 COMPACT_UI_STYLE = """
 QWidget#configBuilderFullEditorCentral,
 QWidget#configBuilderEmbeddedCentral,
-QWidget#configBuilderAdvancedPanel {
+QWidget#configBuilderAdvancedPanel,
+QWidget#configBuilderFullEditorCentral QWidget,
+QWidget#configBuilderEmbeddedCentral QWidget,
+QWidget#configBuilderAdvancedPanel QWidget {
     background: #ffffff;
 }
 QGroupBox {
@@ -2014,6 +2017,7 @@ class SwitchConfigBuilderWidget(QWidget):
 
     def _build_left_panel(self) -> QWidget:
         panel = QWidget()
+        panel.setObjectName("configBuilderLeftPanel")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
@@ -2124,6 +2128,7 @@ class SwitchConfigBuilderWidget(QWidget):
 
     def _build_right_panel(self) -> QWidget:
         panel = QWidget()
+        panel.setObjectName("configBuilderRightPanel")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(3)

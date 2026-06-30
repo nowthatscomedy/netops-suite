@@ -17,6 +17,7 @@ from PySide6.QtWidgets import QApplication, QCheckBox, QGroupBox, QLabel, QMessa
 from app.app_state import AppState
 from app.main_window import MainWindow
 from app.ui.common import confirm_risky_action
+from app.ui.common.theme import APP_STYLE_SHEET
 from app.ui.dialogs.inspector_vendor_template_dialog import InspectorVendorTemplateDialog, PythonParserDialog
 from app.ui.tabs.artifacts_tab import ArtifactsTab
 from app.ui.tabs.inspector_tab import InspectorTab
@@ -437,7 +438,10 @@ def test_config_builder_tab_embeds_full_builder_and_removes_legacy_shortcuts(qt_
         assert builder.windowTitle() == "CLI 설정 생성"
         assert builder.findChild(QWidget, "configBuilderCompactCommandBar") is not None
         assert builder.findChild(QWidget, "configBuilderSummaryChips") is not None
+        assert builder.findChild(QWidget, "configBuilderLeftPanel") is not None
+        assert builder.findChild(QWidget, "configBuilderRightPanel") is not None
         assert builder.findChild(QWidget, "configBuilderAdvancedPanel").isHidden()
+        assert "QWidget#configBuilderEmbeddedCentral QWidget" in builder.styleSheet()
         assert builder.findChild(QPushButton, "configBuilderSampleStartButton").text() == "샘플로 시작"
         assert builder.open_file_button.text() == "장비 변수 파일 열기"
         assert builder.add_row_button.text() == "빈 행 추가"
@@ -935,7 +939,7 @@ def test_main_window_uses_purpose_based_tab_labels_and_step_hints(qt_app, tmp_pa
             "같은 대역 장비 찾기 (ARP 스캔)",
             "서브넷 계산기",
             "MAC 제조사 조회 (OUI)",
-            "파일 전송",
+            "파일전송(FTP/SCP)",
             "명령 출력",
         ]
         window.state.is_admin = False
@@ -959,6 +963,13 @@ def test_main_window_uses_purpose_based_tab_labels_and_step_hints(qt_app, tmp_pa
         assert window.diagnostics_tab.diagnostic_stack.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Ignored
     finally:
         window.close()
+
+
+def test_main_workspace_uses_single_white_content_surface():
+    assert "QWidget {\n    color: #1f2933;\n    background: #ffffff;" in APP_STYLE_SHEET
+    assert "QWidget#appShell {\n    background: #ffffff;" in APP_STYLE_SHEET
+    assert "QFrame#workspacePanel {\n    background: #ffffff;" in APP_STYLE_SHEET
+    assert "QTabWidget::pane {\n    border: 0;\n    background: #ffffff;" in APP_STYLE_SHEET
 
 
 def test_confirm_risky_action_message_contains_standard_sections(qt_app, monkeypatch):
