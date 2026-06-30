@@ -943,6 +943,7 @@ def test_main_window_uses_purpose_based_tab_labels_and_step_hints(qt_app, tmp_pa
             "명령 출력",
         ]
         window.state.is_admin = False
+        window._update_admin_status()
         window.interface_tab._update_admin_banner()
         window.interface_tab._update_action_states()
         assert not window.interface_tab.apply_button.isEnabled()
