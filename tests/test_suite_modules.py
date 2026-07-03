@@ -20,6 +20,7 @@ from app.ui.common import confirm_risky_action
 from app.ui.common.theme import APP_STYLE_SHEET
 from app.ui.dialogs.inspector_vendor_template_dialog import InspectorVendorTemplateDialog, PythonParserDialog
 from app.ui.tabs.artifacts_tab import ArtifactsTab
+from app.ui.tabs.interface_tab import InterfaceTab
 from app.ui.tabs.inspector_tab import InspectorTab
 from app.ui.tabs.config_builder_tab import ConfigBuilderTab
 from app.utils.app_icon import load_app_icon
@@ -923,6 +924,7 @@ def test_main_window_uses_purpose_based_tab_labels_and_step_hints(qt_app, tmp_pa
             "Wi-Fi 분석",
             "장비 점검/백업",
             "CLI 설정 생성",
+            "AI 채팅",
             "결과 파일",
             "프로그램 설정",
         ]
@@ -956,6 +958,7 @@ def test_main_window_uses_purpose_based_tab_labels_and_step_hints(qt_app, tmp_pa
             window.wireless_tab,
             window.inspector_tab,
             window.config_builder_tab,
+            window.ai_chat_tab,
             window.artifacts_tab,
         ):
             hint = tab.findChild(QLabel, "stepHint")
@@ -971,6 +974,57 @@ def test_main_workspace_uses_single_white_content_surface():
     assert "QWidget#appShell {\n    background: #ffffff;" in APP_STYLE_SHEET
     assert "QFrame#workspacePanel {\n    background: #ffffff;" in APP_STYLE_SHEET
     assert "QTabWidget::pane {\n    border: 0;\n    background: #ffffff;" in APP_STYLE_SHEET
+
+
+def test_interface_tab_skips_startup_refresh_without_admin(qt_app, tmp_path: Path):
+    calls: list[str] = []
+
+    def list_adapters():
+        calls.append("list")
+        raise AssertionError("startup refresh should be skipped without admin")
+
+    state = SimpleNamespace(
+        is_admin=False,
+        thread_pool=QThreadPool.globalInstance(),
+        ip_profiles=[],
+        network_interface_service=SimpleNamespace(list_adapters=list_adapters),
+        config_reloaded=SimpleNamespace(connect=lambda *_args, **_kwargs: None),
+    )
+    tab = InterfaceTab(state)
+    try:
+        tab.start_initial_refresh()
+        qt_app.processEvents()
+
+        assert calls == []
+        assert tab._startup_refresh_requested is True
+        assert tab.adapter_empty_label.isVisibleTo(tab)
+        assert "자동 조회를 생략" in tab.adapter_empty_label.text()
+    finally:
+        tab.close()
+
+
+def test_interface_tab_startup_refresh_runs_for_admin_and_manual_refresh_still_available(qt_app, tmp_path: Path):
+    state = SimpleNamespace(
+        is_admin=True,
+        thread_pool=QThreadPool.globalInstance(),
+        ip_profiles=[],
+        network_interface_service=SimpleNamespace(list_adapters=lambda: []),
+        config_reloaded=SimpleNamespace(connect=lambda *_args, **_kwargs: None),
+    )
+    tab = InterfaceTab(state)
+    calls: list[object] = []
+    try:
+        tab._start_worker = lambda fn, *args, **kwargs: calls.append(fn)
+
+        tab.start_initial_refresh()
+
+        assert calls == [state.network_interface_service.list_adapters]
+
+        state.is_admin = False
+        tab.refresh_adapters()
+        assert calls == [state.network_interface_service.list_adapters, state.network_interface_service.list_adapters]
+    finally:
+        tab.close()
 
 
 def test_confirm_risky_action_message_contains_standard_sections(qt_app, monkeypatch):

@@ -10,6 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from app.models.ai_models import default_ai_chat_config
+
 DEFAULT_UPDATE_REPO = "nowthatscomedy/netops-suite"
 DEFAULT_UPDATE_ASSET_PATTERN = r"NetOpsSuite-setup.*\.exe$"
 PROJECT_DATA_ENV = "NETOPS_SUITE_USE_PROJECT_DATA"
@@ -169,6 +171,7 @@ def default_app_config() -> dict[str, Any]:
         "wireless_refresh_interval_sec": 2,
         "default_nslookup_type": "A",
         "update": default_update_config(),
+        "ai_chat": default_ai_chat_config(),
     }
 
 

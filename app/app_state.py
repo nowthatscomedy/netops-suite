@@ -6,6 +6,7 @@ from typing import Callable
 
 from PySide6.QtCore import QObject, QThreadPool, Signal
 
+from app.models.ai_models import normalize_ai_chat_config
 from app.models.ftp_models import FtpProfile
 from app.models.profile_models import IPProfile
 from app.models.scp_models import ScpProfile
@@ -103,12 +104,17 @@ class AppState(QObject):
         base_config = default_app_config()
         should_save_app_config = False
         if isinstance(loaded_config, dict):
-            base_config.update({key: value for key, value in loaded_config.items() if key != "update"})
+            base_config.update({key: value for key, value in loaded_config.items() if key not in {"update", "ai_chat"}})
             normalized_update = normalize_update_config(loaded_config.get("update", {}))
             base_config["update"] = normalized_update
+            normalized_ai_chat = normalize_ai_chat_config(loaded_config.get("ai_chat", {}))
+            base_config["ai_chat"] = normalized_ai_chat
 
             loaded_update = loaded_config.get("update", {})
             if not isinstance(loaded_update, dict) or loaded_update != normalized_update:
+                should_save_app_config = True
+            loaded_ai_chat = loaded_config.get("ai_chat", {})
+            if not isinstance(loaded_ai_chat, dict) or loaded_ai_chat != normalized_ai_chat:
                 should_save_app_config = True
         else:
             should_save_app_config = True
@@ -147,6 +153,7 @@ class AppState(QObject):
     def save_app_config(self, config: dict) -> None:
         normalized = dict(config)
         normalized["update"] = normalize_update_config(config.get("update", {}))
+        normalized["ai_chat"] = normalize_ai_chat_config(config.get("ai_chat", {}))
         self.app_config = normalized
         save_json(self.paths.app_config, self.app_config)
         self.logger.info("Saved app_config.json")

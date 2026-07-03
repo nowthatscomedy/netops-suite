@@ -63,6 +63,9 @@ class InterfaceTab(QWidget):
         if self._startup_refresh_requested:
             return
         self._startup_refresh_requested = True
+        if not self.state.is_admin:
+            self._show_admin_refresh_skipped()
+            return
         self.refresh_adapters()
 
     def _build_ui(self) -> None:
@@ -239,7 +242,7 @@ class InterfaceTab(QWidget):
                 "일반 권한으로 실행 중입니다. 네트워크 설정 변경은 왼쪽 아래 '관리자'에서 다시 실행한 뒤 사용할 수 있습니다."
             )
             self.admin_label.setStyleSheet(
-                "background:transparent; color:#9a3412; padding:4px 0 4px 9px; "
+                "background:transparent; color:#475467; padding:4px 0 4px 9px; "
                 "border:0; border-left:3px solid #fdba74; font-weight:500;"
             )
 
@@ -263,6 +266,15 @@ class InterfaceTab(QWidget):
             on_finished=lambda: self._set_loading(False),
             error_title="인터페이스 조회 실패",
         )
+
+    def _show_admin_refresh_skipped(self) -> None:
+        self._set_loading(False)
+        self.adapter_empty_label.setText(
+            "일반 권한에서는 시작 시 인터페이스 자동 조회를 생략합니다. "
+            "관리자 권한으로 다시 실행하면 네트워크 설정 탭에서 자동으로 불러옵니다."
+        )
+        self.adapter_empty_label.setVisible(True)
+        self.status_message.emit("관리자 권한 미사용: 인터페이스 자동 조회를 생략했습니다.")
 
     def _set_loading(self, loading: bool) -> None:
         self.refresh_button.setEnabled(not loading)
@@ -296,9 +308,7 @@ class InterfaceTab(QWidget):
             for column, value in enumerate(values):
                 item = make_table_item(value)
                 if column == 2:
-                    item.setForeground(
-                        QColor("#1b5e20") if adapter.status.lower() == "up" else QColor("#b71c1c")
-                    )
+                    item.setForeground(QColor("#182230"))
                 self.adapter_table.setItem(row, column, item)
             if preferred_name and adapter.name == preferred_name:
                 selected_row = row

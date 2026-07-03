@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 from app.app_state import AppState
 from app.models.update_models import DownloadedUpdate, UpdateCheckResult
 from app.ui.common import JobRunner, confirm_risky_action, make_menu_button
+from app.ui.tabs.ai_chat_tab import AiChatTab
 from app.ui.tabs.artifacts_tab import ArtifactsTab
 from app.ui.tabs.config_builder_tab import ConfigBuilderTab
 from app.ui.tabs.diagnostics_tab import DiagnosticsTab
@@ -112,6 +113,8 @@ class MainWindow(QMainWindow):
         self.inspector_tab = InspectorTab(self.state)
         self._report_startup("CLI 설정 생성 화면 구성", "장비 설정 생성 도구를 포함합니다.")
         self.config_builder_tab = ConfigBuilderTab(self.state)
+        self._report_startup("AI Chat 화면 구성", "Codex, Claude, Gemini 개인 계정 CLI 채팅 화면을 준비합니다.")
+        self.ai_chat_tab = AiChatTab(self.state)
         self._report_startup("결과 파일 화면 구성", "로그와 내보내기 결과 탐색 화면을 준비합니다.")
         self.artifacts_tab = ArtifactsTab(self.state)
         self._report_startup("프로그램 설정 화면 구성", "업데이트와 저장 위치 설정 화면을 준비합니다.")
@@ -122,6 +125,7 @@ class MainWindow(QMainWindow):
         self.tab_widget.addTab(self.wireless_tab, "Wi-Fi 분석")
         self.tab_widget.addTab(self.inspector_tab, "장비 점검/백업")
         self.tab_widget.addTab(self.config_builder_tab, "CLI 설정 생성")
+        self.tab_widget.addTab(self.ai_chat_tab, "AI 채팅")
         self.tab_widget.addTab(self.artifacts_tab, "결과 파일")
         self.tab_widget.addTab(self.settings_tab, "프로그램 설정")
 
@@ -255,13 +259,11 @@ class MainWindow(QMainWindow):
 
     def _update_admin_status(self) -> None:
         text = "관리자 권한 사용 중" if self.state.is_admin else "관리자 권한 미사용"
-        background = "#ecfdf3" if self.state.is_admin else "#fff7ed"
-        color = "#166534" if self.state.is_admin else "#9a3412"
-        border = "#bbf7d0" if self.state.is_admin else "#fed7aa"
+        accent = "#16a34a" if self.state.is_admin else "#d97706"
         self.admin_status_label.setText(text)
         self.admin_status_label.setStyleSheet(
-            f"background:{background}; color:{color}; border:1px solid {border}; "
-            "border-radius:10px; padding:3px 8px; font-weight:600;"
+            f"background:#ffffff; color:#344054; border:1px solid #d0d5dd; border-left:3px solid {accent}; "
+            "border-radius:4px; padding:3px 8px 3px 7px; font-weight:600;"
         )
         if hasattr(self, "restart_admin_action"):
             self.restart_admin_action.setEnabled(not self.state.is_admin)
@@ -306,6 +308,7 @@ class MainWindow(QMainWindow):
         self.interface_tab.restore_ui_state(ui_state.get("interface_tab", {}))
         self.diagnostics_tab.restore_ui_state(ui_state.get("diagnostics_tab", {}))
         self.wireless_tab.restore_ui_state(ui_state.get("wireless_tab", {}))
+        self.ai_chat_tab.restore_ui_state(ui_state.get("ai_chat_tab", {}))
 
         main_tab_index = int(window_state.get("current_tab", 0) or 0)
         if 0 <= main_tab_index < self.tab_widget.count():
@@ -359,6 +362,7 @@ class MainWindow(QMainWindow):
             "interface_tab": self.interface_tab.save_ui_state(),
             "diagnostics_tab": self.diagnostics_tab.save_ui_state(),
             "wireless_tab": self.wireless_tab.save_ui_state(),
+            "ai_chat_tab": self.ai_chat_tab.save_ui_state(),
         }
         self.state.save_app_config(config)
 
@@ -538,6 +542,8 @@ class MainWindow(QMainWindow):
         self._job_runner._discard_worker(worker)
 
     def closeEvent(self, event) -> None:
+        if hasattr(self, "ai_chat_tab"):
+            self.ai_chat_tab.shutdown()
         self._save_ui_state()
         self.state.shutdown()
         super().closeEvent(event)
