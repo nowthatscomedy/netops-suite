@@ -70,6 +70,8 @@ def test_release_scripts_enforce_version_and_immutable_publish_contract():
     assert "Existing tag $TagName points to" in publish_script
     assert 'ref = "refs/tags/$TagName"' in publish_script
     assert "Could not create tag $TagName at requested source commit" in publish_script
+    assert "for ($attempt = 1; $attempt -le 5; $attempt++)" in publish_script
+    assert "Start-Sleep -Seconds 2" in publish_script
     assert "Published tag $TagName does not resolve" in publish_script
     assert "Refusing to upload assets to an already-published release" in publish_script
     assert "Use -AllowAssetReplace only to repair this unpublished draft" in publish_script
