@@ -12,6 +12,13 @@ build/
 dist/
 *.spec
 
+# Code-signing certificates and private keys must never enter the repository.
+*.pfx
+*.p12
+*.pvk
+*.key
+*.pem
+
 logs/app.log
 logs/exports/*
 !logs/.gitkeep

@@ -1,0 +1,11 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Generated and third-party local build environments"
+paths = [
+  '''(^|[\\/])\.venv([\\/]|$)''',
+  '''(^|[\\/])venv([\\/]|$)''',
+  '''(^|[\\/])build([\\/]|$)''',
+  '''(^|[\\/])dist([\\/]|$)''',
+]

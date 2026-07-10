@@ -123,6 +123,34 @@ def test_update_service_labels_sha256_as_integrity_not_publisher_trust(monkeypat
     assert "코드서명" in result.details
 
 
+def test_update_service_requires_installer_version_to_match_release_tag(monkeypatch):
+    service = UpdateService(logging.getLogger("test-update"))
+    release = {
+        "tag_name": "v1.0.8",
+        "prerelease": False,
+        "name": "NetOps Suite v1.0.8",
+        "html_url": "https://example.test/release",
+        "published_at": "2026-07-10T00:00:00Z",
+        "body": "",
+        "assets": [
+            {
+                "name": "NetOpsSuite-setup-9.9.9.exe",
+                "browser_download_url": "https://example.test/wrong-installer",
+                "size": 12,
+                "digest": "sha256:" + "a" * 64,
+            }
+        ],
+    }
+    monkeypatch.setattr(service, "_fetch_release", lambda repo: release)
+
+    result = service.check_for_updates("1.0.7", default_update_config())
+
+    assert result.update_available is True
+    assert result.install_ready is False
+    assert result.asset is None
+    assert "설치 파일을 찾지 못했습니다" in result.message
+
+
 def test_update_service_ignores_prerelease_releases(monkeypatch):
     service = UpdateService(logging.getLogger("test-update"))
     stable_release = {

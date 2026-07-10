@@ -22,7 +22,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSizePolicy,
-    QSpinBox,
     QSplitter,
     QTableWidget,
     QToolButton,
@@ -38,6 +37,8 @@ from app.utils.threading_utils import FunctionWorker
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
+from netops_suite.ui.numeric_inputs import NoWheelSpinBox
+from netops_suite.ui.selection_inputs import NoWheelComboBox
 
 class WirelessTab(QWidget):
     def __init__(self, state: AppState, parent=None) -> None:
@@ -47,6 +48,7 @@ class WirelessTab(QWidget):
         self._wireless_refresh_running = False
         self._nearby_refresh_running = False
         self._startup_refresh_requested = False
+        self._shutting_down = False
         self.current_info: WirelessInfo | None = None
         self.previous_info: WirelessInfo | None = None
         self.nearby_access_points: list[NearbyAccessPoint] = []
@@ -54,9 +56,12 @@ class WirelessTab(QWidget):
         self.timer.timeout.connect(self._handle_auto_refresh_tick)
         self.nearby_timer = QTimer(self)
         self.nearby_timer.timeout.connect(self._handle_nearby_auto_refresh_tick)
+        self._status_grid_timer = QTimer(self)
+        self._status_grid_timer.setSingleShot(True)
+        self._status_grid_timer.timeout.connect(self._rebuild_status_grid)
 
         self._build_ui()
-        QTimer.singleShot(0, self._rebuild_status_grid)
+        self._status_grid_timer.start(0)
 
     def start_initial_refresh(self) -> None:
         if self._startup_refresh_requested:
@@ -73,7 +78,7 @@ class WirelessTab(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(make_step_hint("작업 흐름: 주변 AP 스캔 → 필터/정렬 → 채널 혼잡도 확인 → 필요한 컬럼만 보기"))
+        layout.addWidget(make_step_hint("작업 흐름: 주변 AP 스캔, 필터/정렬, 채널 혼잡도 확인, 필요한 컬럼만 보기"))
 
         self.wireless_main_splitter = QSplitter(Qt.Vertical)
         self.wireless_main_splitter.setChildrenCollapsible(False)
@@ -89,7 +94,7 @@ class WirelessTab(QWidget):
         controls = QHBoxLayout()
         self.refresh_button = make_action_button("새로고침", ActionKind.REFRESH, tooltip="현재 Wi-Fi 상태를 다시 불러옵니다.")
         self.auto_refresh_check = QCheckBox("자동 새로고침")
-        self.interval_spin = QSpinBox()
+        self.interval_spin = NoWheelSpinBox()
         self.interval_spin.setRange(1, 30)
         self.interval_spin.setValue(int(self.state.app_config.get("wireless_refresh_interval_sec", 2)))
         self.interval_spin.setCorrectionMode(QAbstractSpinBox.CorrectToNearestValue)
@@ -164,7 +169,7 @@ class WirelessTab(QWidget):
         self.nearby_refresh_oui_button = make_action_button("OUI 갱신", ActionKind.REFRESH, tooltip="OUI 캐시를 업데이트합니다.")
         self.nearby_summary_label = QLabel("스캔 전")
         self.nearby_auto_refresh_check = QCheckBox("자동 새로고침")
-        self.nearby_interval_spin = QSpinBox()
+        self.nearby_interval_spin = NoWheelSpinBox()
         self.nearby_interval_spin.setRange(5, 300)
         self.nearby_interval_spin.setValue(int(self.state.app_config.get("wireless_nearby_refresh_interval_sec", 30)))
         self.nearby_interval_spin.setCorrectionMode(QAbstractSpinBox.CorrectToNearestValue)
@@ -189,7 +194,7 @@ class WirelessTab(QWidget):
         nearby_filter_row.addWidget(self.nearby_search_edit, 2)
 
         nearby_filter_row.addWidget(QLabel("대역"))
-        self.nearby_band_filter = QComboBox()
+        self.nearby_band_filter = NoWheelComboBox()
         self.nearby_band_filter.addItem("전체", "all")
         self.nearby_band_filter.addItem("2.4 GHz", "2.4")
         self.nearby_band_filter.addItem("5 GHz", "5")
@@ -197,14 +202,14 @@ class WirelessTab(QWidget):
         nearby_filter_row.addWidget(self.nearby_band_filter)
 
         nearby_filter_row.addWidget(QLabel("보안"))
-        self.nearby_security_filter = QComboBox()
+        self.nearby_security_filter = NoWheelComboBox()
         self.nearby_security_filter.addItem("전체", "all")
         self.nearby_security_filter.addItem("보안 사용", "secured")
         self.nearby_security_filter.addItem("개방형", "open")
         nearby_filter_row.addWidget(self.nearby_security_filter)
 
         nearby_filter_row.addWidget(QLabel("정렬"))
-        self.nearby_sort_combo = QComboBox()
+        self.nearby_sort_combo = NoWheelComboBox()
         self.nearby_sort_combo.addItem("신호 높은 순", "signal_desc")
         self.nearby_sort_combo.addItem("채널 낮은 순", "channel_asc")
         self.nearby_sort_combo.addItem("채널 사용률 높은 순", "utilization_desc")
@@ -783,6 +788,8 @@ class WirelessTab(QWidget):
         error_title: str = "작업 실패",
         **kwargs,
     ) -> None:
+        if self._shutting_down:
+            return
         worker = FunctionWorker(fn, *args, **kwargs)
         self._active_workers.append(worker)
         if on_result:
@@ -798,3 +805,11 @@ class WirelessTab(QWidget):
     def _discard_worker(self, worker: FunctionWorker) -> None:
         if worker in self._active_workers:
             self._active_workers.remove(worker)
+
+    def shutdown(self) -> None:
+        if self._shutting_down:
+            return
+        self._shutting_down = True
+        self.timer.stop()
+        self.nearby_timer.stop()
+        self._status_grid_timer.stop()

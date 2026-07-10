@@ -7,7 +7,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPlainTextEdit,
-    QSpinBox,
     QVBoxLayout,
 )
 
@@ -15,6 +14,7 @@ from app.models.profile_models import VendorPreset
 from app.ui.common import make_dialog_intro, polish_dialog
 from app.utils.validators import ValidationError, parse_dns_servers, validate_ipv4, validate_optional_ipv4, validate_prefix
 from netops_suite.ui.actions import polish_dialog_button_box
+from netops_suite.ui.numeric_inputs import NoWheelSpinBox
 
 
 class VendorPresetDialog(QDialog):
@@ -26,7 +26,7 @@ class VendorPresetDialog(QDialog):
         self.name_edit = QLineEdit(preset.name if preset else "")
         self.vendor_edit = QLineEdit(preset.target_vendor if preset else "")
         self.local_ip_edit = QLineEdit(preset.local_ip if preset else "")
-        self.prefix_spin = QSpinBox()
+        self.prefix_spin = NoWheelSpinBox()
         self.prefix_spin.setRange(1, 32)
         self.prefix_spin.setValue(preset.prefix if preset else 24)
         self.gateway_edit = QLineEdit(preset.gateway if preset else "")

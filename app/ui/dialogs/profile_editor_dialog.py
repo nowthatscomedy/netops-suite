@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -21,6 +20,7 @@ from app.utils.validators import (
     validate_prefix,
 )
 from netops_suite.ui.actions import polish_dialog_button_box
+from netops_suite.ui.selection_inputs import NoWheelComboBox
 
 
 class ProfileEditorDialog(QDialog):
@@ -32,7 +32,7 @@ class ProfileEditorDialog(QDialog):
 
         self.name_edit = QLineEdit(profile.name if profile else "")
         self.name_edit.setPlaceholderText("예: 현장 테스트 프로파일")
-        self.mode_combo = QComboBox()
+        self.mode_combo = NoWheelComboBox()
         self.mode_combo.addItem("수동(static)", "static")
         self.mode_combo.addItem("자동(DHCP)", "dhcp")
         current_mode = profile.mode if profile else "static"

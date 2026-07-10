@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -23,6 +22,7 @@ from app.utils.validators import (
     validate_ftp_username,
 )
 from netops_suite.ui.actions import polish_dialog_button_box
+from netops_suite.ui.selection_inputs import NoWheelComboBox
 
 
 class FtpProfileDialog(QDialog):
@@ -35,7 +35,7 @@ class FtpProfileDialog(QDialog):
         self.name_edit = QLineEdit(profile.name if profile else "")
         self.name_edit.setPlaceholderText("예: 장비 백업 서버")
 
-        self.protocol_combo = QComboBox()
+        self.protocol_combo = NoWheelComboBox()
         self.protocol_combo.addItem("FTP", "ftp")
         self.protocol_combo.addItem("FTPS", "ftps")
         self.protocol_combo.addItem("SFTP", "sftp")

@@ -26,7 +26,7 @@ def parsing_piolink_login_count(output: str) -> str:
     """
     lines = output.splitlines()
 
-    # 월 매핑 (영문 약어 → 숫자)
+    # 월 매핑 (영문 약어를 숫자로 변환)
     month_map = {
         'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
         'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12,
@@ -55,7 +55,7 @@ def parsing_piolink_login_count(output: str) -> str:
 
     # 최신 연도 경계 탐지: 월 번호가 증가하는 첫 지점
     last_month = None
-    boundary_index = len(lines)  # 기본값: 경계 없음 → 전체가 최신 연도
+    boundary_index = len(lines)  # 기본값: 경계가 없으면 전체가 최신 연도
     for idx, line in enumerate(lines):
         month_num = extract_month_number(line)
         if month_num is None:
@@ -369,4 +369,4 @@ class PiolinkTifrontSSHHandler(CustomDeviceHandler):
             with open(self.session_log_file, 'a', encoding='utf-8') as log:
                 log.write(f"\n{'='*50}\n")
                 log.write(f"세션 종료\n")
-                log.write(f"{'='*50}\n\n") 
+                log.write(f"{'='*50}\n\n")

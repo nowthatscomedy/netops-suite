@@ -8,7 +8,6 @@ from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialog,
     QFileDialog,
     QFormLayout,
@@ -20,7 +19,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
-    QSpinBox,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -31,6 +29,8 @@ from netops_suite.modules.inspector import InspectorService
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
+from netops_suite.ui.numeric_inputs import NoWheelSpinBox
+from netops_suite.ui.selection_inputs import NoWheelComboBox
 
 ERROR_BG = QColor("#fff1ed")
 OK_BG = QColor("#eef8eb")
@@ -136,11 +136,11 @@ class PythonParserDialog(QDialog):
         self.accept()
 
 
-class InspectorVendorTemplateDialog(QDialog):
+class InspectorProfileDialog(QDialog):
     def __init__(self, service: InspectorService, parent=None) -> None:
         super().__init__(parent)
         self.service = service
-        self.templates = service.supported_profile_templates()
+        self.profiles = service.supported_profile_definitions()
         self.state = self._empty_state()
         self.latest_yaml_text = ""
         self._selected_command_row = -1
@@ -153,10 +153,10 @@ class InspectorVendorTemplateDialog(QDialog):
         self.preview_timer.setSingleShot(True)
         self.preview_timer.timeout.connect(self.refresh_preview)
 
-        self.setWindowTitle("장비 점검 템플릿 만들기")
+        self.setWindowTitle("장비 점검 프로파일 만들기")
         self.resize(1120, 780)
         self._build_ui()
-        self._load_template_choices()
+        self._load_profile_choices()
         self._load_state()
         self.refresh_preview()
 
@@ -209,7 +209,7 @@ class InspectorVendorTemplateDialog(QDialog):
         layout = QVBoxLayout(self)
         polish_dialog(self, layout)
         intro = make_dialog_intro(
-            "이 템플릿은 장비에 명령어를 실행하고, 출력값을 Excel 컬럼으로 정리합니다. "
+            "이 프로파일은 장비에 명령어를 실행하고, 출력값을 Excel 컬럼으로 정리합니다. "
             "명령어 출력 예시를 붙여넣고, Excel에 넣을 값을 선택하세요."
         )
         layout.addWidget(intro)
@@ -226,8 +226,8 @@ class InspectorVendorTemplateDialog(QDialog):
         actions = QHBoxLayout()
         refresh_button = make_action_button("갱신", ActionKind.REFRESH, tooltip="YAML 미리보기를 갱신합니다.")
         refresh_button.clicked.connect(self.refresh_preview)
-        self.save_button = make_action_button("저장", ActionKind.SAVE, tooltip="템플릿을 저장합니다.")
-        self.save_button.clicked.connect(self._save_template)
+        self.save_button = make_action_button("저장", ActionKind.SAVE, tooltip="프로파일을 저장합니다.")
+        self.save_button.clicked.connect(self._save_profile)
         close_button = make_action_button("닫기", ActionKind.CANCEL)
         close_button.clicked.connect(self.accept)
         actions.addStretch(1)
@@ -253,17 +253,17 @@ class InspectorVendorTemplateDialog(QDialog):
         self.os_edit.setPlaceholderText("예: IOS-XE, AOS6, Junos")
         self.os_version_edit = QLineEdit()
         self.os_version_edit.setPlaceholderText("예: 17.09, 6.5.4, 21.4R3")
-        self.connection_combo = QComboBox()
+        self.connection_combo = NoWheelComboBox()
         self.connection_combo.addItem("SSH", "ssh")
         self.connection_combo.addItem("Telnet", "telnet")
-        self.copy_template_combo = QComboBox()
-        self.copy_template_combo.currentIndexChanged.connect(self._copy_selected_template)
+        self.copy_profile_combo = NoWheelComboBox()
+        self.copy_profile_combo.currentIndexChanged.connect(self._copy_selected_profile)
         form.addRow("벤더", self.vendor_edit)
         form.addRow("모델", self.model_edit)
         form.addRow("OS", self.os_edit)
         form.addRow("OS 버전", self.os_version_edit)
         form.addRow("접속 방식", self.connection_combo)
-        form.addRow("기존 템플릿 복사", self.copy_template_combo)
+        form.addRow("기존 프로파일 복사", self.copy_profile_combo)
         layout.addLayout(form)
         layout.addStretch(1)
         self.tabs.addTab(tab, "장비 정보")
@@ -341,24 +341,24 @@ class InspectorVendorTemplateDialog(QDialog):
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.column_name_edit = QLineEdit()
         self.column_name_edit.setPlaceholderText("예: OS버전, 시리얼번호, CPU 사용률")
-        self.column_command_combo = QComboBox()
-        self.extract_method_combo = QComboBox()
+        self.column_command_combo = NoWheelComboBox()
+        self.extract_method_combo = NoWheelComboBox()
         self.extract_method_combo.addItem("몇 번째 줄/몇 번째 값 가져오기", "split_fields")
         self.extract_method_combo.addItem("특정 단어 뒤의 값 가져오기", "keyword_after")
         self.extract_method_combo.addItem("줄 전체 가져오기", "line_text")
         self.extract_method_combo.addItem("정규식 직접 입력", "regex")
         self.extract_method_combo.addItem("Python 고급 추출", "python")
-        self.line_number_spin = QSpinBox()
+        self.line_number_spin = NoWheelSpinBox()
         self.line_number_spin.setRange(1, 10000)
-        self.start_field_spin = QSpinBox()
+        self.start_field_spin = NoWheelSpinBox()
         self.start_field_spin.setRange(1, 1000)
-        self.end_field_spin = QSpinBox()
+        self.end_field_spin = NoWheelSpinBox()
         self.end_field_spin.setRange(1, 1000)
         self.keyword_edit = QLineEdit()
         self.keyword_edit.setPlaceholderText("예: Processor board ID")
         self.regex_edit = QLineEdit()
         self.regex_edit.setPlaceholderText(r"예: Version\s+([0-9.]+)")
-        self.python_parser_combo = QComboBox()
+        self.python_parser_combo = NoWheelComboBox()
         self.python_parser_combo.setEditable(True)
         self.preview_label = QLabel("추출 결과: -")
         self.preview_label.setWordWrap(True)
@@ -413,8 +413,8 @@ class InspectorVendorTemplateDialog(QDialog):
         open_parser_button.clicked.connect(lambda: os.startfile(str(self.service.custom_parsers_dir)))
         export_button = make_action_button("YAML 저장", ActionKind.EXPORT)
         export_button.clicked.connect(self._export_yaml)
-        generate_button = make_action_button("기본 파일", ActionKind.ADD, tooltip="기본 템플릿 파일을 생성합니다.")
-        generate_button.clicked.connect(self._generate_all_templates)
+        generate_button = make_action_button("기본 파일", ActionKind.ADD, tooltip="기본 프로파일 파일을 생성합니다.")
+        generate_button.clicked.connect(self._generate_all_profiles)
         actions.addWidget(create_parser_button)
         actions.addWidget(open_parser_button)
         actions.addWidget(export_button)
@@ -437,16 +437,16 @@ class InspectorVendorTemplateDialog(QDialog):
         self.ssh_device_type_edit.textChanged.connect(self._schedule_preview)
         self.telnet_device_type_edit.textChanged.connect(self._schedule_preview)
 
-    def _load_template_choices(self) -> None:
-        self.copy_template_combo.blockSignals(True)
-        self.copy_template_combo.clear()
-        self.copy_template_combo.addItem("새 템플릿", None)
-        for template in self.templates:
-            label = template.get("display_name") or f"{template['vendor']} / {template['os']}"
-            if template.get("is_reference") and "참고용" not in label:
+    def _load_profile_choices(self) -> None:
+        self.copy_profile_combo.blockSignals(True)
+        self.copy_profile_combo.clear()
+        self.copy_profile_combo.addItem("새 프로파일", None)
+        for profile in self.profiles:
+            label = profile.get("display_name") or f"{profile['vendor']} / {profile['os']}"
+            if profile.get("is_reference") and "참고용" not in label:
                 label = f"{label} (참고용)"
-            self.copy_template_combo.addItem(label, template)
-        self.copy_template_combo.blockSignals(False)
+            self.copy_profile_combo.addItem(label, profile)
+        self.copy_profile_combo.blockSignals(False)
         self._refresh_python_parser_choices()
 
     def _refresh_python_parser_choices(self, selected: str = "") -> None:
@@ -712,25 +712,25 @@ class InspectorVendorTemplateDialog(QDialog):
                 return lines[line_number - 1].strip()
         return ""
 
-    def _copy_selected_template(self) -> None:
-        template = self.copy_template_combo.currentData()
-        if not isinstance(template, dict):
+    def _copy_selected_profile(self) -> None:
+        profile = self.copy_profile_combo.currentData()
+        if not isinstance(profile, dict):
             return
-        self.state["vendor"] = template.get("vendor", "")
-        self.state["os"] = template.get("os", "")
-        self.state["commands"] = [{"command": command, "sample": ""} for command in template.get("commands", [])] or self.state["commands"]
-        self.state["backup_command"] = template.get("backup_command", "")
-        self.state["backup_enabled"] = bool(template.get("backup_command"))
-        self.state["columns"] = self._columns_from_template(template)
-        connection = template.get("connection_overrides") or {}
+        self.state["vendor"] = profile.get("vendor", "")
+        self.state["os"] = profile.get("os", "")
+        self.state["commands"] = [{"command": command, "sample": ""} for command in profile.get("commands", [])] or self.state["commands"]
+        self.state["backup_command"] = profile.get("backup_command", "")
+        self.state["backup_enabled"] = bool(profile.get("backup_command"))
+        self.state["columns"] = self._columns_from_profile(profile)
+        connection = profile.get("connection_overrides") or {}
         self.state["ssh_device_type"] = connection.get("ssh") or connection.get("default") or ""
         self.state["telnet_device_type"] = connection.get("telnet") or ""
         self._load_state()
         self._schedule_preview()
 
-    def _columns_from_template(self, template: dict[str, Any]) -> list[dict[str, Any]]:
+    def _columns_from_profile(self, profile: dict[str, Any]) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
-        for command, rule in (template.get("parsing_rules") or {}).items():
+        for command, rule in (profile.get("parsing_rules") or {}).items():
             if not isinstance(rule, dict):
                 continue
             rule_list = rule.get("patterns") if isinstance(rule.get("patterns"), list) else [rule]
@@ -800,7 +800,7 @@ class InspectorVendorTemplateDialog(QDialog):
             )
         except Exception as exc:
             issues.append(str(exc))
-            self.latest_yaml_text = "# 입력을 완성하면 템플릿 YAML이 생성됩니다.\n"
+            self.latest_yaml_text = "# 입력을 완성하면 프로파일 YAML이 생성됩니다.\n"
 
         self.issue_list.clear()
         if issues:
@@ -873,7 +873,7 @@ class InspectorVendorTemplateDialog(QDialog):
             lines.extend(["", "[저장 전 확인]", *[f"- {issue}" for issue in issues]])
         return "\n".join(lines)
 
-    def _save_template(self) -> None:
+    def _save_profile(self) -> None:
         self.refresh_preview()
         if not self.save_button.isEnabled():
             self.tabs.setCurrentIndex(3)
@@ -883,7 +883,7 @@ class InspectorVendorTemplateDialog(QDialog):
         except Exception as exc:
             QMessageBox.warning(self, "저장 실패", str(exc))
             return
-        QMessageBox.information(self, "템플릿 저장 완료", f"템플릿을 저장했습니다.\n{path}")
+        QMessageBox.information(self, "프로파일 저장 완료", f"프로파일을 저장했습니다.\n{path}")
 
     def _open_python_parser_dialog(self) -> None:
         self._parser_dialog = PythonParserDialog(self.service, self)
@@ -901,14 +901,14 @@ class InspectorVendorTemplateDialog(QDialog):
         Path(path).write_text(self.yaml_preview.toPlainText(), encoding="utf-8")
         QMessageBox.information(self, "내보내기 완료", path)
 
-    def _generate_all_templates(self) -> None:
+    def _generate_all_profiles(self) -> None:
         try:
-            count = self.service.ensure_vendor_template_files()
+            count = self.service.ensure_vendor_profile_files()
         except Exception as exc:
-            QMessageBox.warning(self, "템플릿 생성 실패", str(exc))
+            QMessageBox.warning(self, "프로파일 생성 실패", str(exc))
             return
-        QMessageBox.information(self, "템플릿 생성 완료", f"{count}개 기본 템플릿 파일을 생성했습니다.\n{self.service.vendor_templates_dir}")
-        os.startfile(str(self.service.vendor_templates_dir))
+        QMessageBox.information(self, "프로파일 생성 완료", f"{count}개 기본 프로파일 파일을 생성했습니다.\n{self.service.vendor_profiles_dir}")
+        os.startfile(str(self.service.vendor_profiles_dir))
 
     def _schedule_preview(self) -> None:
         self.preview_timer.start()

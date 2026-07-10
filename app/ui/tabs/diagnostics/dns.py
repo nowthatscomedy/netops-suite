@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
-    QComboBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -18,6 +17,7 @@ from app.utils.file_utils import timestamped_export_path
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
+from netops_suite.ui.selection_inputs import NoWheelComboBox
 
 class DnsDiagnosticsMixin:
     def _build_dns_tab(self) -> QWidget:
@@ -28,7 +28,7 @@ class DnsDiagnosticsMixin:
         form = QFormLayout(group)
         self.dns_query_edit = QLineEdit()
         self.dns_query_edit.setPlaceholderText("예: google.com 또는 8.8.8.8")
-        self.dns_type_combo = QComboBox()
+        self.dns_type_combo = NoWheelComboBox()
         for label, value, description in self.DNS_TYPES:
             self.dns_type_combo.addItem(label, (value, description))
         self.dns_type_hint = QLabel()

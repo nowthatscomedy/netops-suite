@@ -36,6 +36,7 @@ class NetworkInspector:
         max_workers: int = 10,
         column_aliases: dict[str, str] | None = None,
         status_callback: Callable[[dict[str, object]], None] | None = None,
+        cancel_event: threading.Event | None = None,
     ):
         file_name, file_ext = os.path.splitext(output_excel)
         timestamp = run_timestamp or datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -68,6 +69,16 @@ class NetworkInspector:
         self.reconnect_cooldown = 0.5
         self.column_aliases = dict(column_aliases or {})
         self.status_callback = status_callback
+        self.cancel_event = cancel_event
+
+    def _is_cancelled(self) -> bool:
+        return self.cancel_event is not None and self.cancel_event.is_set()
+
+    def _wait_or_cancel(self, seconds: float) -> bool:
+        if self.cancel_event is None:
+            time.sleep(seconds)
+            return False
+        return self.cancel_event.wait(seconds)
 
     def _canonicalize_result_columns(self, raw: dict) -> dict:
         canonical_result: dict = {}
@@ -542,6 +553,8 @@ class NetworkInspector:
         on_phase_complete: Callable[[str], None] | None = None,
     ) -> tuple[dict, dict]:
         """장비에 연결하고 명령어를 실행합니다."""
+        if self._is_cancelled():
+            return device, {"error": "작업이 취소되었습니다."}
         retry_count = 0
         last_error = None
         self._print_cli_status(f"[{device['ip']}] 연결 테스트 시작 (TCP {device['port']})")
@@ -558,6 +571,8 @@ class NetworkInspector:
         session_log_file = os.path.join(self.session_log_dir, f"{session_log_filename}.log")
         
         while retry_count < self.max_retries:
+            if self._is_cancelled():
+                return device, {"error": "작업이 취소되었습니다."}
             try:
                 with open(session_log_file, 'a', encoding='utf-8') as log:
                     log.write(f"\n{'='*50}\n")
@@ -601,6 +616,8 @@ class NetworkInspector:
                             self._print_cli_status(f"[{device['ip']}] 점검 명령 {len(commands)}개 실행 시작")
                             
                             for idx, cmd in enumerate(commands, start=1):
+                                if self._is_cancelled():
+                                    return device, {"error": "작업이 취소되었습니다."}
                                 try:
                                     self._print_cli_status(f"[{device['ip']}] 점검 명령 실행 {idx}/{len(commands)}: {cmd}")
                                     output = custom_handler.send_command(cmd)
@@ -622,6 +639,8 @@ class NetworkInspector:
                         if custom_commands:
                             self._print_cli_status(f"[{device['ip']}] 사용자 명령 {len(custom_commands)}개 실행 시작")
                             for idx, cmd in enumerate(custom_commands, start=1):
+                                if self._is_cancelled():
+                                    return device, {"error": "작업이 취소되었습니다."}
                                 try:
                                     self._print_cli_status(
                                         f"[{device['ip']}] 사용자 명령 실행 {idx}/{len(custom_commands)}: {cmd}"
@@ -637,6 +656,8 @@ class NetworkInspector:
                                     return device, {"error": f"사용자 명령 실행 실패: {str(e)}"}
 
                         if backup_mode:
+                            if self._is_cancelled():
+                                return device, {"error": "작업이 취소되었습니다."}
                             backup_cmd = self._get_backup_command(
                                 device['vendor'],
                                 device['os']
@@ -682,7 +703,8 @@ class NetworkInspector:
                             log.write(f"{'='*50}\n\n")
                         
                         if retry_count < self.max_retries:
-                            time.sleep(2 ** retry_count)
+                            if self._wait_or_cancel(2 ** retry_count):
+                                return device, {"error": "작업이 취소되었습니다."}
                             continue
                         else:
                             return device, {"error": f"커스텀 핸들러 실행 실패: {str(e)}"}
@@ -690,7 +712,7 @@ class NetworkInspector:
                         if handler_connected:
                             try:
                                 custom_handler.disconnect()
-                                time.sleep(self.reconnect_cooldown)
+                                self._wait_or_cancel(self.reconnect_cooldown)
                             except Exception as disconnect_error:
                                 self.logger.debug(
                                     "커스텀 핸들러 종료 중 경고 (%s): %s",
@@ -788,6 +810,8 @@ class NetworkInspector:
                                 commands = self._get_device_commands(device['vendor'], device['os'])
                                 self._print_cli_status(f"[{device['ip']}] 점검 명령 {len(commands)}개 실행 시작")
                                 for idx, cmd in enumerate(commands, start=1):
+                                    if self._is_cancelled():
+                                        return device, {"error": "작업이 취소되었습니다."}
                                     self._print_cli_status(f"[{device['ip']}] 점검 명령 실행 {idx}/{len(commands)}: {cmd}")
                                     output = conn.send_command(cmd, read_timeout=30)
                                     parsed = self._parse_command_output(device['vendor'], device['os'], cmd, output)
@@ -799,6 +823,8 @@ class NetworkInspector:
                             if custom_commands:
                                 self._print_cli_status(f"[{device['ip']}] 사용자 명령 {len(custom_commands)}개 실행 시작")
                                 for idx, cmd in enumerate(custom_commands, start=1):
+                                    if self._is_cancelled():
+                                        return device, {"error": "작업이 취소되었습니다."}
                                     self._print_cli_status(
                                         f"[{device['ip']}] 사용자 명령 실행 {idx}/{len(custom_commands)}: {cmd}"
                                     )
@@ -810,6 +836,8 @@ class NetworkInspector:
                                     )
                             
                             if backup_mode:
+                                if self._is_cancelled():
+                                    return device, {"error": "작업이 취소되었습니다."}
                                 backup_cmd = self._get_backup_command(device['vendor'], device['os'])
                                 if backup_cmd:
                                     self._print_cli_status(f"[{device['ip']}] 백업 명령 실행: {backup_cmd}")
@@ -837,7 +865,8 @@ class NetworkInspector:
                         self.logger.warning("Netmiko 연결 시도 %d 실패 (%s): %s", retry_count, device['ip'], e)
                         if retry_count >= self.max_retries:
                             return device, {"error": f"Netmiko 연결 실패: {str(e)}"}
-                        time.sleep(2 ** retry_count)
+                        if self._wait_or_cancel(2 ** retry_count):
+                            return device, {"error": "작업이 취소되었습니다."}
                         continue
             except Exception as e:
                 last_error = e
@@ -851,7 +880,8 @@ class NetworkInspector:
                     log.write(f"{'='*50}\n\n")
                 
                 if retry_count < self.max_retries:
-                    time.sleep(2 ** retry_count)
+                    if self._wait_or_cancel(2 ** retry_count):
+                        return device, {"error": "작업이 취소되었습니다."}
                     continue
                 else:
                     return device, {"error": f"최종 연결 실패: {str(e)}"}
@@ -951,6 +981,8 @@ class NetworkInspector:
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future_to_device = {}
             for device in self.devices:
+                if self._is_cancelled():
+                    break
                 if backup_only:
                     future = executor.submit(self._backup_device, device)
                 else:
@@ -958,8 +990,12 @@ class NetworkInspector:
                 future_to_device[future] = device
             
             for future in as_completed(future_to_device):
+                if self._is_cancelled():
+                    for pending in future_to_device:
+                        pending.cancel()
                 device = future_to_device[future]
                 status_message = "성공"
+                result = None
                 try:
                     result = future.result()
                     with self.results_lock:
@@ -1024,12 +1060,18 @@ class NetworkInspector:
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future_to_device = {}
             for device in self.devices:
+                if self._is_cancelled():
+                    break
                 future = executor.submit(self._run_custom_commands_device, device, commands)
                 future_to_device[future] = device
 
             for future in as_completed(future_to_device):
+                if self._is_cancelled():
+                    for pending in future_to_device:
+                        pending.cancel()
                 device = future_to_device[future]
                 status_message = "성공"
+                result = None
                 try:
                     result = future.result()
                     with self.results_lock:
@@ -1114,17 +1156,22 @@ class NetworkInspector:
                 )
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            futures = {
-                executor.submit(
+            futures = {}
+            for device in self.devices:
+                if self._is_cancelled():
+                    break
+                future = executor.submit(
                     self._inspect_and_backup_device,
                     device,
                     on_inspection_done,
                     on_backup_done,
-                ): device
-                for device in self.devices
-            }
+                )
+                futures[future] = device
 
             for future in as_completed(futures):
+                if self._is_cancelled():
+                    for pending in futures:
+                        pending.cancel()
                 device = futures[future]
                 ip = device['ip']
                 try:

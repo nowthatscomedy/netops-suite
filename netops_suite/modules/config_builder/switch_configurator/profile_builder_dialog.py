@@ -8,7 +8,6 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
-    QComboBox,
     QDialog,
     QFormLayout,
     QHBoxLayout,
@@ -43,6 +42,7 @@ from .models import (
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
+from netops_suite.ui.selection_inputs import NoWheelComboBox
 
 ERROR_BG = QColor("#fff1ed")
 OK_BG = QColor("#eef8eb")
@@ -191,12 +191,12 @@ class ProfileBuilderDialog(QDialog):
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.variable_name_edit = QLineEdit()
         self.variable_name_edit.setPlaceholderText("예: hostname")
-        self.variable_type_combo = QComboBox()
+        self.variable_type_combo = NoWheelComboBox()
         self.variable_type_combo.addItems(["string", "ipv4", "bool", "int"])
         self.variable_required_check = QCheckBox("필수값")
         self.variable_default_edit = QLineEdit()
         self.variable_default_edit.setPlaceholderText("예: 255.255.255.0 / true / 99")
-        self.variable_auto_increment_combo = QComboBox()
+        self.variable_auto_increment_combo = NoWheelComboBox()
         for label, value in AUTO_INCREMENT_ITEMS:
             self.variable_auto_increment_combo.addItem(label, value)
         self.variable_description_edit = QLineEdit()

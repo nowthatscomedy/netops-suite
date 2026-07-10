@@ -6,7 +6,6 @@ from threading import Event
 
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -25,6 +24,7 @@ from app.utils.validators import ValidationError
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
+from netops_suite.ui.selection_inputs import NoWheelComboBox
 
 class IperfDiagnosticsMixin:
     def _build_iperf_tab(self) -> QWidget:
@@ -39,15 +39,15 @@ class IperfDiagnosticsMixin:
         group_layout.setContentsMargins(8, 8, 8, 8)
         group_layout.setSpacing(4)
 
-        self.iperf_mode_combo = QComboBox()
+        self.iperf_mode_combo = NoWheelComboBox()
         self.iperf_mode_combo.addItem("클라이언트", "client")
         self.iperf_mode_combo.addItem("서버", "server")
         self.iperf_use_public_server_check = QCheckBox("공개 서버 사용")
         self.iperf_public_refresh_button = make_action_button("갱신", ActionKind.REFRESH, tooltip="공개 iperf3 서버 목록을 갱신합니다.")
-        self.iperf_public_region_combo = QComboBox()
+        self.iperf_public_region_combo = NoWheelComboBox()
         self.iperf_public_region_combo.addItem("전체 지역", "")
         self.iperf_public_region_combo.setMinimumWidth(130)
-        self.iperf_public_server_combo = QComboBox()
+        self.iperf_public_server_combo = NoWheelComboBox()
         self.iperf_public_server_combo.addItem("공개 서버 목록 확인 중...", "")
         self.iperf_public_info_label = QLabel("목록 상태 확인 중")
         self.iperf_public_info_label.setStyleSheet("color:#475467;")

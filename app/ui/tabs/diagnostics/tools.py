@@ -38,6 +38,7 @@ from app.utils.validators import ValidationError, calculate_subnet_details
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
+from netops_suite.ui.selection_inputs import NoWheelComboBox
 
 class ToolsDiagnosticsMixin:
     def _build_command_tools_page(self) -> QWidget:
@@ -101,7 +102,7 @@ class ToolsDiagnosticsMixin:
         self.subnet_calc_ip_edit.setPlaceholderText("예: 192.168.0.10")
         self.subnet_calc_prefix_edit = QLineEdit()
         self.subnet_calc_prefix_edit.setPlaceholderText("예: 24 또는 255.255.255.0")
-        self.subnet_calc_interface_combo = QComboBox()
+        self.subnet_calc_interface_combo = NoWheelComboBox()
         self.subnet_calc_interface_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.subnet_calc_refresh_button = make_action_button("목록", ActionKind.REFRESH, tooltip="어댑터 목록을 불러옵니다.")
         self.subnet_calc_use_selected_button = make_action_button("자동 입력", ActionKind.UTILITY, tooltip="선택한 어댑터 값을 입력합니다.")
@@ -183,7 +184,7 @@ class ToolsDiagnosticsMixin:
         form.setColumnStretch(3, 1)
         self.arp_subnet_edit = QLineEdit()
         self.arp_subnet_edit.setPlaceholderText("예: 192.168.0.0/24")
-        self.arp_subnet_combo = QComboBox()
+        self.arp_subnet_combo = NoWheelComboBox()
         self.arp_subnet_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.arp_refresh_subnets_button = make_action_button("목록", ActionKind.REFRESH, tooltip="어댑터 목록을 불러옵니다.")
         self.arp_use_selected_subnet_button = make_action_button("자동 입력", ActionKind.UTILITY, tooltip="선택한 서브넷을 입력합니다.")

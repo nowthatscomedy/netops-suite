@@ -76,6 +76,7 @@ class DiagnosticsTab(
         self.state = state
         self._job_runner = JobRunner(self.state.thread_pool, self)
         self._active_workers = self._job_runner._active_workers
+        self._shutting_down = False
         self._floating_result_docks = {"ping": None, "tcp": None}
         self._result_hosts: dict[str, QWidget] = {}
         self._result_host_layouts: dict[str, QVBoxLayout] = {}
@@ -166,7 +167,7 @@ class DiagnosticsTab(
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
-        layout.addWidget(make_step_hint("작업 흐름: 도구 선택 → 대상 입력 → 실행 → 결과 저장"), 0)
+        layout.addWidget(make_step_hint("작업 흐름: 도구 선택, 대상 입력, 실행, 결과 저장"), 0)
         layout.addWidget(self._build_quick_diagnostics_bar(), 0)
 
         self.diagnostic_tool_list = QListWidget()
@@ -308,94 +309,87 @@ class DiagnosticsTab(
         self._diagnostic_tool_labels[key] = label
 
     def run_quick_ping(self) -> None:
+        self.select_diagnostic_tab("ping")
         target = self._quick_host_target()
         if not target:
             return
         if not self.ping_start_button.isEnabled():
-            self.select_diagnostic_tab("ping")
             self._set_quick_status("Ping이 이미 실행 중입니다.", "warning")
             return
 
-        self.select_diagnostic_tab("ping")
         self.ping_targets_edit.setPlainText(target)
         self._set_quick_status(f"Ping 실행: {target}", "success")
         self.start_ping()
 
     def run_quick_tcp_check(self) -> None:
+        self.select_diagnostic_tab("tcp")
         target, port = self._quick_host_and_port()
         if not target:
             return
         if not port:
-            self.select_diagnostic_tab("tcp")
             self.tcp_targets_edit.setPlainText(target)
             self.quick_port_edit.setFocus()
             self._set_quick_status("TCPing에는 포트가 필요합니다.", "warning")
             return
         if not self.tcp_start_button.isEnabled():
-            self.select_diagnostic_tab("tcp")
             self._set_quick_status("TCPing이 이미 실행 중입니다.", "warning")
             return
 
-        self.select_diagnostic_tab("tcp")
         self.tcp_targets_edit.setPlainText(target)
         self.tcp_ports_edit.setText(port)
         self._set_quick_status(f"TCPing 실행: {target}:{port}", "success")
         self.start_tcp_check()
 
     def run_quick_dns_lookup(self) -> None:
+        self.select_diagnostic_tab("dns")
         target = self._quick_host_target()
         if not target:
             return
         if not self.dns_run_button.isEnabled():
-            self.select_diagnostic_tab("dns")
             self._set_quick_status("DNS 조회가 이미 실행 중입니다.", "warning")
             return
 
-        self.select_diagnostic_tab("dns")
         self.dns_query_edit.setText(target)
         self._set_quick_status(f"DNS 조회: {target}", "success")
         self.run_dns_lookup()
 
     def run_quick_tracert_no_resolve(self) -> None:
+        self.select_diagnostic_tab("trace")
         target = self._quick_host_target()
         if not target:
             return
         if not self.tracert_button.isEnabled():
-            self.select_diagnostic_tab("trace")
             self._set_quick_status("경로 추적이 이미 실행 중입니다.", "warning")
             return
 
-        self.select_diagnostic_tab("trace")
         self.trace_target_edit.setText(target)
         self.trace_no_resolve_check.setChecked(True)
         self._set_quick_status(f"tracert -d 실행: {target}", "success")
         self.start_trace("tracert")
 
     def run_quick_pathping_no_resolve(self) -> None:
+        self.select_diagnostic_tab("trace")
         target = self._quick_host_target()
         if not target:
             return
         if not self.pathping_button.isEnabled():
-            self.select_diagnostic_tab("trace")
             self._set_quick_status("경로 추적이 이미 실행 중입니다.", "warning")
             return
 
-        self.select_diagnostic_tab("trace")
         self.trace_target_edit.setText(target)
         self.trace_no_resolve_check.setChecked(True)
         self._set_quick_status(f"pathping -n 실행: {target}", "success")
         self.start_trace("pathping")
 
     def run_quick_iperf_client(self) -> None:
+        self.select_diagnostic_tab("iperf")
         target, port = self._quick_host_and_port(default_port="5201")
         if not target:
             return
         if not self.iperf_run_button.isEnabled():
-            self.select_diagnostic_tab("iperf")
             self._set_quick_status("iperf3를 실행할 수 없는 상태입니다.", "warning")
             return
 
-        self.select_diagnostic_tab("iperf")
         client_index = self.iperf_mode_combo.findData("client")
         if client_index >= 0:
             self.iperf_mode_combo.setCurrentIndex(client_index)
@@ -406,32 +400,30 @@ class DiagnosticsTab(
         self.run_iperf_test()
 
     def run_quick_arp_scan(self) -> None:
+        self.select_diagnostic_tab("arp")
         payload = self._quick_payload_text()
         if not payload:
             return
 
         subnet_text = self._quick_subnet_cidr(payload)
         if not subnet_text:
-            self.select_diagnostic_tab("arp")
             self._set_quick_status("ARP 스캔에는 CIDR 대역이 필요합니다.", "warning")
             return
         if not self.arp_start_button.isEnabled():
-            self.select_diagnostic_tab("arp")
             self._set_quick_status("ARP 스캔이 이미 실행 중입니다.", "warning")
             return
 
-        self.select_diagnostic_tab("arp")
         self.arp_subnet_edit.setText(subnet_text)
         self._set_quick_status(f"ARP 스캔: {subnet_text}", "success")
         self.start_arp_scan()
 
     def run_quick_subnet(self) -> None:
+        self.select_diagnostic_tab("subnet")
         payload = self._quick_payload_text()
         if not payload:
             return
 
         ip_text, prefix_text = self._split_quick_subnet_payload(payload)
-        self.select_diagnostic_tab("subnet")
         self.subnet_calc_ip_edit.setText(ip_text)
         if prefix_text:
             self.subnet_calc_prefix_edit.setText(prefix_text)
@@ -447,11 +439,11 @@ class DiagnosticsTab(
         self._set_quick_status("서브넷 계산에는 Prefix가 필요합니다.", "warning")
 
     def run_quick_oui_lookup(self) -> None:
+        self.select_diagnostic_tab("oui")
         text = self._quick_input_text()
         if not text:
             return
 
-        self.select_diagnostic_tab("oui")
         self.oui_mac_edit.setPlainText(text)
         self._set_quick_status("OUI 조회", "success")
         self.lookup_oui_vendor()
@@ -1023,6 +1015,8 @@ class DiagnosticsTab(
         error_title: str = "작업 실패",
         **kwargs,
     ) -> None:
+        if self._shutting_down:
+            return
         self._job_runner.start(
             fn,
             *args,
@@ -1037,3 +1031,26 @@ class DiagnosticsTab(
 
     def _discard_worker(self, worker) -> None:
         self._job_runner._discard_worker(worker)
+
+    def shutdown(self) -> None:
+        if self._shutting_down:
+            return
+        self._shutting_down = True
+        event_names = (
+            "ftp_server_cancel_event",
+            "scp_server_cancel_event",
+            "tftp_server_cancel_event",
+            "ftp_client_cancel_event",
+            "scp_client_cancel_event",
+            "tftp_client_cancel_event",
+            "ping_cancel_event",
+            "tcp_cancel_event",
+            "trace_cancel_event",
+            "arp_cancel_event",
+            "iperf_cancel_event",
+            "iperf_manage_cancel_event",
+        )
+        for name in event_names:
+            cancel_event = getattr(self, name, None)
+            if cancel_event is not None:
+                cancel_event.set()

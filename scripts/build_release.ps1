@@ -27,6 +27,7 @@ function Format-PyInstallerBundleArg {
 
 function Resolve-IsccPath {
     $candidates = @(
+        (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe"),
         (Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"),
         (Join-Path ${env:ProgramFiles} "Inno Setup 6\ISCC.exe")
     )
@@ -186,8 +187,20 @@ if ($normalizedVersion.StartsWith("v")) {
     $normalizedVersion = $normalizedVersion.Substring(1)
 }
 
-if ([string]::IsNullOrWhiteSpace($normalizedVersion)) {
-    throw "A valid version is required, for example 1.0.0 or v1.0.0."
+$semanticVersionPattern = '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$'
+if ($normalizedVersion -notmatch $semanticVersionPattern) {
+    throw "Version must be a valid semantic version, for example 1.0.0, v1.0.0, or 1.0.0-rc.1. Received: $Version"
+}
+
+$versionFilePath = Join-Path $repoRoot "app\version.py"
+$versionFile = Get-Content -LiteralPath $versionFilePath -Raw
+if ($versionFile -notmatch '__version__\s*=\s*["'']([^"'']+)["'']') {
+    throw "Could not find __version__ in app/version.py."
+}
+
+$appVersion = $Matches[1].Trim()
+if ($appVersion -ne $normalizedVersion) {
+    throw "Build version ($normalizedVersion) does not match app/version.py version ($appVersion)."
 }
 
 $codeSigningConfig = New-CodeSigningConfig
@@ -212,6 +225,41 @@ New-Item -ItemType Directory -Force -Path $stagingConfigDir | Out-Null
 New-Item -ItemType Directory -Force -Path $stagingLogsExportsDir | Out-Null
 New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
 
+$numericVersion = $normalizedVersion.Split('-', 2)[0].Split('+', 2)[0].Split('.')
+$versionTuple = "{0}, {1}, {2}, 0" -f $numericVersion[0], $numericVersion[1], $numericVersion[2]
+$versionInfoPath = Join-Path $stagingDir "NetOpsSuite.version.txt"
+$versionInfo = @"
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=($versionTuple),
+    prodvers=($versionTuple),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo([
+      StringTable(
+        '040904B0',
+        [StringStruct('CompanyName', 'NetOps Suite Contributors'),
+         StringStruct('FileDescription', 'NetOps Suite'),
+         StringStruct('FileVersion', '$normalizedVersion'),
+         StringStruct('InternalName', 'NetOpsSuite'),
+         StringStruct('LegalCopyright', 'Copyright (c) 2026 NetOps Suite contributors'),
+         StringStruct('OriginalFilename', 'NetOpsSuite.exe'),
+         StringStruct('ProductName', 'NetOps Suite'),
+         StringStruct('ProductVersion', '$normalizedVersion')]
+      )
+    ]),
+    VarFileInfo([VarStruct('Translation', [1033, 1200])])
+  ]
+)
+"@
+Set-Content -LiteralPath $versionInfoPath -Value $versionInfo -Encoding ASCII
+
 Copy-Item -LiteralPath (Join-Path $repoRoot "config\ip_profiles.json") -Destination $stagingConfigDir -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "config\ftp_profiles.json") -Destination $stagingConfigDir -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "config\scp_profiles.json") -Destination $stagingConfigDir -Force
@@ -226,6 +274,7 @@ $pyInstallerArgs = @(
     "--clean",
     "--windowed",
     "--name", "NetOpsSuite",
+    "--version-file", $versionInfoPath,
     "--icon", (Join-Path $repoRoot "assets\icons\netops_toolkit.ico"),
     "--collect-submodules=telnetlib3",
     "--collect-all=netmiko",
@@ -235,7 +284,7 @@ $pyInstallerArgs = @(
     "--add-data=$(Format-PyInstallerBundleArg -Source $stagingConfigDir -Destination 'config')",
     "--add-data=$(Format-PyInstallerBundleArg -Source $stagingLogsDir -Destination 'logs')",
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'assets\icons') -Destination 'assets/icons')",
-    "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'netops_suite\modules\inspector\vendor_templates') -Destination 'netops_suite/modules/inspector/vendor_templates')",
+    "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'netops_suite\modules\inspector\vendor_profiles') -Destination 'netops_suite/modules/inspector/vendor_profiles')",
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'netops_suite\modules\inspector_runtime') -Destination 'netops_suite/modules/inspector_runtime')",
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'netops_suite\modules\config_builder\profiles') -Destination 'netops_suite/modules/config_builder/profiles')",
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'netops_suite\modules\config_builder\device_values') -Destination 'netops_suite/modules/config_builder/device_values')",
@@ -275,6 +324,17 @@ if (-not (Test-Path $sourceDir)) {
 $appExePath = Join-Path $sourceDir "NetOpsSuite.exe"
 Invoke-CodeSignFile -Path $appExePath -Config $codeSigningConfig
 
+Write-Host "Running packaged executable smoke test..."
+$smokeProcess = Start-Process `
+    -FilePath $appExePath `
+    -ArgumentList "--release-smoke-test" `
+    -WindowStyle Hidden `
+    -Wait `
+    -PassThru
+if ($smokeProcess.ExitCode -ne 0) {
+    throw "Packaged executable smoke test failed with exit code $($smokeProcess.ExitCode)."
+}
+
 Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE") -Destination $sourceDir -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "THIRD_PARTY_NOTICES.md") -Destination $sourceDir -Force
 
@@ -289,13 +349,11 @@ if ($LASTEXITCODE -ne 0) {
     throw "Inno Setup build failed."
 }
 
-$installer = Get-ChildItem -LiteralPath $releaseDir -Filter "NetOpsSuite-setup-*.exe" |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1
-
-if (-not $installer) {
-    throw "Installer was not found in release directory: $releaseDir"
+$expectedInstallerPath = Join-Path $releaseDir "NetOpsSuite-setup-$normalizedVersion.exe"
+if (-not (Test-Path -LiteralPath $expectedInstallerPath -PathType Leaf)) {
+    throw "Expected versioned installer was not found: $expectedInstallerPath"
 }
+$installer = Get-Item -LiteralPath $expectedInstallerPath
 
 Invoke-CodeSignFile -Path $installer.FullName -Config $codeSigningConfig
 
@@ -305,7 +363,6 @@ $installerName = Split-Path -Path $installer.FullName -Leaf
 "$installerHash *$installerName" | Set-Content -LiteralPath $checksumPath -Encoding ASCII
 Write-Host "Wrote checksum manifest: $checksumPath"
 
-Get-ChildItem -LiteralPath $releaseDir -Filter "NetOpsSuite-setup-*.exe" |
-    Select-Object FullName, Length, LastWriteTime
+$installer | Select-Object FullName, Length, LastWriteTime
 Get-Item -LiteralPath $checksumPath |
     Select-Object FullName, Length, LastWriteTime

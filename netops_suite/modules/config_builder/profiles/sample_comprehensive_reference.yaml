@@ -34,7 +34,7 @@
 
 id: SAMPLE_COMPREHENSIVE_REFERENCE
 vendor: CISCO
-model: Reference Template
+model: Reference Profile
 firmware: IOS / IOS-XE
 description: 필수값, 기본값, 타입 검증, 시크릿 값, 블록 선택 패널을 한 번에 참고할 수 있는 종합 프로파일
 description_ko: 필수값, 기본값, 타입 검증, 시크릿 값, 블록 선택 패널을 한 번에 참고할 수 있는 종합 프로파일

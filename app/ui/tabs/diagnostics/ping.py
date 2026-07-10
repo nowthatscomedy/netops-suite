@@ -39,7 +39,7 @@ class PingDiagnosticsMixin:
         group_layout.setHorizontalSpacing(10)
         group_layout.setVerticalSpacing(6)
         self.ping_targets_edit = QPlainTextEdit()
-        target_height = self.ping_targets_edit.fontMetrics().lineSpacing() * 4 + 18
+        target_height = self.ping_targets_edit.fontMetrics().lineSpacing() * 4 + 24
         self.ping_targets_edit.setMinimumHeight(target_height)
         self.ping_targets_edit.setMaximumHeight(target_height + self.ping_targets_edit.fontMetrics().lineSpacing())
         self.ping_targets_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
@@ -49,12 +49,17 @@ class PingDiagnosticsMixin:
             "이름은 결과표의 이름 열에 표시됩니다."
         )
         self.ping_targets_help_label = QLabel(
-            "한 줄에 하나씩 입력합니다. 형식: 이름,IP 또는 IP. "
-            "이름은 결과표의 이름 열에 표시되고, 생략하면 대상 주소가 이름으로 사용됩니다."
+            "한 줄에 하나씩 입력: 이름,IP 또는 IP (이름을 생략하면 대상 주소가 이름으로 사용됩니다)"
         )
         self.ping_targets_help_label.setObjectName("pingTargetsHelpLabel")
-        self.ping_targets_help_label.setWordWrap(True)
+        self.ping_targets_help_label.setWordWrap(False)
+        self.ping_targets_help_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.ping_targets_help_label.setStyleSheet("color:#667085; padding:2px 2px 0 2px;")
+        targets_layout = QVBoxLayout()
+        targets_layout.setContentsMargins(0, 0, 0, 0)
+        targets_layout.setSpacing(4)
+        targets_layout.addWidget(self.ping_targets_edit)
+        targets_layout.addWidget(self.ping_targets_help_label)
         self.ping_count_edit = QLineEdit()
         self.ping_count_edit.setPlaceholderText(str(int(self.state.app_config.get("default_ping_count", 4))))
         self.ping_count_edit.setMaximumWidth(110)
@@ -89,8 +94,7 @@ class PingDiagnosticsMixin:
         button_row.addStretch(1)
 
         group_layout.addWidget(QLabel("대상 목록"), 0, 0, 2, 1, alignment=Qt.AlignmentFlag.AlignTop)
-        group_layout.addWidget(self.ping_targets_edit, 0, 1)
-        group_layout.addWidget(self.ping_targets_help_label, 1, 1)
+        group_layout.addLayout(targets_layout, 0, 1, 2, 1)
         group_layout.addWidget(QLabel("실행 조건"), 2, 0)
         group_layout.addLayout(options_row, 2, 1)
         group_layout.addLayout(button_row, 3, 1)
