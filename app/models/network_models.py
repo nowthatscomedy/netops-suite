@@ -96,6 +96,82 @@ class NearbyAccessPoint:
 
 
 @dataclass(slots=True)
+class WirelessScanSample:
+    sample_index: int
+    elapsed_seconds: float
+    access_points: list[NearbyAccessPoint] = field(default_factory=list)
+    error_message: str = ""
+
+    @property
+    def access_point_count(self) -> int:
+        return len(self.access_points)
+
+    @property
+    def ok(self) -> bool:
+        return not self.error_message
+
+
+@dataclass(slots=True)
+class WirelessObservedAccessPoint:
+    bssid: str
+    ssid: str = ""
+    vendor: str = ""
+    interface_name: str = ""
+    authentication: str = ""
+    encryption: str = ""
+    radio_standard: str = ""
+    band: str = ""
+    channel: str = ""
+    channels: list[str] = field(default_factory=list)
+    sample_count: int = 0
+    seen_ratio: float = 0.0
+    first_seen_seconds: float = 0.0
+    last_seen_seconds: float = 0.0
+    average_signal_percent: float | None = None
+    min_signal_percent: int | None = None
+    max_signal_percent: int | None = None
+    signal_range_percent: int | None = None
+    unstable: bool = False
+
+    @property
+    def signal_text(self) -> str:
+        if self.average_signal_percent is None:
+            return "-"
+        return f"{self.average_signal_percent:.1f}%"
+
+
+@dataclass(slots=True)
+class WirelessChannelSummary:
+    channel: str
+    band: str = ""
+    access_point_count: int = 0
+    observation_count: int = 0
+    average_signal_percent: float | None = None
+    min_signal_percent: int | None = None
+    max_signal_percent: int | None = None
+    average_channel_utilization_percent: float | None = None
+
+
+@dataclass(slots=True)
+class WirelessScanReport:
+    duration_seconds: int
+    interval_seconds: int
+    sample_count: int
+    actual_duration_seconds: float = 0.0
+    cancelled: bool = False
+    sample_limit_reached: bool = False
+    samples: list[WirelessScanSample] = field(default_factory=list)
+    observed_access_points: list[WirelessObservedAccessPoint] = field(default_factory=list)
+    channel_summaries: list[WirelessChannelSummary] = field(default_factory=list)
+    unstable_access_points: list[WirelessObservedAccessPoint] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.errors and not self.cancelled
+
+
+@dataclass(slots=True)
 class ArpScanEntry:
     ip_address: str
     mac_address: str = ""

@@ -66,7 +66,7 @@ class UpdateService:
             )
 
         assets = [self._asset_from_api(item) for item in release.get("assets", [])]
-        asset = self._select_asset(assets, asset_pattern)
+        asset = self._select_asset(assets, asset_pattern, expected_version=latest_version)
 
         verification_source = ""
         checksum_asset = None
@@ -277,10 +277,19 @@ class UpdateService:
             digest_sha256=digest_sha256,
         )
 
-    def _select_asset(self, assets: list[ReleaseAsset], pattern: str) -> ReleaseAsset | None:
+    def _select_asset(
+        self,
+        assets: list[ReleaseAsset],
+        pattern: str,
+        *,
+        expected_version: str = "",
+    ) -> ReleaseAsset | None:
         regex = re.compile(pattern, re.IGNORECASE)
+        expected_name = f"NetOpsSuite-setup-{expected_version}.exe" if expected_version else ""
         for asset in assets:
-            if regex.search(asset.name):
+            if expected_name and asset.name.casefold() != expected_name.casefold():
+                continue
+            if regex.fullmatch(asset.name):
                 return asset
         return None
 

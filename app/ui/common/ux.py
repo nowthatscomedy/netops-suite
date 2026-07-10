@@ -162,8 +162,8 @@ def make_menu_button(text: str, menu: QMenu, tooltip: str = "") -> QToolButton:
     button.setPopupMode(QToolButton.InstantPopup)
     button.setMenu(menu)
     button.setProperty("actionKind", "utility")
-    button.setMinimumHeight(24)
-    button.setMaximumHeight(26)
+    button.setMinimumHeight(28)
+    button.setMaximumHeight(32)
     if tooltip:
         button.setToolTip(tooltip)
     return button

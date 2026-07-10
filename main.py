@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import ctypes
+import os
 import sys
+import tempfile
 
 from netops_suite import APP_ID, APP_NAME
 from PySide6.QtWidgets import QApplication, QMessageBox
@@ -23,7 +25,57 @@ def _set_windows_app_id() -> None:
         pass
 
 
+def _run_release_smoke_test() -> int:
+    """Initialize and tear down the packaged application without showing UI."""
+    previous_data_root = os.environ.get("NETOPS_SUITE_DATA_ROOT")
+    previous_project_data = os.environ.get("NETOPS_SUITE_USE_PROJECT_DATA")
+    state = None
+    window = None
+    try:
+        with tempfile.TemporaryDirectory(prefix="netops_suite_release_smoke_") as data_root:
+            os.environ["NETOPS_SUITE_DATA_ROOT"] = data_root
+            os.environ.pop("NETOPS_SUITE_USE_PROJECT_DATA", None)
+            _set_windows_app_id()
+            app = QApplication.instance() or QApplication(sys.argv)
+            app.setApplicationName(APP_NAME)
+            app.setOrganizationName(APP_NAME)
+            app.setApplicationVersion(__version__)
+            apply_app_theme(app)
+            state = AppState()
+            window = MainWindow(state)
+            app.processEvents()
+            window.shutdown()
+            window = None
+            state = None
+            app.processEvents()
+        return 0
+    except Exception as exc:
+        if sys.stderr is not None:
+            print(f"Release smoke test failed: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        if window is not None:
+            window.shutdown()
+        elif state is not None:
+            state.shutdown()
+        if previous_data_root is None:
+            os.environ.pop("NETOPS_SUITE_DATA_ROOT", None)
+        else:
+            os.environ["NETOPS_SUITE_DATA_ROOT"] = previous_data_root
+        if previous_project_data is None:
+            os.environ.pop("NETOPS_SUITE_USE_PROJECT_DATA", None)
+        else:
+            os.environ["NETOPS_SUITE_USE_PROJECT_DATA"] = previous_project_data
+
+
 def main() -> int:
+    if "--release-smoke-test" in sys.argv[1:]:
+        return _run_release_smoke_test()
+    if "--version" in sys.argv[1:]:
+        if sys.stdout is not None:
+            print(f"{APP_NAME} {__version__}")
+        return 0
+
     _set_windows_app_id()
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
@@ -55,6 +107,8 @@ def main() -> int:
         window_progress["value"] = min(window_progress["value"] + 3, 92)
         loading.set_step(4, message, detail, window_progress["value"])
 
+    state = None
+    window = None
     try:
         loading.set_step(2, "설정 파일 준비", "사용자 설정과 기본 프로파일을 확인합니다.", 20)
         state = AppState(startup_callback=report_state_startup)
@@ -66,6 +120,7 @@ def main() -> int:
 
         loading.set_step(5, "시작 데이터 갱신", "첫 화면에 필요한 네트워크 정보를 불러올 준비를 합니다.", 94)
         window.show()
+        app.aboutToQuit.connect(window.shutdown)
         window.activate_startup_loading()
         loading.complete()
         loading.finish_after_minimum()
@@ -77,6 +132,10 @@ def main() -> int:
                 "Configuration directory could not be initialized. Some features may be unavailable.",
             )
     except Exception as exc:
+        if window is not None:
+            window.shutdown()
+        elif state is not None:
+            state.shutdown()
         loading.fail("시작 실패", str(exc))
         QMessageBox.critical(
             loading,

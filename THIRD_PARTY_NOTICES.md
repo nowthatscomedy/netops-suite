@@ -9,6 +9,7 @@ publishing source archives or Windows installer builds.
 | Dependency | License metadata |
 | --- | --- |
 | PySide6 | LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only |
+| NumPy | BSD-3-Clause |
 | pandas | BSD-3-Clause |
 | openpyxl | MIT |
 | PyYAML | MIT |

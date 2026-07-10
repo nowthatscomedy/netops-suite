@@ -18,7 +18,7 @@ from app.app_state import AppState
 from app.main_window import MainWindow
 from app.ui.common import confirm_risky_action
 from app.ui.common.theme import APP_STYLE_SHEET
-from app.ui.dialogs.inspector_vendor_template_dialog import InspectorVendorTemplateDialog, PythonParserDialog
+from app.ui.dialogs.inspector_profile_dialog import InspectorProfileDialog, PythonParserDialog
 from app.ui.tabs.artifacts_tab import ArtifactsTab
 from app.ui.tabs.interface_tab import InterfaceTab
 from app.ui.tabs.inspector_tab import InspectorTab
@@ -26,8 +26,16 @@ from app.ui.tabs.config_builder_tab import ConfigBuilderTab
 from app.utils.app_icon import load_app_icon
 from app.utils.file_utils import DEFAULT_UPDATE_ASSET_PATTERN, resolve_asset_path
 from netops_suite.modules.config_builder import ConfigBuilderService
-from netops_suite.modules.inspector import InspectorService
+from netops_suite.modules.inspector import InspectorRunResult, InspectorService
 from netops_suite.ui.actions import ActionKind, make_action_button
+
+
+class _SignalStub:
+    def __init__(self) -> None:
+        self.callbacks = []
+
+    def connect(self, callback) -> None:
+        self.callbacks.append(callback)
 
 
 def test_config_builder_service_renders_valid_csv(tmp_path: Path):
@@ -167,11 +175,11 @@ def test_telnet_compat_reports_missing_dependency_when_telnet_is_used(monkeypatc
         module.Telnet("127.0.0.1")
 
 
-def test_inspector_reference_templates_load():
-    templates = InspectorService().supported_profile_templates()
-    reference_templates = [template for template in templates if template.get("is_reference")]
+def test_inspector_reference_profiles_load():
+    profiles = InspectorService().supported_profile_definitions()
+    reference_profiles = [profile for profile in profiles if profile.get("is_reference")]
     cisco_reference = next(
-        template for template in reference_templates if template["vendor"] == "reference-cisco"
+        profile for profile in reference_profiles if profile["vendor"] == "reference-cisco"
     )
 
     assert cisco_reference["display_name"] == "참고용 Cisco IOS-XE 기본 점검"
@@ -214,12 +222,12 @@ def test_inspector_service_saves_and_tests_custom_parser(tmp_path: Path):
     assert "parsing_cpu_usage" in service.discover_user_custom_parsers()
 
 
-def test_vendor_template_dialog_uses_engineer_friendly_flow(qt_app, tmp_path: Path):
+def test_vendor_profile_dialog_uses_engineer_friendly_flow(qt_app, tmp_path: Path):
     service = InspectorService(user_data_dir=tmp_path / "inspector")
-    dialog = InspectorVendorTemplateDialog(service)
+    dialog = InspectorProfileDialog(service)
     try:
         tabs = [dialog.tabs.tabText(index) for index in range(dialog.tabs.count())]
-        assert dialog.windowTitle() == "장비 점검 템플릿 만들기"
+        assert dialog.windowTitle() == "장비 점검 프로파일 만들기"
         assert tabs[:4] == ["장비 정보", "점검 명령", "Excel 컬럼", "미리보기/저장"]
         assert "Netmiko" not in "\n".join(tabs[:4])
 
@@ -234,21 +242,21 @@ def test_vendor_template_dialog_uses_engineer_friendly_flow(qt_app, tmp_path: Pa
         dialog.close()
 
 
-def test_vendor_template_dialog_opens_without_telnetlib3(monkeypatch, qt_app, tmp_path: Path):
+def test_vendor_profile_dialog_opens_without_telnetlib3(monkeypatch, qt_app, tmp_path: Path):
     service = InspectorService(user_data_dir=tmp_path / "inspector")
     service.reload_runtime_modules()
     real_import = builtins.__import__
 
     def guarded_import(name, *args, **kwargs):
         if str(name).startswith("telnetlib3"):
-            raise ImportError("blocked telnetlib3 for template management")
+            raise ImportError("blocked telnetlib3 for profile management")
         return real_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", guarded_import)
-    dialog = InspectorVendorTemplateDialog(service)
+    dialog = InspectorProfileDialog(service)
     try:
-        assert dialog.windowTitle() == "장비 점검 템플릿 만들기"
-        assert dialog.templates
+        assert dialog.windowTitle() == "장비 점검 프로파일 만들기"
+        assert dialog.profiles
     finally:
         dialog.close()
         service.reload_runtime_modules()
@@ -747,7 +755,7 @@ def test_packaging_names_match_suite_release_contract():
     installer_script = Path("installer/netops-suite.iss").read_text(encoding="utf-8")
 
     assert "NetOpsSuite" in build_script
-    assert "NetOpsSuite-setup-*.exe" in build_script
+    assert 'NetOpsSuite-setup-$normalizedVersion.exe' in build_script
     assert "SHA256SUMS.txt" in build_script
     assert "Get-FileHash" in build_script
     assert "ChecksumPath" in publish_script
@@ -762,11 +770,13 @@ def test_packaging_names_match_suite_release_contract():
     assert "--hidden-import=msoffcrypto" in build_script
     assert "--hidden-import=xlrd" in build_script
     assert "allow_asset_replace" in workflow
-    assert "manual_replace_existing_release" in workflow
+    assert "manual_replace_existing_draft" in workflow
     assert "Invoke-CodeSignFile" in build_script
     assert "RequireCodeSigning" in build_script
     assert "workflow_dispatch" in workflow
-    assert "CodeSigningCertPath" not in workflow
+    assert "WINDOWS_CODESIGN_CERT_BASE64" in workflow
+    assert "-CodeSigningCertPath $certPath" in workflow
+    assert "Get-AuthenticodeSignature" in workflow
     assert "NetOpsSuite-setup-{#AppVersion}" in installer_script
     assert "AppUserModelID" in installer_script
     assert 'IconFilename: "{app}\\NetOpsSuite.exe"' in installer_script
@@ -794,7 +804,7 @@ def test_inspector_tab_buttons_use_clear_workflow_labels(qt_app, tmp_path: Path)
             if isinstance(widget, QGroupBox):
                 step_titles.append(widget.title())
 
-        template_group = tab.findChild(QGroupBox, "inspectorTemplateGroup")
+        profile_group = tab.findChild(QGroupBox, "inspectorProfileGroup")
         validation_group = tab.findChild(QGroupBox, "inspectorValidationGroup")
         result_group = tab.findChild(QGroupBox, "inspectorResultGroup")
         step_hint = tab.findChild(QLabel, "stepHint")
@@ -807,23 +817,24 @@ def test_inspector_tab_buttons_use_clear_workflow_labels(qt_app, tmp_path: Path)
                 parent = parent.parentWidget()
             return False
 
-        assert step_titles == ["1. 장비 템플릿", "2. 인벤토리", "3. 실행 방식", "4. 검증 및 실행"]
+        assert step_titles == ["1. 장비 프로파일", "2. 대상 장비 목록", "3. 실행 방식", "4. 검증 및 실행"]
         assert step_hint is not None
-        assert "장비 템플릿 확인/관리" in step_hint.text()
+        assert "장비 프로파일 확인/관리" in step_hint.text()
         assert "실행 방식 선택" in step_hint.text()
-        assert template_group is not None
+        assert profile_group is not None
         assert validation_group is not None
         assert result_group is not None
         assert result_group.title() == "5. 결과"
         assert tab.validate_button.text() == "먼저 검증"
         assert tab.run_button.text() == "실행"
+        assert tab.open_result_button.text() == "결과 Excel 열기"
         assert not tab.run_button.isEnabled()
-        assert tab.template_editor_button.text() == "템플릿 관리"
-        assert has_ancestor(tab.template_editor_button, template_group)
-        assert not has_ancestor(tab.template_editor_button, validation_group)
-        assert has_ancestor(tab.supported_toggle_button, template_group)
-        assert has_ancestor(tab.supported_table, template_group)
-        assert "지원 제조사(vendor)" in tab.template_editor_button.toolTip()
+        assert tab.profile_editor_button.text() == "프로파일 관리"
+        assert has_ancestor(tab.profile_editor_button, profile_group)
+        assert not has_ancestor(tab.profile_editor_button, validation_group)
+        assert has_ancestor(tab.supported_toggle_button, profile_group)
+        assert has_ancestor(tab.supported_table, profile_group)
+        assert "지원 제조사(vendor)" in tab.profile_editor_button.toolTip()
         assert "지원 제조사(vendor) 목록 로드 실패" not in tab.supported_label.text()
         assert tab.supported_table.minimumHeight() >= 160
         assert tab.log_view.minimumHeight() >= 140
@@ -860,6 +871,88 @@ def test_inspector_tab_buttons_use_clear_workflow_labels(qt_app, tmp_path: Path)
         tab.close()
 
 
+def test_inspector_tab_does_not_open_excel_when_device_list_or_result_changes(
+    qt_app,
+    tmp_path: Path,
+    monkeypatch,
+):
+    state = SimpleNamespace(
+        thread_pool=QThreadPool.globalInstance(),
+        paths=SimpleNamespace(data_root=tmp_path / "data"),
+    )
+    opened_paths: list[str] = []
+    monkeypatch.setattr("app.ui.tabs.inspector_tab.os.startfile", opened_paths.append)
+    result_excel = tmp_path / "inspection_results.xlsx"
+    result_excel.touch()
+    tab = InspectorTab(state)
+    try:
+        tab.inventory_path_edit.setText(str(tmp_path / "devices-a.xlsx"))
+        qt_app.processEvents()
+        assert opened_paths == []
+
+        tab._handle_result(
+            InspectorRunResult(
+                mode="inspection",
+                devices_total=1,
+                results_total=1,
+                result_excel=str(result_excel),
+                backup_dir=None,
+                session_log_dir=None,
+                results=[],
+            )
+        )
+        qt_app.processEvents()
+        assert opened_paths == []
+        assert tab.open_result_button.isEnabled()
+
+        tab.inventory_path_edit.setText(str(tmp_path / "devices-b.xlsx"))
+        qt_app.processEvents()
+        assert opened_paths == []
+        assert tab._last_result is None
+        assert not tab.open_result_button.isEnabled()
+        assert not tab.open_artifacts_button.isEnabled()
+        assert "새 목록" in tab.summary_label.text()
+    finally:
+        tab.close()
+
+
+def test_inspector_result_excel_opens_once_per_explicit_action(qt_app, tmp_path: Path, monkeypatch):
+    state = SimpleNamespace(
+        thread_pool=QThreadPool.globalInstance(),
+        paths=SimpleNamespace(data_root=tmp_path / "data"),
+    )
+    opened_paths: list[str] = []
+    monkeypatch.setattr("app.ui.tabs.inspector_tab.os.startfile", opened_paths.append)
+    result_excel = tmp_path / "inspection_results.xlsx"
+    result_excel.touch()
+    tab = InspectorTab(state)
+    try:
+        tab._handle_result(
+            InspectorRunResult(
+                mode="inspection",
+                devices_total=1,
+                results_total=1,
+                result_excel=str(result_excel),
+                backup_dir=None,
+                session_log_dir=None,
+                results=[],
+            )
+        )
+
+        tab._open_result()
+        tab._open_result()
+
+        assert opened_paths == [str(result_excel)]
+        assert tab._result_open_busy
+        assert not tab.open_result_button.isEnabled()
+
+        tab._finish_result_open()
+        assert not tab._result_open_busy
+        assert tab.open_result_button.isEnabled()
+    finally:
+        tab.close()
+
+
 def test_inspector_tab_top_sections_use_white_background(qt_app, tmp_path: Path):
     state = SimpleNamespace(
         thread_pool=QThreadPool.globalInstance(),
@@ -867,19 +960,19 @@ def test_inspector_tab_top_sections_use_white_background(qt_app, tmp_path: Path)
     )
     tab = InspectorTab(state)
     try:
-        template_group = tab.findChild(QGroupBox, "inspectorTemplateGroup")
+        profile_group = tab.findChild(QGroupBox, "inspectorProfileGroup")
         inventory_group = tab.findChild(QGroupBox, "inspectorInventoryGroup")
         execution_group = tab.findChild(QGroupBox, "inspectorExecutionGroup")
         validation_group = tab.findChild(QGroupBox, "inspectorValidationGroup")
         top_scroll = tab.findChild(QScrollArea, "inspectorTopScrollArea")
 
-        assert template_group is not None
+        assert profile_group is not None
         assert inventory_group is not None
         assert execution_group is not None
         assert validation_group is not None
         assert top_scroll is not None
         style = top_scroll.styleSheet()
-        assert "QGroupBox#inspectorTemplateGroup" in style
+        assert "QGroupBox#inspectorProfileGroup" in style
         assert "QGroupBox#inspectorInventoryGroup" in style
         assert "QGroupBox#inspectorExecutionGroup" in style
         assert "QGroupBox#inspectorValidationGroup" in style
@@ -924,9 +1017,9 @@ def test_main_window_uses_purpose_based_tab_labels_and_step_hints(qt_app, tmp_pa
             "Wi-Fi 분석",
             "장비 점검/백업",
             "CLI 설정 생성",
-            "AI 채팅",
+            "NetOps 어시스턴트",
             "결과 파일",
-            "프로그램 설정",
+            "설정",
         ]
         diagnostic_labels = [
             window.diagnostics_tab.diagnostic_tool_list.item(index).text()
@@ -989,6 +1082,7 @@ def test_interface_tab_skips_startup_refresh_without_admin(qt_app, tmp_path: Pat
         ip_profiles=[],
         network_interface_service=SimpleNamespace(list_adapters=list_adapters),
         config_reloaded=SimpleNamespace(connect=lambda *_args, **_kwargs: None),
+        admin_status_changed=_SignalStub(),
     )
     tab = InterfaceTab(state)
     try:
@@ -1010,6 +1104,7 @@ def test_interface_tab_startup_refresh_runs_for_admin_and_manual_refresh_still_a
         ip_profiles=[],
         network_interface_service=SimpleNamespace(list_adapters=lambda: []),
         config_reloaded=SimpleNamespace(connect=lambda *_args, **_kwargs: None),
+        admin_status_changed=_SignalStub(),
     )
     tab = InterfaceTab(state)
     calls: list[object] = []
@@ -1072,18 +1167,26 @@ def test_asset_path_resolves_pyinstaller_internal_assets(tmp_path: Path, monkeyp
 def test_action_button_helper_sets_role_icon_and_state(qt_app):
     button = make_action_button(
         "테스트 실행",
-        ActionKind.START,
+        ActionKind.REFRESH,
         tooltip="작업을 시작합니다.",
         object_name="testActionButton",
         enabled=False,
     )
 
     assert button.text() == "테스트 실행"
-    assert button.property("actionKind") == ActionKind.START.value
+    assert button.property("actionKind") == ActionKind.REFRESH.value
     assert button.objectName() == "testActionButton"
     assert button.toolTip() == "작업을 시작합니다."
     assert not button.isEnabled()
     assert not button.icon().isNull()
+
+    start_button = make_action_button("시작", ActionKind.START)
+    start_style = start_button.styleSheet()
+    danger_style = make_action_button("삭제", ActionKind.DELETE).styleSheet()
+    assert start_button.icon().isNull()
+    assert "background: #ecfdf3" not in start_style
+    assert "background: #fff1f2" not in danger_style
+    assert "color: #b42318" not in danger_style
 
 
 def test_ui_buttons_are_created_through_action_helper():
@@ -1098,12 +1201,9 @@ def test_ui_buttons_are_created_through_action_helper():
     assert offenders == []
 
 
-@pytest.fixture(scope="session")
-def qt_app():
-    app = QApplication.instance()
-    if app is None:
-        app = QApplication([])
-    return app
+@pytest.fixture
+def qt_app(qapp):
+    return qapp
 
 
 def _config_builder_state(tmp_path: Path):

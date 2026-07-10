@@ -38,7 +38,6 @@ from PySide6.QtWidgets import (
     QSplitter,
     QStatusBar,
     QStyledItemDelegate,
-    QSpinBox,
     QTableView,
     QTableWidget,
     QTableWidgetItem,
@@ -51,6 +50,8 @@ from PySide6.QtWidgets import (
 from app.ui.common import make_dialog_intro, polish_dialog
 from app.utils.file_utils import build_app_paths, save_json
 from netops_suite.ui.actions import ActionKind, make_action_button, polish_dialog_button_box, polish_existing_button
+from netops_suite.ui.numeric_inputs import NoWheelSpinBox
+from netops_suite.ui.selection_inputs import NoWheelComboBox
 from .engine import ConfigEngine, build_bundle_text
 from .io_utils import load_profiles_from_directory
 from .models import BlockSpec, DeviceRecord, Profile, RenderedConfig, ValidationIssue, VariableSpec
@@ -166,17 +167,18 @@ QWidget#configBuilderAdvancedPanel QWidget {
 }
 QGroupBox {
     font-weight: 600;
-    margin-top: 14px;
-    padding: 10px 0 0 0;
+    margin-top: 22px;
+    padding: 12px 0 0 0;
     background: transparent;
     border: 0;
     border-top: 1px solid #e4e7ec;
 }
 QGroupBox::title {
     subcontrol-origin: margin;
+    subcontrol-position: top left;
     left: 0;
     padding: 0 8px 0 0;
-    background: transparent;
+    background: #ffffff;
 }
 QPushButton {
     padding: 2px 7px;
@@ -612,7 +614,7 @@ class IncrementCopyDialog(QDialog):
         form = QFormLayout()
         form.setVerticalSpacing(8)
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        self.copy_count_spin = QSpinBox()
+        self.copy_count_spin = NoWheelSpinBox()
         self.copy_count_spin.setRange(1, 50)
         self.copy_count_spin.setValue(1)
         form.addRow("복사 개수", self.copy_count_spin)
@@ -636,7 +638,7 @@ class InAppTutorialDialog(QDialog):
         self._current_action: Callable[[], None] | None = None
         self._steps: list[Callable[[], dict[str, Any]]] = [
             self._step_intro,
-            self._step_template_authoring,
+            self._step_profile_authoring,
             self._step_prepare_device_file,
             self._step_fill_first_device,
             self._step_review_cli,
@@ -755,7 +757,7 @@ class InAppTutorialDialog(QDialog):
             "status_text": status,
         }
 
-    def _step_template_authoring(self) -> dict[str, Any]:
+    def _step_profile_authoring(self) -> dict[str, Any]:
         profile = self.host.tutorial_profile()
         complete = self.host.tutorial_profile_ready()
         if profile is None:
@@ -1345,7 +1347,7 @@ class DeviceCellDelegate(QStyledItemDelegate):
     def createEditor(self, parent, option, index):
         header = self._header_name(index)
         if header == "profile_id":
-            editor = QComboBox(parent)
+            editor = NoWheelComboBox(parent)
             editor.addItem("")
             editor.addItems(sorted(self.profile_provider()))
             editor.setEditable(False)
@@ -1357,7 +1359,7 @@ class DeviceCellDelegate(QStyledItemDelegate):
             return editor
         variable = self._variable_spec_for_index(index)
         if variable and variable.type == "bool":
-            editor = QComboBox(parent)
+            editor = NoWheelComboBox(parent)
             editor.addItems(["", "true", "false"])
             editor.setEditable(False)
             editor.setMaxVisibleItems(3)
@@ -1492,6 +1494,7 @@ class SwitchConfigBuilderWidget(QWidget):
         self.file_column_state: dict[str, dict[str, list[str]]] = {}
         self.recent_files: list[str] = []
         self.is_dirty = False
+        self._close_prepared = False
         self._loading_table = False
         self._updating_pin_items = False
         self._syncing_width = False
@@ -1608,7 +1611,7 @@ class SwitchConfigBuilderWidget(QWidget):
 
         controls = QHBoxLayout()
         controls.setSpacing(8)
-        controls.addWidget(self._build_template_group(), 2)
+        controls.addWidget(self._build_profile_group(), 2)
         controls.addWidget(self._build_block_toggle_group(), 5)
         controls.addWidget(self._build_filter_group(), 4)
         controls.addWidget(self._build_row_group(), 2)
@@ -1682,7 +1685,7 @@ class SwitchConfigBuilderWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
         profile_label = QLabel("기준 프로파일")
-        self.add_profile_combo = QComboBox()
+        self.add_profile_combo = NoWheelComboBox()
         self.add_profile_combo.setMinimumWidth(260)
         self.sample_start_button = make_action_button("샘플로 시작", ActionKind.PRIMARY)
         self.sample_start_button.setObjectName("configBuilderSampleStartButton")
@@ -1813,12 +1816,12 @@ class SwitchConfigBuilderWidget(QWidget):
         if hasattr(self, "advanced_toggle_button"):
             self.advanced_toggle_button.setText("고급 닫기" if checked else "고급 작업")
 
-    def _build_template_group(self) -> QGroupBox:
+    def _build_profile_group(self) -> QGroupBox:
         group = QGroupBox("프로파일 작업")
         layout = QVBoxLayout(group)
         layout.setSpacing(8)
         layout.setContentsMargins(10, 14, 10, 10)
-        self.add_profile_combo = QComboBox()
+        self.add_profile_combo = NoWheelComboBox()
         title_label = QLabel("기준 프로파일")
         reload_button = make_action_button("새로고침", ActionKind.REFRESH)
         reload_button.clicked.connect(self.reload_profiles)
@@ -1878,7 +1881,7 @@ class SwitchConfigBuilderWidget(QWidget):
     def _build_filter_group(self) -> QGroupBox:
         group = QGroupBox("필터")
         layout = QFormLayout(group)
-        self.filter_field_combo = QComboBox()
+        self.filter_field_combo = NoWheelComboBox()
         self.filter_value_edit = QLineEdit()
         self.filter_value_edit.setPlaceholderText("예: A구역, DSW, 192.168.10")
         clear_button = make_action_button("필터 초기화", ActionKind.CANCEL)
@@ -2694,7 +2697,7 @@ class SwitchConfigBuilderWidget(QWidget):
     def _start_sample_for_current_profile(self) -> None:
         if not self._confirm_discard_changes():
             return
-        profile = self._selected_template_profile()
+        profile = self._selected_profile()
         if not profile:
             self.statusBar().showMessage("기준 프로파일을 먼저 선택하세요.", 3000)
             return
@@ -3324,7 +3327,7 @@ class SwitchConfigBuilderWidget(QWidget):
         if not headers:
             return
         required_headers = {"profile_id"}
-        template_headers = {
+        profile_variable_headers = {
             variable_name
             for profile in self.profiles.values()
             for variable_name in profile.variables
@@ -3332,12 +3335,12 @@ class SwitchConfigBuilderWidget(QWidget):
         removable_headers = [
             header
             for header in headers
-            if header not in required_headers and header not in template_headers
+            if header not in required_headers and header not in profile_variable_headers
         ]
         blocked_required_headers = [header for header in headers if header in required_headers]
-        blocked_template_headers = [header for header in headers if header in template_headers]
+        blocked_profile_variable_headers = [header for header in headers if header in profile_variable_headers]
         if not removable_headers:
-            if blocked_template_headers:
+            if blocked_profile_variable_headers:
                 QMessageBox.information(
                     self,
                     "컬럼 삭제",
@@ -3359,8 +3362,8 @@ class SwitchConfigBuilderWidget(QWidget):
         blocked_messages: list[str] = []
         if blocked_required_headers:
             blocked_messages.append(f"필수 컬럼 제외: {', '.join(blocked_required_headers)}")
-        if blocked_template_headers:
-            blocked_messages.append(f"프로파일 변수 컬럼 제외: {', '.join(blocked_template_headers)}")
+        if blocked_profile_variable_headers:
+            blocked_messages.append(f"프로파일 변수 컬럼 제외: {', '.join(blocked_profile_variable_headers)}")
         if blocked_messages:
             message += "\n" + "\n".join(blocked_messages)
         if QMessageBox.question(self, "컬럼 삭제", message, QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
@@ -3683,7 +3686,7 @@ class SwitchConfigBuilderWidget(QWidget):
             for profile in referenced_profiles
             for variable_name in profile.variables
         }
-        all_template_headers = {
+        all_profile_variable_headers = {
             variable_name
             for profile in self.profiles.values()
             for variable_name in profile.variables
@@ -3691,7 +3694,7 @@ class SwitchConfigBuilderWidget(QWidget):
         obsolete_headers = [
             header
             for header in self.table_model.headers
-            if header != "profile_id" and header in all_template_headers and header not in referenced_headers
+            if header != "profile_id" and header in all_profile_variable_headers and header not in referenced_headers
         ]
         return sorted(obsolete_headers)
 
@@ -4112,7 +4115,7 @@ class SwitchConfigBuilderWidget(QWidget):
         for view in (self.table_view, self.pinned_table_view):
             view.horizontalHeader().setSortIndicator(self._sort_column, self._sort_order)
 
-    def _update_template_guide(self) -> None:
+    def _update_profile_guide(self) -> None:
         profile = self.profiles.get(self.add_profile_combo.currentText())
         if not profile:
             self._clear_detail_tabs()
@@ -4362,7 +4365,7 @@ class SwitchConfigBuilderWidget(QWidget):
             self._reload_after_profile_save(dialog.saved_profile_id)
 
     def clone_current_profile_dialog(self) -> None:
-        profile = self._selected_template_profile()
+        profile = self._selected_profile()
         if not profile:
             QMessageBox.information(self, "프로파일 복사", "복사할 프로파일을 먼저 선택하세요.")
             return
@@ -4383,7 +4386,7 @@ class SwitchConfigBuilderWidget(QWidget):
             self._reload_after_profile_save(dialog.saved_profile_id)
 
     def edit_current_profile_dialog(self) -> None:
-        profile = self._selected_template_profile()
+        profile = self._selected_profile()
         if not profile:
             QMessageBox.information(self, "프로파일 편집", "편집할 프로파일을 먼저 선택하세요.")
             return
@@ -4392,7 +4395,7 @@ class SwitchConfigBuilderWidget(QWidget):
             self._reload_after_profile_save(dialog.saved_profile_id or profile.id)
 
     def delete_current_profile_dialog(self) -> None:
-        profile = self._selected_template_profile()
+        profile = self._selected_profile()
         if not profile:
             QMessageBox.information(self, "프로파일 삭제", "삭제할 프로파일을 먼저 선택하세요.")
             return
@@ -4439,19 +4442,40 @@ class SwitchConfigBuilderWidget(QWidget):
         if profile_id:
             self._append_activity_log(f"프로파일 저장/갱신: {profile_id}")
 
-    def _selected_template_profile(self) -> Profile | None:
+    def _selected_profile(self) -> Profile | None:
         return self.profiles.get(self.add_profile_combo.currentText())
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        if self.auto_save_check.isChecked() and self.current_file_path and self.is_dirty and self._save_to_path(self.current_file_path, autosave=True):
-            self._save_app_state()
-            event.accept()
-            return
-        if self._confirm_discard_changes():
-            self._save_app_state()
+        if self.prepare_close():
             event.accept()
         else:
             event.ignore()
+
+    def prepare_close(self) -> bool:
+        if self._close_prepared:
+            return True
+        if (
+            self.auto_save_check.isChecked()
+            and self.current_file_path
+            and self.is_dirty
+            and self._save_to_path(self.current_file_path, autosave=True)
+        ):
+            self._save_app_state()
+            self._stop_ui_timers()
+            self._close_prepared = True
+            return True
+        if not self._confirm_discard_changes():
+            return False
+        self._save_app_state()
+        self._stop_ui_timers()
+        self._close_prepared = True
+        return True
+
+    def _stop_ui_timers(self) -> None:
+        for timer_name in ("refresh_timer", "auto_save_timer", "resize_timer"):
+            timer = getattr(self, timer_name, None)
+            if timer is not None:
+                timer.stop()
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]
         super().resizeEvent(event)

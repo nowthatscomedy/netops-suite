@@ -79,3 +79,9 @@ class ConfigBuilderTab(QWidget):
     def _current_device_values_path(self) -> Path | None:
         path = getattr(self.builder_widget, "current_file_path", None)
         return Path(path) if path else None
+
+    def prepare_close(self) -> bool:
+        if self._builder_window is not None and self._builder_window.isVisible():
+            if not self._builder_window.close():
+                return False
+        return self.builder_widget.prepare_close()

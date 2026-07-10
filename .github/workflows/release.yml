@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "Release tag name (example: v1.0.7)"
+        description: "Release tag name (example: v1.0.8)"
         required: true
-        default: "v1.0.7"
+        default: "v1.0.8"
       release_name:
         description: "Optional release title"
         required: false
@@ -17,7 +17,12 @@ on:
         default: false
         type: boolean
       allow_asset_replace:
-        description: "Allow replacing assets on an existing release"
+        description: "Allow replacing assets on an existing unpublished draft"
+        required: false
+        default: false
+        type: boolean
+      allow_unsigned_release:
+        description: "Explicitly allow an unsigned release when no code-signing certificate is configured"
         required: false
         default: false
         type: boolean
@@ -87,19 +92,9 @@ jobs:
           $isManual = "${{ github.event_name }}" -eq "workflow_dispatch"
           $allowAssetReplace = "${{ inputs.allow_asset_replace }}" -eq "true"
 
+          $release = $null
           try {
             $release = Invoke-RestMethod -Method GET -Uri $uri -Headers $headers
-            if ($isManual -and $allowAssetReplace) {
-              "should_release=true" >> $env:GITHUB_OUTPUT
-              "reason=manual_replace_existing_release" >> $env:GITHUB_OUTPUT
-            }
-            elseif ($isManual) {
-              throw "Release ${{ steps.meta.outputs.tag_name }} already exists. Re-run with allow_asset_replace=true only when you intentionally want to replace release assets."
-            }
-            else {
-              "should_release=false" >> $env:GITHUB_OUTPUT
-              "reason=release_exists" >> $env:GITHUB_OUTPUT
-            }
           }
           catch {
             $statusCode = $null
@@ -107,20 +102,38 @@ jobs:
               $statusCode = [int]$_.Exception.Response.StatusCode
             }
 
-            if ($statusCode -eq 404) {
-              "should_release=true" >> $env:GITHUB_OUTPUT
-              "reason=release_missing" >> $env:GITHUB_OUTPUT
-            }
-            else {
+            if ($statusCode -ne 404) {
               throw
             }
           }
 
-      - name: Skip Release Build
-        if: steps.release_guard.outputs.should_release != 'true'
-        shell: powershell
-        run: |
-          Write-Host "Release already exists for ${{ steps.meta.outputs.tag_name }}. Skipping build and publish."
+          # GitHub's release-by-tag endpoint does not return unpublished drafts.
+          # Search the authenticated release list before treating the tag as new.
+          if (-not $release) {
+            $allReleasesUri = "https://api.github.com/repos/${{ github.repository }}/releases?per_page=100"
+            $allReleases = Invoke-RestMethod -Method GET -Uri $allReleasesUri -Headers $headers
+            $release = @($allReleases | Where-Object {
+              $_.tag_name -eq "${{ steps.meta.outputs.tag_name }}"
+            }) | Select-Object -First 1
+          }
+
+          if (-not $release) {
+            "should_release=true" >> $env:GITHUB_OUTPUT
+            "reason=release_missing" >> $env:GITHUB_OUTPUT
+          }
+          elseif (-not $release.draft) {
+            throw "Release ${{ steps.meta.outputs.tag_name }} is already published and is immutable. Create a new version instead."
+          }
+          elseif ($isManual -and $allowAssetReplace) {
+            "should_release=true" >> $env:GITHUB_OUTPUT
+            "reason=manual_replace_existing_draft" >> $env:GITHUB_OUTPUT
+          }
+          elseif ($isManual) {
+            throw "Draft release ${{ steps.meta.outputs.tag_name }} already exists. Re-run with allow_asset_replace=true only to repair this unpublished draft."
+          }
+          else {
+            throw "Draft release ${{ steps.meta.outputs.tag_name }} already exists and automatic replacement is disabled."
+          }
 
       - name: Setup Python
         if: steps.release_guard.outputs.should_release == 'true'
@@ -128,19 +141,69 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Scan Repository For Secrets
+        if: steps.release_guard.outputs.should_release == 'true'
+        shell: powershell
+        run: |
+          winget install `
+            --id Gitleaks.Gitleaks `
+            --exact `
+            --version 8.30.1 `
+            --silent `
+            --accept-package-agreements `
+            --accept-source-agreements `
+            --disable-interactivity
+          $gitleaks = Get-ChildItem `
+            -LiteralPath "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" `
+            -Recurse `
+            -Filter "gitleaks.exe" `
+            -ErrorAction Stop |
+            Where-Object { $_.FullName -match "Gitleaks\.Gitleaks" } |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $gitleaks) {
+            throw "gitleaks.exe was not found after installation."
+          }
+          & $gitleaks git --no-banner --redact --exit-code 1 .
+          if ($LASTEXITCODE -ne 0) { throw "Git history secret scan failed." }
+          & $gitleaks dir --no-banner --redact --exit-code 1 .
+          if ($LASTEXITCODE -ne 0) { throw "Working tree secret scan failed." }
+
       - name: Install Build Dependencies
         if: steps.release_guard.outputs.should_release == 'true'
         shell: powershell
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller
-          choco install innosetup --no-progress -y
+          python -m pip install -r requirements.txt "pyinstaller==6.21.0"
+          winget install `
+            --id JRSoftware.InnoSetup `
+            --exact `
+            --version 6.7.3 `
+            --silent `
+            --scope user `
+            --accept-package-agreements `
+            --accept-source-agreements `
+            --disable-interactivity
 
       - name: Verify Runtime Dependencies
         if: steps.release_guard.outputs.should_release == 'true'
         shell: powershell
         run: |
           python -c "import pyftpdlib, OpenSSL, paramiko, tftpy, netmiko, msoffcrypto, xlrd; from telnetlib3 import telnetlib; print('NetOps Suite runtime dependencies OK')"
+
+      - name: Verify Installed Dependencies
+        if: steps.release_guard.outputs.should_release == 'true'
+        shell: powershell
+        run: python -m pip check
+
+      - name: Compile Python Sources
+        if: steps.release_guard.outputs.should_release == 'true'
+        shell: powershell
+        run: python -m compileall -q main.py app netops_suite tests
+
+      - name: Run Test Suite
+        if: steps.release_guard.outputs.should_release == 'true'
+        shell: powershell
+        run: python -m pytest -q
 
       - name: Verify Tag Matches App Version
         if: steps.release_guard.outputs.should_release == 'true'
@@ -160,11 +223,70 @@ jobs:
       - name: Build Installer
         if: steps.release_guard.outputs.should_release == 'true'
         shell: powershell
+        env:
+          WINDOWS_CODESIGN_CERT_BASE64: ${{ secrets.WINDOWS_CODESIGN_CERT_BASE64 }}
+          WINDOWS_CODESIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_CERT_PASSWORD }}
         run: |
           Set-ExecutionPolicy -Scope Process Bypass
-          .\scripts\build_release.ps1 `
-            -Version "${{ steps.meta.outputs.tag_name }}" `
-            -Clean
+          $hasCert = -not [string]::IsNullOrWhiteSpace($env:WINDOWS_CODESIGN_CERT_BASE64)
+          $hasPassword = -not [string]::IsNullOrWhiteSpace($env:WINDOWS_CODESIGN_CERT_PASSWORD)
+          $allowUnsigned = "${{ inputs.allow_unsigned_release }}" -eq "true"
+          if ($hasCert -xor $hasPassword) {
+            throw "Code-signing configuration is incomplete. Configure both certificate and password secrets."
+          }
+          if (-not $hasCert) {
+            if (-not $allowUnsigned) {
+              throw "Code signing is not configured. Set allow_unsigned_release=true only for an explicitly approved unsigned release."
+            }
+            Write-Warning "Building an explicitly approved unsigned release."
+            .\scripts\build_release.ps1 `
+              -Version "${{ steps.meta.outputs.tag_name }}" `
+              -Clean
+          }
+          else {
+            $certPath = Join-Path $env:RUNNER_TEMP "netops-suite-codesign.pfx"
+            try {
+              [IO.File]::WriteAllBytes(
+                $certPath,
+                [Convert]::FromBase64String($env:WINDOWS_CODESIGN_CERT_BASE64)
+              )
+              .\scripts\build_release.ps1 `
+                -Version "${{ steps.meta.outputs.tag_name }}" `
+                -Clean `
+                -CodeSigningCertPath $certPath `
+                -CodeSigningCertPassword $env:WINDOWS_CODESIGN_CERT_PASSWORD `
+                -RequireCodeSigning
+            }
+            finally {
+              Remove-Item -LiteralPath $certPath -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+      - name: Verify Authenticode Signatures
+        if: steps.release_guard.outputs.should_release == 'true'
+        shell: powershell
+        env:
+          WINDOWS_CODESIGN_CERT_BASE64: ${{ secrets.WINDOWS_CODESIGN_CERT_BASE64 }}
+        run: |
+          $files = @(
+            "dist/NetOpsSuite/NetOpsSuite.exe",
+            "dist/release/NetOpsSuite-setup-${{ steps.meta.outputs.version }}.exe"
+          )
+          $allowUnsigned = "${{ inputs.allow_unsigned_release }}" -eq "true"
+          $signingConfigured = -not [string]::IsNullOrWhiteSpace($env:WINDOWS_CODESIGN_CERT_BASE64)
+          foreach ($file in $files) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $file
+            if ($signingConfigured -and
+                $signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+              throw "Authenticode signature verification failed for $file`: $($signature.StatusMessage)"
+            }
+            if (-not $signingConfigured -and -not $allowUnsigned) {
+              throw "Unsigned artifact verification was not explicitly approved: $file"
+            }
+            if (-not $signingConfigured) {
+              Write-Warning "Unsigned release artifact explicitly approved: $file"
+            }
+          }
 
       - name: Upload Workflow Artifact
         if: steps.release_guard.outputs.should_release == 'true'
@@ -183,13 +305,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           Set-ExecutionPolicy -Scope Process Bypass
-          $asset = Get-ChildItem -Path dist/release/NetOpsSuite-setup-*.exe | Select-Object -First 1 -ExpandProperty FullName
+          $asset = (Resolve-Path "dist/release/NetOpsSuite-setup-${{ steps.meta.outputs.version }}.exe").Path
           $checksum = Get-ChildItem -Path dist/release/SHA256SUMS.txt | Select-Object -First 1 -ExpandProperty FullName
           $isPrerelease = [System.Convert]::ToBoolean("${{ steps.meta.outputs.is_prerelease }}")
           $publishArgs = @{
             Repository = "${{ github.repository }}"
             TagName = "${{ steps.meta.outputs.tag_name }}"
             ReleaseName = "${{ steps.meta.outputs.release_name }}"
+            TargetCommitish = "${{ github.sha }}"
             AssetPath = $asset
             ChecksumPath = $checksum
           }

@@ -24,8 +24,8 @@ QFrame#sideNavigation {
     background: #f2f1ee;
     border: 0;
     border-right: 1px solid #e4e2dd;
-    min-width: 164px;
-    max-width: 196px;
+    min-width: 188px;
+    max-width: 208px;
 }
 QFrame#workspacePanel {
     background: #ffffff;
@@ -171,8 +171,8 @@ QGroupBox {
     border: 0;
     border-top: 1px solid #e4e7ec;
     border-radius: 0;
-    margin-top: 12px;
-    padding: 9px 2px 0 2px;
+    margin-top: 22px;
+    padding: 12px 2px 0 2px;
     font-weight: 600;
 }
 QGroupBox::title {
@@ -181,7 +181,7 @@ QGroupBox::title {
     left: 0;
     padding: 0 8px 0 0;
     color: #111827;
-    background: transparent;
+    background: #ffffff;
 }
 QLabel {
     background: transparent;
@@ -231,6 +231,9 @@ QDoubleSpinBox:disabled {
 QComboBox::drop-down {
     border: 0;
     width: 24px;
+}
+QComboBox[netopsChevron="true"]::down-arrow {
+    image: none;
 }
 QComboBox QAbstractItemView {
     background: #ffffff;

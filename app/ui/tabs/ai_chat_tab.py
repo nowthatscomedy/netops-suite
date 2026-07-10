@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+import html
+import math
 import re
 import shlex
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from threading import Event
+from typing import Any, Callable
 
-from PySide6.QtCore import QDateTime, QProcess, QProcessEnvironment, QThreadPool, Qt, QTimer
+from PySide6.QtCore import QDateTime, QProcess, QProcessEnvironment, QRectF, QSize, QSizeF, QThreadPool, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QDesktopServices, QIcon, QPainter, QTextDocument, QTextOption
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -18,24 +23,42 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
+    QListView,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QScrollArea,
     QSizePolicy,
     QTabWidget,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 from app.app_state import AppState
-from app.models.ai_models import AiProviderConfig, KNOWN_AI_PROVIDERS, normalize_ai_chat_config
+from app.assistant import (
+    AuditLogger,
+    PolicyContext,
+    PolicyDecision,
+    ToolExecutor,
+    ToolResult,
+    build_netops_tool_registry,
+    tool_call_from_netops_action,
+)
+from app.models.ai_models import (
+    AiModelCatalog,
+    AiModelDescriptor,
+    AiProviderConfig,
+    KNOWN_AI_PROVIDERS,
+    normalize_ai_chat_config,
+)
 from app.services.ai_agent_service import (
     CliHelpOption,
+    NetOpsChatAction,
     PROVIDER_SPECS,
     build_chat_invocation,
     build_help_invocation,
@@ -43,21 +66,25 @@ from app.services.ai_agent_service import (
     build_status_invocation,
     decode_cli_output,
     diagnose_cli_error,
+    extract_error_from_cli_line,
     extract_text_from_cli_line,
     extra_arg_options_from_help,
     inspect_provider,
     is_blocking_cli_configuration_error,
-    model_options_for_provider,
+    plan_netops_chat_action,
     provider_configs_from_app_config,
     repair_cli_configuration_error,
     safe_env_for_cli,
     should_ignore_cli_output_text,
+    split_codex_model_cache_warning,
 )
+from app.services.ai_model_catalog_service import AiModelCatalogService
 from app.ui.common import JobRunner, make_step_hint
 from app.utils.file_utils import timestamped_export_path
 from netops_suite.modules.config_builder import ConfigBuilderService
 from netops_suite.modules.inspector import InspectorService
 from netops_suite.ui.actions import ActionKind, make_action_button
+from netops_suite.ui.selection_inputs import NoWheelComboBox
 
 
 IMAGE_ATTACHMENT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
@@ -92,6 +119,23 @@ MAX_ATTACHMENT_BYTES = 180_000
 MAX_ATTACHMENT_CONTEXT_CHARS = 360_000
 MAX_INTERNAL_CONTEXT_SECTION_CHARS = 6_000
 MAX_INTERNAL_CONTEXT_TOTAL_CHARS = 28_000
+CUSTOM_MODEL_ID_RE = re.compile(r"[A-Za-z0-9._:/-]{1,128}\Z")
+MODEL_DESCRIPTOR_ROLE = int(Qt.ItemDataRole.UserRole) + 1
+REASONING_EFFORT_LABELS = {
+    "none": "없음 (추론 사용 안 함)",
+    "minimal": "최소 (가장 빠른 추론)",
+    "low": "낮음 (빠른 단순 작업)",
+    "medium": "보통 (일반 작업)",
+    "high": "높음 (복잡한 분석)",
+    "xhigh": "매우 높음 (가장 깊은 분석)",
+    "max": "최대 (장시간 심층 추론)",
+    "ultra": "울트라 (다중 에이전트 병렬 작업)",
+}
+REASONING_EFFORT_ORDER = tuple(REASONING_EFFORT_LABELS)
+SPEED_LABELS = {
+    "fast": "빠른 응답",
+    "flex": "유연 처리 (기존 설정)",
+}
 NETWORK_STATUS_TEXT_KEYWORDS = (
     "네트워크",
     "인터넷",
@@ -117,12 +161,15 @@ INSPECTOR_CONTEXT_KEYWORDS = (
     "장비 백업",
     "점검/백업",
     "점검 백업",
+    "대상 장비 목록",
+    "장비 목록",
+    # 기존 사용자 표현과 저장된 대화의 라우팅 호환성을 유지합니다.
     "인벤토리",
     "inspection",
     "custom_rules",
     "커스텀 룰",
-    "점검 템플릿",
-    "백업 템플릿",
+    "점검 프로파일",
+    "백업 프로파일",
 )
 CONFIG_BUILDER_CONTEXT_KEYWORDS = (
     "cli 설정",
@@ -163,10 +210,12 @@ BASIC_NETOPS_CONTEXT_KEYWORDS = (
 )
 BASIC_NETWORK_DIAGNOSTIC_TARGETS = (("Google DNS", "8.8.8.8"), ("Cloudflare DNS", "1.1.1.1"))
 BLOCKED_DIRECT_EXTRA_ARG_FLAGS = {
+    "-a",
     "-h",
     "--help",
     "-V",
     "--version",
+    "--ask-for-approval",
     "-m",
     "--model",
     "-i",
@@ -185,6 +234,506 @@ BINARY_ATTACHMENT_MAGIC = (
     b"\xff\xd8\xff",
     b"GIF8",
 )
+CLI_OPTION_KOREAN_HELP: dict[str, tuple[str, str, str]] = {
+    "--profile": (
+        "설정 프로파일",
+        "선택한 CLI의 저장된 설정 프로파일을 사용합니다. 회사/개인/프로젝트별로 분리해 둔 CLI 설정이 있을 때만 지정하세요.",
+        "예: work",
+    ),
+    "--sandbox": (
+        "샌드박스 범위",
+        "AI CLI가 파일 시스템과 명령 실행에 접근할 수 있는 범위를 정합니다. NetOps Suite에서는 기본적으로 읽기 전용 실행을 권장합니다.",
+        "예: read-only",
+    ),
+    "--search": (
+        "웹 검색 사용",
+        "CLI가 지원하는 웹 검색 기능을 켭니다. 최신 문서나 외부 정보를 확인해야 할 때만 사용하세요.",
+        "",
+    ),
+    "--cwd": (
+        "작업 폴더",
+        "CLI 요청을 실행할 기준 폴더를 지정합니다. 지정하지 않으면 NetOps Suite 작업 폴더를 사용합니다.",
+        r"예: C:\work\repo",
+    ),
+    "--working-directory": (
+        "작업 폴더",
+        "CLI 요청을 실행할 기준 폴더를 지정합니다. 지정하지 않으면 NetOps Suite 작업 폴더를 사용합니다.",
+        r"예: C:\work\repo",
+    ),
+    "--add-dir": (
+        "추가 폴더 허용",
+        "기본 작업 폴더 외에 CLI가 읽을 수 있는 폴더를 추가합니다. 민감한 파일이 있는 폴더는 추가하지 마세요.",
+        r"예: C:\work\shared",
+    ),
+    "--include": (
+        "추가 포함 대상",
+        "CLI 요청에 포함할 추가 경로나 패턴을 지정합니다. 필요한 파일만 좁게 지정하는 것이 좋습니다.",
+        "예: README.md",
+    ),
+    "--config": (
+        "설정값 지정",
+        "CLI 설정값을 명령줄에서 직접 덮어씁니다. 값의 의미를 정확히 아는 경우에만 사용하세요.",
+        '예: key=value',
+    ),
+    "--mode": (
+        "실행 모드",
+        "CLI의 실행 방식을 지정합니다. 채팅/일회성 실행/자동 실행처럼 CLI마다 의미가 다를 수 있습니다.",
+        "",
+    ),
+    "--permission-mode": (
+        "권한 모드",
+        "CLI가 도구 사용이나 파일 접근을 승인받는 방식을 정합니다. 쓰기나 명령 실행 권한을 넓히면 위험할 수 있습니다.",
+        "",
+    ),
+    "--allowedTools": (
+        "허용 도구",
+        "CLI가 사용할 수 있는 도구 목록을 제한합니다. 필요한 도구만 허용하는 방식으로 사용하세요.",
+        "예: Read,Grep",
+    ),
+    "--allowed-tools": (
+        "허용 도구",
+        "CLI가 사용할 수 있는 도구 목록을 제한합니다. 필요한 도구만 허용하는 방식으로 사용하세요.",
+        "예: Read,Grep",
+    ),
+    "--disallowedTools": (
+        "차단 도구",
+        "CLI가 사용하면 안 되는 도구 목록을 지정합니다. 쓰기, 삭제, 셸 실행 관련 도구를 막을 때 유용합니다.",
+        "예: Bash,Write",
+    ),
+    "--disallowed-tools": (
+        "차단 도구",
+        "CLI가 사용하면 안 되는 도구 목록을 지정합니다. 쓰기, 삭제, 셸 실행 관련 도구를 막을 때 유용합니다.",
+        "예: Bash,Write",
+    ),
+    "--yolo": (
+        "승인 생략 모드",
+        "승인 절차를 줄이거나 생략할 수 있는 위험 옵션입니다. NetOps Suite에서는 권장하지 않습니다.",
+        "",
+    ),
+    "--telemetry": (
+        "사용량 정보 전송",
+        "CLI의 사용량/진단 정보 전송 여부를 설정합니다. 조직 보안 정책에 맞춰 사용하세요.",
+        "",
+    ),
+    "--cd": (
+        "작업 폴더",
+        "요청을 실행할 기준 폴더를 지정합니다. 지정하지 않으면 NetOps Suite 작업 폴더를 사용합니다.",
+        r"예: C:\work\repo",
+    ),
+    "--include-directories": (
+        "추가 폴더 허용",
+        "기본 작업 폴더 외에 CLI가 읽을 수 있는 폴더를 추가합니다. 필요한 폴더만 좁게 지정하세요.",
+        r"예: C:\work\shared",
+    ),
+    "--enable": (
+        "기능 켜기",
+        "CLI의 선택 기능을 켭니다. 기능 이름과 영향을 CLI 문서에서 확인한 뒤 사용하세요.",
+        "예: web_search",
+    ),
+    "--disable": (
+        "기능 끄기",
+        "CLI의 선택 기능을 끕니다. 기존 작업 흐름에 필요한 기능인지 확인한 뒤 사용하세요.",
+        "예: web_search",
+    ),
+    "--full-auto": (
+        "자동 실행 모드",
+        "CLI가 일부 작업을 자동으로 진행하도록 합니다. NetOps Suite의 승인 정책과 충돌할 수 있어 사용을 권장하지 않습니다.",
+        "",
+    ),
+    "--ephemeral": (
+        "대화 기록 저장 안 함",
+        "이번 CLI 실행의 세션 기록을 저장하지 않습니다. 재개가 필요 없는 일회성 작업에 사용하세요.",
+        "",
+    ),
+    "--skip-git-repo-check": (
+        "Git 저장소 확인 생략",
+        "현재 폴더가 Git 저장소인지 확인하는 절차를 생략합니다. 일반 폴더에서 작업할 때만 사용하세요.",
+        "",
+    ),
+    "--output-schema": (
+        "출력 형식 정의",
+        "응답 구조를 정의한 JSON Schema 파일을 지정합니다. 자동 처리할 결과가 필요할 때 사용하세요.",
+        "예: result.schema.json",
+    ),
+    "--output-last-message": (
+        "마지막 답변 파일 저장",
+        "CLI의 마지막 답변을 지정한 파일에 저장합니다. 기존 파일을 덮어쓸 수 있으므로 경로를 확인하세요.",
+        "예: result.txt",
+    ),
+    "--color": (
+        "터미널 색상 출력",
+        "CLI 출력에 터미널 색상 코드를 사용할지 정합니다. 로그 파일로 저장할 때는 끄는 편이 읽기 쉽습니다.",
+        "예: never",
+    ),
+    "--oss": (
+        "로컬 오픈소스 모델 사용",
+        "클라우드 모델 대신 로컬 오픈소스 모델 연결을 사용합니다. 로컬 모델 서버가 준비된 경우에만 선택하세요.",
+        "",
+    ),
+    "--local-provider": (
+        "로컬 모델 제공자",
+        "연결할 로컬 모델 실행 환경을 지정합니다. 해당 프로그램이 설치되고 실행 중이어야 합니다.",
+        "예: ollama",
+    ),
+    "--continue": (
+        "최근 대화 이어가기",
+        "가장 최근 CLI 대화를 이어서 사용합니다. 이전 대화의 내용이 현재 요청에 섞일 수 있습니다.",
+        "",
+    ),
+    "--resume": (
+        "저장된 대화 이어가기",
+        "선택한 CLI 대화 세션을 이어서 사용합니다. 올바른 세션을 선택했는지 확인하세요.",
+        "예: 세션 ID",
+    ),
+    "--system-prompt": (
+        "기본 지시문 교체",
+        "CLI의 기본 시스템 지시문을 교체합니다. 답변 동작이 크게 달라질 수 있는 전문가용 설정입니다.",
+        "예: 지시문 또는 파일 경로",
+    ),
+    "--append-system-prompt": (
+        "기본 지시문에 추가",
+        "CLI의 기본 시스템 지시문 뒤에 추가 지시를 붙입니다. 기존 안전 지침과 충돌하지 않게 작성하세요.",
+        "예: 추가 지시문",
+    ),
+    "--max-turns": (
+        "최대 작업 횟수",
+        "AI가 도구를 사용하며 반복할 수 있는 최대 횟수를 제한합니다. 과도한 실행을 막을 때 사용하세요.",
+        "예: 10",
+    ),
+    "--fallback-model": (
+        "대체 모델",
+        "기본 모델을 사용할 수 없을 때 대신 사용할 모델을 지정합니다.",
+        "예: sonnet",
+    ),
+    "--mcp-config": (
+        "MCP 연결 설정",
+        "CLI가 사용할 MCP 서버 설정 파일을 지정합니다. 신뢰할 수 있는 설정 파일만 사용하세요.",
+        "예: mcp.json",
+    ),
+    "--proxy": (
+        "프록시 서버",
+        "CLI의 외부 연결에 사용할 프록시 주소를 지정합니다. 조직 네트워크 정책에 맞는 주소만 사용하세요.",
+        "예: http://127.0.0.1:8080",
+    ),
+    "--screen-reader": (
+        "화면 읽기 지원",
+        "화면 읽기 프로그램에 맞춘 접근성 출력 모드를 사용합니다.",
+        "",
+    ),
+}
+CLI_VALUE_HINT_KOREAN: dict[str, str] = {
+    "<CONFIG_PROFILE>": "설정 프로파일 이름",
+    "<PROFILE>": "프로파일 이름",
+    "<MODEL>": "모델 이름",
+    "<PATH>": "파일 또는 폴더 경로",
+    "<DIR>": "폴더 경로",
+    "<DIRECTORY>": "폴더 경로",
+    "<CONFIG>": "설정값",
+    "<MODE>": "모드",
+    "<TOOLS>": "도구 목록",
+    "<FEATURE>": "기능 이름",
+    "<SESSION_ID>": "세션 ID",
+    "<FILE>": "파일 경로",
+    "<URL>": "주소",
+    "<NUMBER>": "숫자",
+}
+
+
+class PromptTextEdit(QPlainTextEdit):
+    sendRequested = Signal()
+    filesAttached = Signal(list)
+
+    MIN_HEIGHT = 44
+    MAX_HEIGHT = 132
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("aiChatMessageBody")
+        self._stored_placeholder = ""
+        self._placeholder_label = QLabel(self.viewport())
+        self._placeholder_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._placeholder_label.setStyleSheet("color: #98a2b3; background: transparent; padding: 0;")
+        self._placeholder_label.setWordWrap(True)
+        self.setAcceptDrops(True)
+        self.setMinimumHeight(self.MIN_HEIGHT)
+        self.setMaximumHeight(self.MAX_HEIGHT)
+        self.setFixedHeight(self.MIN_HEIGHT)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.textChanged.connect(self._sync_placeholder)
+        self.textChanged.connect(self._adjust_height)
+        self.cursorPositionChanged.connect(self._sync_placeholder)
+
+    def setPlaceholderText(self, text: str) -> None:  # noqa: N802 - Qt API
+        self._stored_placeholder = str(text or "")
+        self._placeholder_label.setText(self._stored_placeholder)
+        super().setPlaceholderText("")
+        self._layout_placeholder()
+        self._sync_placeholder()
+
+    def placeholderText(self) -> str:  # noqa: N802 - Qt API
+        return self._stored_placeholder
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._layout_placeholder()
+        self._adjust_height()
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                super().keyPressEvent(event)
+                return
+            event.accept()
+            if self.toPlainText().strip():
+                self.sendRequested.emit()
+            return
+        super().keyPressEvent(event)
+
+    def insertFromMimeData(self, source) -> None:  # noqa: N802 - Qt API
+        paths = self._paths_from_mime_data(source)
+        if paths:
+            self.filesAttached.emit(paths)
+            return
+        super().insertFromMimeData(source)
+
+    def dragEnterEvent(self, event) -> None:
+        if self._paths_from_mime_data(event.mimeData()):
+            event.acceptProposedAction()
+            return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event) -> None:
+        if self._paths_from_mime_data(event.mimeData()):
+            event.acceptProposedAction()
+            return
+        super().dragMoveEvent(event)
+
+    def dropEvent(self, event) -> None:
+        paths = self._paths_from_mime_data(event.mimeData())
+        if paths:
+            self.filesAttached.emit(paths)
+            event.acceptProposedAction()
+            return
+        super().dropEvent(event)
+
+    def focusInEvent(self, event) -> None:
+        super().focusInEvent(event)
+        self._sync_placeholder()
+
+    def focusOutEvent(self, event) -> None:
+        super().focusOutEvent(event)
+        self._sync_placeholder()
+
+    def _layout_placeholder(self) -> None:
+        margin = 8
+        self._placeholder_label.setGeometry(
+            margin,
+            margin,
+            max(40, self.viewport().width() - (margin * 2)),
+            24,
+        )
+
+    def _sync_placeholder(self) -> None:
+        self._placeholder_label.setVisible(not self.hasFocus() and not self.toPlainText())
+
+    def _adjust_height(self) -> None:
+        document = self.document()
+        document.setTextWidth(max(1, self.viewport().width()))
+        document_height = math.ceil(document.size().height())
+        line_height = max(1, self.fontMetrics().lineSpacing())
+        line_height_estimate = max(1, self.document().blockCount()) * line_height
+        target_height = max(self.MIN_HEIGHT, min(self.MAX_HEIGHT, max(document_height, line_height_estimate) + 14))
+        self.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            if target_height >= self.MAX_HEIGHT
+            else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        if self.height() != target_height:
+            self.setFixedHeight(target_height)
+            self.updateGeometry()
+
+    @staticmethod
+    def _paths_from_mime_data(mime_data) -> list[Path]:
+        paths: list[Path] = []
+        if mime_data.hasUrls():
+            for url in mime_data.urls():
+                if url.isLocalFile():
+                    path = Path(url.toLocalFile())
+                    if path.exists() and path.is_file():
+                        paths.append(path)
+        if not paths and mime_data.hasText():
+            for line in mime_data.text().splitlines():
+                candidate = line.strip().strip('"')
+                if not candidate:
+                    continue
+                path = Path(candidate)
+                if path.exists() and path.is_file():
+                    paths.append(path)
+        unique: list[Path] = []
+        seen: set[str] = set()
+        for path in paths:
+            key = str(path.resolve()).casefold()
+            if key not in seen:
+                unique.append(path)
+                seen.add(key)
+        return unique
+
+
+class AttachmentDropFrame(QFrame):
+    filesAttached = Signal(list)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+
+    def dragEnterEvent(self, event) -> None:
+        if PromptTextEdit._paths_from_mime_data(event.mimeData()):
+            event.acceptProposedAction()
+            return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event) -> None:
+        if PromptTextEdit._paths_from_mime_data(event.mimeData()):
+            event.acceptProposedAction()
+            return
+        super().dragMoveEvent(event)
+
+    def dropEvent(self, event) -> None:
+        paths = PromptTextEdit._paths_from_mime_data(event.mimeData())
+        if paths:
+            self.filesAttached.emit(paths)
+            event.acceptProposedAction()
+            return
+        super().dropEvent(event)
+
+
+class MessageBodyView(QWidget):
+    HEIGHT_PADDING = 6
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._document = QTextDocument(self)
+        self._body_width = 120
+        self._content_height = 1
+        self._plain_text = ""
+        self._wrap_mode = QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere
+        self.setObjectName("aiChatMessageBody")
+        policy = QSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum)
+        policy.setHeightForWidth(True)
+        self.setSizePolicy(policy)
+        self.setMouseTracking(True)
+        self._document.setDocumentMargin(0)
+        self._apply_document_width(self._body_width)
+
+    def set_message_body(self, body: str, *, rich_text: bool, width: int, text_color: str) -> None:
+        body_width = max(120, int(width))
+        self._body_width = body_width
+        self.setFixedWidth(body_width)
+        self._document.setDefaultStyleSheet(
+            f"""
+            body {{
+                color: {text_color};
+                font-size: 13px;
+                line-height: 145%;
+                margin: 0;
+                white-space: normal;
+            }}
+            pre {{
+                white-space: pre-wrap;
+                word-wrap: break-word;
+            }}
+            code {{
+                white-space: pre-wrap;
+                word-wrap: break-word;
+            }}
+            """
+        )
+        if rich_text:
+            self._document.setHtml(body)
+        else:
+            self._document.setPlainText(body)
+        self._apply_document_width(body_width)
+        self._plain_text = self._document.toPlainText()
+        self._content_height = self._document_height()
+        self.setMinimumHeight(self._content_height)
+        self.resize(body_width, self._content_height)
+        self.updateGeometry()
+        self.update()
+
+    def _document_height(self) -> int:
+        layout_height = self._document.documentLayout().documentSize().height()
+        document_height = self._document.size().height()
+        return max(1, math.ceil(max(layout_height, document_height)) + self.HEIGHT_PADDING)
+
+    def _apply_document_width(self, body_width: int) -> None:
+        document = self._document
+        option = document.defaultTextOption()
+        option.setWrapMode(self._wrap_mode)
+        document.setDefaultTextOption(option)
+        document.setDocumentMargin(0)
+        document.setPageSize(QSizeF(body_width, 1_000_000))
+        document.setTextWidth(body_width)
+
+    def hasHeightForWidth(self) -> bool:  # noqa: N802 - Qt API
+        return True
+
+    def heightForWidth(self, width: int) -> int:  # noqa: N802 - Qt API
+        body_width = max(120, int(width))
+        if body_width != self._body_width:
+            self._body_width = body_width
+            self._apply_document_width(body_width)
+            self._content_height = self._document_height()
+            self.setMinimumHeight(self._content_height)
+        return self._content_height
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - Qt API
+        return QSize(self._body_width, self._content_height)
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt API
+        return self.sizeHint()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        self._document.drawContents(painter, QRectF(0, 0, self._body_width, self._content_height))
+
+    def mouseMoveEvent(self, event) -> None:
+        self.setCursor(Qt.CursorShape.PointingHandCursor if self._anchor_at(event.position()) else Qt.CursorShape.IBeamCursor)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            href = self._anchor_at(event.position())
+            if href:
+                QDesktopServices.openUrl(QUrl(href))
+                event.accept()
+                return
+        super().mouseReleaseEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        self.unsetCursor()
+        super().leaveEvent(event)
+
+    def contextMenuEvent(self, event) -> None:
+        menu = QMenu(self)
+        copy_action = menu.addAction("본문 복사")
+        copy_action.triggered.connect(lambda: QApplication.clipboard().setText(self.toPlainText()))
+        menu.exec(event.globalPos())
+
+    def _anchor_at(self, position) -> str:
+        return self._document.documentLayout().anchorAt(position)
+
+    def toPlainText(self) -> str:  # noqa: N802 - QTextDocument compatibility for tests
+        return self._document.toPlainText()
+
+    def toHtml(self) -> str:  # noqa: N802 - QTextDocument compatibility for tests
+        return self._document.toHtml()
+
+    def document(self) -> QTextDocument:
+        return self._document
+
+    def wordWrapMode(self) -> QTextOption.WrapMode:  # noqa: N802 - QTextEdit compatibility for tests
+        return self._wrap_mode
 
 
 class AiChatTab(QWidget):
@@ -195,19 +744,43 @@ class AiChatTab(QWidget):
         self._process: QProcess | None = None
         self._status_process: QProcess | None = None
         self._help_process: QProcess | None = None
+        self._prompt_timeout_timer: QTimer | None = None
+        self._status_timeout_timer: QTimer | None = None
+        self._help_timeout_timer: QTimer | None = None
         thread_pool = getattr(self.state, "thread_pool", None) or QThreadPool.globalInstance()
         self._job_runner = JobRunner(thread_pool, self, default_error_title="AI 준비 실패")
+        injected_catalog_service = getattr(self.state, "ai_model_catalog_service", None)
+        self._model_catalog_service = injected_catalog_service or AiModelCatalogService(
+            self._model_catalog_cache_path()
+        )
+        self._model_catalogs: dict[str, AiModelCatalog] = {}
+        self._model_catalog_cancel_event = Event()
+        self._model_catalog_request_generation = 0
+        self._active_model_catalog_request: tuple[str, int] | None = None
+        self._pending_model_catalog_refreshes: dict[str, bool] = {}
         self._stdout_buffer = b""
+        self._cli_error_text = ""
         self._help_stdout = b""
         self._help_stderr = b""
         self._stderr_text = ""
         self._help_loaded_for = ""
         self._messages: list[dict[str, str]] = []
         self._attachments: list[Path] = []
-        self._active_context_status_text = ""
         self._context_collecting = False
         self._context_collection_cancelled = False
+        self._context_request_generation = 0
+        self._active_context_request: int | None = None
+        self._context_cancel_event: Event | None = None
+        self._login_preflight_active = False
         self._pending_prompt_payload: dict[str, Any] | None = None
+        self._assistant_registry = build_netops_tool_registry()
+        paths = getattr(self.state, "paths", None)
+        logs_dir = Path(getattr(paths, "logs_dir", getattr(paths, "root", Path.cwd())))
+        self._assistant_executor = ToolExecutor(
+            self.state,
+            self._assistant_registry,
+            audit_logger=AuditLogger(logs_dir / "netops_assistant_audit.jsonl"),
+        )
         self._stream_message_index: int | None = None
         self._last_render_width = 0
         self._render_deferred = False
@@ -215,6 +788,7 @@ class AiChatTab(QWidget):
         self._render_timer.setSingleShot(True)
         self._render_timer.setInterval(50)
         self._render_timer.timeout.connect(self._flush_transcript_render)
+        self._deferred_timers: list[QTimer] = []
         self._active_provider = self._ai_config().get("active_provider", "codex")
         self._build_ui()
         self._load_config_into_ui()
@@ -224,7 +798,7 @@ class AiChatTab(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(make_step_hint("개인 계정 CLI 채팅: 제공자와 모델을 선택하고 상태 확인 후 요청을 보냅니다."))
+        layout.addWidget(make_step_hint("NetOps 어시스턴트: 조회와 진단은 바로 실행하고, 변경 작업은 내용을 확인하고 승인한 뒤 실행합니다."))
 
         self.ai_chat_tabs = QTabWidget()
         layout.addWidget(self.ai_chat_tabs, 1)
@@ -232,54 +806,76 @@ class AiChatTab(QWidget):
         self.chat_page = QWidget()
         chat_page = self.chat_page
         chat_layout = QVBoxLayout(chat_page)
-        chat_layout.setContentsMargins(0, 8, 0, 0)
+        chat_layout.setContentsMargins(0, 8, 0, 8)
         chat_layout.setSpacing(10)
 
-        provider_group = QGroupBox("제공자 설정")
+        self.connection_page = QWidget()
+        connection_layout = QVBoxLayout(self.connection_page)
+        connection_layout.setContentsMargins(0, 8, 0, 0)
+        connection_layout.setSpacing(10)
+        connection_layout.addWidget(
+            make_step_hint("사용할 AI 서비스와 모델을 선택합니다. 일반적으로 자동 선택을 사용하면 됩니다.")
+        )
+
+        self.provider_group = QGroupBox("AI 연결 설정")
+        provider_group = self.provider_group
         provider_group.setObjectName("aiProviderSettingsGroup")
         provider_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         provider_layout = QGridLayout(provider_group)
-        provider_layout.setContentsMargins(8, 12, 8, 8)
-        provider_layout.setHorizontalSpacing(8)
-        provider_layout.setVerticalSpacing(6)
-        for column in range(4):
+        provider_layout.setContentsMargins(10, 14, 10, 10)
+        provider_layout.setHorizontalSpacing(10)
+        provider_layout.setVerticalSpacing(8)
+        for column in range(2):
             provider_layout.setColumnStretch(column, 1)
 
-        self.provider_combo = QComboBox()
+        self.provider_combo = NoWheelComboBox()
         for key in KNOWN_AI_PROVIDERS:
             self.provider_combo.addItem(PROVIDER_SPECS[key].display_name, key)
         self.command_edit = QLineEdit()
-        self.model_combo = QComboBox()
-        self.reasoning_combo = QComboBox()
-        self.reasoning_combo.addItem("CLI 기본값", "")
-        self.reasoning_combo.addItem("낮음", "low")
-        self.reasoning_combo.addItem("보통", "medium")
-        self.reasoning_combo.addItem("높음", "high")
-        self.reasoning_combo.addItem("엑스트라 하이", "xhigh")
-        self.speed_combo = QComboBox()
-        self.speed_combo.addItem("CLI 기본값", "")
-        self.speed_combo.addItem("보통(flex)", "flex")
-        self.speed_combo.addItem("빠름(fast)", "fast")
+        self.model_combo = NoWheelComboBox()
+        self.reasoning_combo = NoWheelComboBox()
+        self.reasoning_combo.addItem("자동 선택 (권장)", "")
+        self.speed_combo = NoWheelComboBox()
+        self.speed_combo.addItem("자동 선택 (권장)", "")
         self.extra_args_edit = QLineEdit()
         self.status_label = QLabel("미확인")
-        self.context_status_label = QLabel("이번 요청 약 0토큰 · 첨부 0개")
         self.status_label.setWordWrap(False)
-        self.context_status_label.setWordWrap(False)
-        self.context_status_label.setToolTip("입력 글자 수 기준의 대략적인 추정치입니다. 실제 한도는 선택한 CLI와 모델이 판단합니다.")
-        self.command_edit.setPlaceholderText("PATH에서 자동 탐지")
-        self.extra_args_edit.setPlaceholderText("예: --profile work")
+        self.model_detail_label = QLabel("모델 정보를 확인하는 중입니다.")
+        self.model_detail_label.setWordWrap(True)
+        self.model_detail_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.model_catalog_status_label = QLabel("저장된 모델 목록을 확인하는 중입니다.")
+        self.model_catalog_status_label.setWordWrap(True)
+        self.command_edit.setPlaceholderText("비워 두면 설치된 CLI를 자동으로 찾습니다")
+        self.extra_args_edit.setPlaceholderText("보통은 비워 두세요. 아래에서 필요한 기능을 선택할 수 있습니다.")
+        self.provider_combo.setToolTip("요청을 처리할 AI CLI 서비스를 선택합니다.")
+        self.model_combo.setToolTip("사용할 모델을 선택합니다. 자동 선택은 CLI의 기본 모델을 사용합니다.")
+        self.reasoning_combo.setToolTip("복잡한 작업일수록 높은 단계를 선택하면 더 깊게 검토합니다.")
+        self.speed_combo.setToolTip("빠른 응답은 지원되는 CLI에서 우선 처리 모드를 사용합니다.")
+        self.command_edit.setToolTip("CLI 실행 파일을 자동으로 찾지 못할 때만 직접 지정합니다.")
 
-        provider_layout.addWidget(self._provider_field("제공자", self.provider_combo), 0, 0)
-        provider_layout.addWidget(self._provider_field("모델", self.model_combo), 0, 1)
-        provider_layout.addWidget(self._provider_field("추론 강도", self.reasoning_combo), 0, 2)
-        provider_layout.addWidget(self._provider_field("속도", self.speed_combo), 0, 3)
-        provider_layout.addWidget(self._provider_field("명령", self.command_edit), 1, 0, 1, 2)
-        provider_layout.addWidget(self._provider_field("추가 인자", self.extra_args_edit), 1, 2, 1, 2)
-        provider_layout.addWidget(self._provider_field("컨텍스트", self.context_status_label), 2, 0, 1, 2)
-        provider_layout.addWidget(self._provider_field("상태", self.status_label), 2, 2, 1, 2)
-        chat_layout.addWidget(provider_group)
+        provider_layout.addWidget(self._provider_field("AI 서비스", self.provider_combo), 0, 0)
+        provider_layout.addWidget(self._provider_field("연결 상태", self.status_label), 0, 1)
+        provider_layout.addWidget(self._provider_field("사용 모델", self.model_combo), 1, 0, 1, 2)
+        provider_layout.addWidget(self._provider_field("답변 사고 깊이", self.reasoning_combo), 2, 0)
+        provider_layout.addWidget(self._provider_field("응답 속도", self.speed_combo), 2, 1)
+        provider_layout.addWidget(self._provider_field("CLI 실행 파일", self.command_edit), 3, 0, 1, 2)
+        provider_layout.addWidget(self._provider_field("모델 세부 정보", self.model_detail_label), 4, 0, 1, 2)
+        provider_layout.addWidget(self._provider_field("모델 목록 상태", self.model_catalog_status_label), 5, 0, 1, 2)
+        connection_layout.addWidget(provider_group)
+
+        catalog_actions = QHBoxLayout()
+        catalog_actions.setContentsMargins(4, 0, 4, 0)
+        catalog_actions.setSpacing(8)
+        self.model_refresh_button = make_action_button("모델 목록 새로고침", ActionKind.REFRESH)
+        self.custom_model_button = make_action_button("모델 ID 직접 입력", ActionKind.ADD)
+        catalog_actions.addWidget(self.model_refresh_button)
+        catalog_actions.addWidget(self.custom_model_button)
+        catalog_actions.addStretch(1)
+        connection_layout.addLayout(catalog_actions)
 
         provider_actions = QHBoxLayout()
+        provider_actions.setContentsMargins(4, 0, 4, 0)
+        provider_actions.setSpacing(8)
         self.check_button = make_action_button("상태 확인", ActionKind.REFRESH)
         self.login_button = make_action_button("로그인 터미널", ActionKind.START)
         self.save_button = make_action_button("설정 저장", ActionKind.SAVE)
@@ -287,11 +883,13 @@ class AiChatTab(QWidget):
         provider_actions.addWidget(self.login_button)
         provider_actions.addWidget(self.save_button)
         provider_actions.addStretch(1)
-        chat_layout.addLayout(provider_actions)
+        connection_layout.addLayout(provider_actions)
+        connection_layout.addStretch(1)
 
         self.transcript_scroll = QScrollArea()
         self.transcript_scroll.setObjectName("aiChatTranscript")
         self.transcript_scroll.setWidgetResizable(True)
+        self.transcript_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.transcript_scroll.setMinimumHeight(180)
         self.transcript_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.transcript_scroll.setStyleSheet(
@@ -306,7 +904,7 @@ class AiChatTab(QWidget):
         )
         self.message_container = QWidget()
         self.message_container.setObjectName("aiChatMessageContainer")
-        self.message_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.message_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         self.message_layout = QVBoxLayout(self.message_container)
         self.message_layout.setContentsMargins(12, 12, 12, 12)
         self.message_layout.setSpacing(8)
@@ -314,75 +912,137 @@ class AiChatTab(QWidget):
         self._render_transcript()
         chat_layout.addWidget(self.transcript_scroll, 1)
 
-        attachment_group = QGroupBox("첨부 파일")
-        attachment_layout = QVBoxLayout(attachment_group)
-        attachment_layout.setContentsMargins(2, 10, 2, 2)
-        attachment_layout.setSpacing(6)
-        self.attachment_list = QListWidget()
-        self.attachment_list.setMaximumHeight(58)
-        self.attachment_list.setAlternatingRowColors(True)
-        self.attachment_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        attachment_layout.addWidget(self.attachment_list)
+        composer_frame = AttachmentDropFrame()
+        composer_frame.setObjectName("assistantComposer")
+        composer_frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        composer_frame.setStyleSheet(
+            """
+            QFrame#assistantComposer {
+                background: #ffffff;
+                border: 1px solid #d0d5dd;
+                border-radius: 12px;
+            }
+            QListWidget#attachmentPreviewList {
+                background: transparent;
+                border: none;
+                padding: 0;
+            }
+            QListWidget#attachmentPreviewList::item {
+                border: 1px solid #e4e7ec;
+                border-radius: 8px;
+                padding: 4px;
+                margin-right: 6px;
+                background: #f9fafb;
+            }
+            QListWidget#attachmentPreviewList::item:selected {
+                background: #e8f2ff;
+                border-color: #84c5ff;
+            }
+            QPlainTextEdit#assistantPromptEdit {
+                background: transparent;
+                border: none;
+                padding: 5px 6px;
+                color: #111827;
+            }
+            """
+        )
+        composer_layout = QVBoxLayout(composer_frame)
+        composer_layout.setContentsMargins(10, 8, 10, 8)
+        composer_layout.setSpacing(6)
 
-        attachment_actions = QHBoxLayout()
+        self.attachment_list = QListWidget()
+        self.attachment_list.setObjectName("attachmentPreviewList")
+        self.attachment_list.setMaximumHeight(66)
+        self.attachment_list.setIconSize(QSize(64, 42))
+        self.attachment_list.setViewMode(QListView.ViewMode.IconMode)
+        self.attachment_list.setMovement(QListView.Movement.Static)
+        self.attachment_list.setResizeMode(QListView.ResizeMode.Adjust)
+        self.attachment_list.setFlow(QListView.Flow.LeftToRight)
+        self.attachment_list.setWrapping(False)
+        self.attachment_list.setSpacing(6)
+        self.attachment_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.attachment_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.attachment_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.attachment_list.setVisible(False)
+        composer_layout.addWidget(self.attachment_list)
+
+        self.prompt_edit = PromptTextEdit()
+        self.prompt_edit.setObjectName("assistantPromptEdit")
+        self.prompt_edit.setPlaceholderText("NetOps 작업을 자연어로 입력하세요...")
+        self.prompt_edit.setToolTip("Enter로 보내고 Shift+Enter로 줄을 바꿉니다. 파일은 붙여넣거나 끌어놓을 수 있습니다.")
+        composer_layout.addWidget(self.prompt_edit)
+
+        composer_actions = QHBoxLayout()
+        composer_actions.setContentsMargins(0, 0, 0, 0)
+        composer_actions.setSpacing(8)
         self.attach_button = make_action_button("파일 첨부", ActionKind.ADD)
         self.remove_attachment_button = make_action_button("선택 제거", ActionKind.DELETE, enabled=False)
         self.clear_attachments_button = make_action_button("전체 비우기", ActionKind.DELETE, enabled=False)
-        attachment_actions.addWidget(self.attach_button)
-        attachment_actions.addWidget(self.remove_attachment_button)
-        attachment_actions.addWidget(self.clear_attachments_button)
-        attachment_actions.addStretch(1)
-        attachment_layout.addLayout(attachment_actions)
-        chat_layout.addWidget(attachment_group)
-
-        self.prompt_edit = QPlainTextEdit()
-        self.prompt_edit.setPlaceholderText("선택한 CLI 계정으로 보낼 요청...")
-        self.prompt_edit.setMinimumHeight(72)
-        self.prompt_edit.setMaximumHeight(130)
-        chat_layout.addWidget(self.prompt_edit)
-
-        chat_actions = QHBoxLayout()
         self.send_button = make_action_button("보내기", ActionKind.START)
         self.stop_button = make_action_button("중지", ActionKind.STOP, enabled=False)
         self.export_button = make_action_button("내보내기", ActionKind.EXPORT)
-        self.clear_button = make_action_button("비우기", ActionKind.DELETE)
-        chat_actions.addWidget(self.send_button)
-        chat_actions.addWidget(self.stop_button)
-        chat_actions.addWidget(self.export_button)
-        chat_actions.addWidget(self.clear_button)
-        chat_actions.addStretch(1)
-        chat_layout.addLayout(chat_actions)
+        self.clear_button = make_action_button("대화 지우기", ActionKind.DELETE)
+        composer_actions.addWidget(self.attach_button)
+        composer_actions.addWidget(self.remove_attachment_button)
+        composer_actions.addWidget(self.clear_attachments_button)
+        composer_actions.addStretch(1)
+        composer_actions.addWidget(self.send_button)
+        composer_actions.addWidget(self.stop_button)
+        composer_actions.addWidget(self.export_button)
+        composer_actions.addWidget(self.clear_button)
+        composer_layout.addLayout(composer_actions)
+        chat_layout.addWidget(composer_frame)
 
         self.ai_chat_tabs.addTab(chat_page, "채팅")
+        self.ai_chat_tabs.addTab(self.connection_page, "연결 설정")
 
         options_page = QWidget()
         options_layout = QVBoxLayout(options_page)
         options_layout.setContentsMargins(0, 8, 0, 0)
         options_layout.setSpacing(10)
 
+        option_hint = QLabel(
+            "대부분은 설정할 필요가 없습니다. 필요한 기능을 한국어 설명으로 확인한 뒤 선택하세요. "
+            "권한을 넓히거나 승인 절차를 우회하는 항목은 표시하지 않습니다."
+        )
+        option_hint.setWordWrap(True)
+        option_hint.setStyleSheet("color: #344054; background: #f8fafc; border-left: 3px solid #cbd5e1; padding: 8px;")
+        options_layout.addWidget(option_hint)
+
+        applied_group = QGroupBox("현재 적용된 고급 옵션")
+        applied_form = QFormLayout(applied_group)
+        applied_form.setContentsMargins(10, 14, 10, 10)
+        applied_form.setHorizontalSpacing(10)
+        applied_form.addRow("직접 입력", self.extra_args_edit)
+        options_layout.addWidget(applied_group)
+
         help_actions = QHBoxLayout()
-        self.help_refresh_button = make_action_button("옵션 새로고침", ActionKind.REFRESH)
-        self.help_status_label = QLabel("로그인 확인 후 CLI --help에서 옵션을 불러옵니다.")
+        self.help_refresh_button = make_action_button("사용 가능한 기능 불러오기", ActionKind.REFRESH)
+        self.help_status_label = QLabel("연결 상태를 확인하면 선택 가능한 기능을 자동으로 불러옵니다.")
         self.help_status_label.setWordWrap(True)
         help_actions.addWidget(self.help_refresh_button)
         help_actions.addWidget(self.help_status_label, 1)
         options_layout.addLayout(help_actions)
 
-        option_group = QGroupBox("추가 인자 선택")
+        option_group = QGroupBox("기능 선택")
         option_form = QFormLayout(option_group)
-        option_form.setContentsMargins(2, 10, 2, 2)
-        option_form.setHorizontalSpacing(8)
-        option_form.setVerticalSpacing(6)
+        option_form.setContentsMargins(10, 14, 10, 10)
+        option_form.setHorizontalSpacing(10)
+        option_form.setVerticalSpacing(8)
 
-        self.option_combo = QComboBox()
+        self.option_combo = NoWheelComboBox()
         self.option_value_edit = QLineEdit()
         self.option_value_edit.setPlaceholderText("값이 필요한 옵션이면 입력")
-        self.option_description = QTextEdit()
-        self.option_description.setReadOnly(True)
-        self.option_description.setMaximumHeight(120)
+        self.option_description = QLabel()
+        self.option_description.setObjectName("assistantOptionDescription")
+        self.option_description.setWordWrap(True)
+        self.option_description.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        self.option_description.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.option_description.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.option_description.setMinimumHeight(160)
         self.option_description.setStyleSheet(
             """
-            QTextEdit {
+            QLabel#assistantOptionDescription {
                 background: #ffffff;
                 border: 1px solid #cbd5e1;
                 border-radius: 6px;
@@ -390,41 +1050,53 @@ class AiChatTab(QWidget):
             }
             """
         )
-        option_form.addRow("옵션", self.option_combo)
-        option_form.addRow("값", self.option_value_edit)
-        option_form.addRow("설명", self.option_description)
+        option_form.addRow("사용할 기능", self.option_combo)
+        option_form.addRow("설정값", self.option_value_edit)
+        option_form.addRow("설명 및 주의사항", self.option_description)
         options_layout.addWidget(option_group)
 
         option_actions = QHBoxLayout()
-        self.add_option_button = make_action_button("추가 인자에 붙이기", ActionKind.ADD)
-        self.remove_option_button = make_action_button("선택 옵션 제거", ActionKind.DELETE)
+        self.add_option_button = make_action_button("선택한 기능 적용", ActionKind.ADD)
+        self.remove_option_button = make_action_button("선택한 기능 해제", ActionKind.DELETE)
         option_actions.addWidget(self.add_option_button)
         option_actions.addWidget(self.remove_option_button)
         option_actions.addStretch(1)
         options_layout.addLayout(option_actions)
 
+        self.raw_help_group = QGroupBox("CLI 도움말 원문 보기")
+        self.raw_help_group.setCheckable(True)
+        self.raw_help_group.setChecked(False)
+        self.raw_help_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
+        raw_help_layout = QVBoxLayout(self.raw_help_group)
+        raw_help_layout.setContentsMargins(10, 12, 10, 10)
         self.raw_help_edit = QPlainTextEdit()
         self.raw_help_edit.setReadOnly(True)
-        self.raw_help_edit.setPlaceholderText("CLI --help 원문이 여기에 표시됩니다.")
+        self.raw_help_edit.setPlaceholderText("CLI가 제공한 원문 도움말이 여기에 표시됩니다.")
         self.raw_help_edit.setMinimumHeight(120)
-        options_layout.addWidget(self.raw_help_edit, 1)
+        self.raw_help_edit.setVisible(False)
+        raw_help_layout.addWidget(self.raw_help_edit)
+        options_layout.addWidget(self.raw_help_group)
+        options_layout.addStretch(1)
 
-        self.ai_chat_tabs.addTab(options_page, "옵션 선택")
+        self.ai_chat_tabs.addTab(options_page, "고급 옵션")
         self.ai_chat_tabs.currentChanged.connect(self._handle_ai_chat_tab_changed)
 
         self.provider_combo.currentIndexChanged.connect(self._handle_provider_changed)
         self.command_edit.editingFinished.connect(self.save_current_config)
-        self.model_combo.currentIndexChanged.connect(self.save_current_config)
-        self.model_combo.currentIndexChanged.connect(self._update_context_status)
+        self.model_combo.currentIndexChanged.connect(self._handle_model_changed)
         self.reasoning_combo.currentIndexChanged.connect(self.save_current_config)
         self.speed_combo.currentIndexChanged.connect(self.save_current_config)
         self.extra_args_edit.editingFinished.connect(self.save_current_config)
-        self.prompt_edit.textChanged.connect(self._update_context_status)
+        self.prompt_edit.sendRequested.connect(self.send_prompt)
+        self.prompt_edit.filesAttached.connect(self.attach_paths)
+        composer_frame.filesAttached.connect(self.attach_paths)
         self.attachment_list.itemSelectionChanged.connect(self._update_attachment_buttons)
         self.attach_button.clicked.connect(self.attach_files)
         self.remove_attachment_button.clicked.connect(self.remove_selected_attachments)
         self.clear_attachments_button.clicked.connect(self.clear_attachments)
         self.check_button.clicked.connect(lambda _checked=False: self.refresh_provider_status(allow_repair=True))
+        self.model_refresh_button.clicked.connect(self._refresh_model_catalog_manually)
+        self.custom_model_button.clicked.connect(self._enter_custom_model)
         self.login_button.clicked.connect(self.open_provider_login)
         self.save_button.clicked.connect(self.save_current_config)
         self.send_button.clicked.connect(self.send_prompt)
@@ -432,10 +1104,12 @@ class AiChatTab(QWidget):
         self.export_button.clicked.connect(self.export_session)
         self.clear_button.clicked.connect(self.clear_transcript)
         self.help_refresh_button.clicked.connect(self.refresh_cli_help_options)
+        self.raw_help_group.toggled.connect(self._set_raw_help_visible)
         self.option_combo.currentIndexChanged.connect(self._handle_help_option_changed)
         self.add_option_button.clicked.connect(self.add_selected_extra_arg)
         self.remove_option_button.clicked.connect(self.remove_selected_extra_arg)
         self._populate_help_options("")
+        self._update_attachment_buttons()
 
     @staticmethod
     def _provider_field(label_text: str, widget: QWidget) -> QWidget:
@@ -454,52 +1128,399 @@ class AiChatTab(QWidget):
         if isinstance(widget, (QComboBox, QLineEdit)):
             widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         elif isinstance(widget, QLabel):
-            widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            vertical_policy = QSizePolicy.Policy.Preferred if widget.wordWrap() else QSizePolicy.Policy.Fixed
+            widget.setSizePolicy(QSizePolicy.Policy.Expanding, vertical_policy)
 
         container_layout.addWidget(label)
         container_layout.addWidget(widget)
         return container
 
+    def _set_raw_help_visible(self, visible: bool) -> None:
+        self.raw_help_edit.setVisible(visible)
+        self.raw_help_group.setTitle("CLI 도움말 원문 숨기기" if visible else "CLI 도움말 원문 보기")
+        self.raw_help_group.updateGeometry()
+
     def _ai_config(self) -> dict[str, Any]:
         return normalize_ai_chat_config(self.state.app_config.get("ai_chat", {}))
 
+    def _model_catalog_cache_path(self) -> Path:
+        paths = getattr(self.state, "paths", None)
+        explicit_path = getattr(paths, "ai_model_catalog_cache", None)
+        if explicit_path:
+            return Path(explicit_path)
+        config_dir = getattr(paths, "config_dir", None)
+        if config_dir:
+            return Path(config_dir) / "ai_model_catalog_cache.json"
+        root = Path(getattr(paths, "root", Path.cwd()))
+        return root / "config" / "ai_model_catalog_cache.json"
+
     def _load_config_into_ui(self) -> None:
+        for key in KNOWN_AI_PROVIDERS:
+            config = self._providers.get(key, AiProviderConfig(key=key))
+            self._model_catalogs[key] = self._model_catalog_service.load_catalog(key, config.model)
         self._set_combo_data(self.provider_combo, self._active_provider)
         self._load_provider_fields(self.current_provider_key())
 
-    def _handle_provider_changed(self) -> None:
+    def _handle_provider_changed(self, _index: int = -1) -> None:
         self._active_provider = self.current_provider_key()
         self._reset_help_options()
         self._load_provider_fields(self._active_provider)
         self.save_current_config()
         self.refresh_provider_status()
+        if self.ai_chat_tabs.currentWidget() is self.connection_page:
+            self._ensure_model_catalog_fresh(self._active_provider)
 
     def _load_provider_fields(self, key: str) -> None:
         config = self._providers.get(key, AiProviderConfig(key=key))
         self.command_edit.setText(config.command_path)
         self._populate_model_combo(key, config.model)
-        self.reasoning_combo.blockSignals(True)
-        self.speed_combo.blockSignals(True)
-        self._set_combo_data(self.reasoning_combo, config.reasoning_effort if key == "codex" else "")
-        self._set_combo_data(self.speed_combo, config.speed if key == "codex" else "")
-        self.reasoning_combo.blockSignals(False)
-        self.speed_combo.blockSignals(False)
         self._sync_codex_controls()
         self.extra_args_edit.setText(" ".join(config.extra_args))
-        self._update_context_status()
 
     def _populate_model_combo(self, key: str, current_model: str = "") -> None:
+        selected_model = current_model.strip()
+        catalog = self._model_catalogs.get(key)
+        if catalog is None:
+            catalog = self._model_catalog_service.load_catalog(key, selected_model)
+            self._model_catalogs[key] = catalog
+        if selected_model and selected_model not in {model.model for model in catalog.models}:
+            catalog.models.append(
+                AiModelDescriptor(
+                    id=selected_model,
+                    model=selected_model,
+                    display_name=selected_model,
+                    source="custom",
+                )
+            )
+
         self.model_combo.blockSignals(True)
         self.model_combo.clear()
-        for label, model in model_options_for_provider(key, current_model):
-            self.model_combo.addItem(label, model)
-        self._set_combo_data(self.model_combo, current_model.strip())
+        default_descriptor = next((model for model in catalog.models if model.is_default and not model.hidden), None)
+        auto_label = "자동 선택"
+        if default_descriptor is not None:
+            auto_label = f"자동 선택 (현재 기본: {default_descriptor.display_name})"
+        self.model_combo.addItem(auto_label, "")
+        self.model_combo.setItemData(
+            0,
+            "CLI가 현재 계정에 지정한 기본 모델을 사용합니다.",
+            Qt.ItemDataRole.ToolTipRole,
+        )
+
+        seen: set[str] = set()
+        for descriptor in catalog.models:
+            if descriptor.hidden or descriptor.model in seen:
+                continue
+            seen.add(descriptor.model)
+            if descriptor.source == "custom":
+                prefix = "현재 설정" if descriptor.model == selected_model else "직접 입력"
+                label = f"{prefix}: {descriptor.model} (목록에서 확인되지 않음)"
+                tooltip = "저장된 모델 ID를 유지합니다. 현재 계정 지원 여부는 확인되지 않았습니다."
+            else:
+                label = descriptor.display_name or descriptor.model
+                tooltip = f"실제 CLI 모델 ID: {descriptor.model}"
+            self.model_combo.addItem(label, descriptor.model)
+            index = self.model_combo.count() - 1
+            self.model_combo.setItemData(index, descriptor, MODEL_DESCRIPTOR_ROLE)
+            self.model_combo.setItemData(index, tooltip, Qt.ItemDataRole.ToolTipRole)
+
+        self._set_combo_data(self.model_combo, selected_model)
         self.model_combo.blockSignals(False)
+        config = self._providers.get(key, AiProviderConfig(key=key))
+        normalized_reasoning, normalized_speed = self._rebuild_model_dependent_controls(
+            key,
+            self._effective_model_descriptor(),
+            config.reasoning_effort,
+            config.speed,
+        )
+        options_changed = (
+            config.reasoning_effort != normalized_reasoning
+            or config.speed != normalized_speed
+        )
+        if options_changed:
+            config.reasoning_effort = normalized_reasoning
+            config.speed = normalized_speed
+            self._providers[key] = config
+            self._persist_ai_config()
+        self._update_model_detail()
+        self._update_model_catalog_status(catalog)
+
+    def _handle_model_changed(self, _index: int = -1) -> None:
+        key = self.current_provider_key()
+        existing = self._providers.get(key, AiProviderConfig(key=key))
+        normalized_reasoning, normalized_speed = self._rebuild_model_dependent_controls(
+            key,
+            self._effective_model_descriptor(),
+            existing.reasoning_effort,
+            existing.speed,
+        )
+        existing.reasoning_effort = normalized_reasoning
+        existing.speed = normalized_speed
+        self._providers[key] = existing
+        self._update_model_detail()
+        self.save_current_config()
+
+    def _current_model_descriptor(self) -> AiModelDescriptor | None:
+        descriptor = self.model_combo.currentData(MODEL_DESCRIPTOR_ROLE)
+        return descriptor if isinstance(descriptor, AiModelDescriptor) else None
+
+    def _effective_model_descriptor(self) -> AiModelDescriptor | None:
+        descriptor = self._current_model_descriptor()
+        if descriptor is not None:
+            return descriptor
+        catalog = self._model_catalogs.get(self.current_provider_key())
+        return next(
+            (model for model in (catalog.models if catalog else []) if model.is_default and not model.hidden),
+            None,
+        )
+
+    def _rebuild_model_dependent_controls(
+        self,
+        key: str,
+        descriptor: AiModelDescriptor | None,
+        current_reasoning: str,
+        current_speed: str,
+    ) -> tuple[str, str]:
+        self.reasoning_combo.blockSignals(True)
+        self.reasoning_combo.clear()
+        self.reasoning_combo.addItem("자동 선택 (권장)", "")
+
+        if key == "codex":
+            if descriptor is None or descriptor.source in {"custom", "fallback"}:
+                supported_reasoning = list(REASONING_EFFORT_ORDER)
+            else:
+                supported_reasoning = [
+                    value
+                    for value in descriptor.supported_reasoning_efforts
+                    if value in REASONING_EFFORT_LABELS
+                ]
+            for value in supported_reasoning:
+                self.reasoning_combo.addItem(REASONING_EFFORT_LABELS[value], value)
+            self._set_combo_data(
+                self.reasoning_combo,
+                current_reasoning if self.reasoning_combo.findData(current_reasoning) >= 0 else "",
+            )
+        self.reasoning_combo.blockSignals(False)
+        normalized_reasoning = str(self.reasoning_combo.currentData() or "") if key == "codex" else ""
+
+        self.speed_combo.blockSignals(True)
+        self.speed_combo.clear()
+        self.speed_combo.addItem("자동 선택 (권장)", "")
+        if key == "codex":
+            support_unknown = descriptor is None or descriptor.source in {"custom", "fallback"}
+            if support_unknown or "fast" in descriptor.speed_tiers:
+                self.speed_combo.addItem(SPEED_LABELS["fast"], "fast")
+            if current_speed == "flex":
+                self.speed_combo.addItem(SPEED_LABELS["flex"], "flex")
+            self._set_combo_data(
+                self.speed_combo,
+                current_speed if self.speed_combo.findData(current_speed) >= 0 else "",
+            )
+        self.speed_combo.blockSignals(False)
+        normalized_speed = str(self.speed_combo.currentData() or "") if key == "codex" else ""
+        return normalized_reasoning, normalized_speed
+
+    def _update_model_detail(self) -> None:
+        descriptor = self._effective_model_descriptor()
+        if descriptor is None:
+            self.model_detail_label.setText("자동 선택을 사용합니다. 모델별 지원 정보는 목록을 갱신하면 표시됩니다.")
+            return
+
+        catalog = self._model_catalogs.get(self.current_provider_key())
+        catalog_source = catalog.source if catalog is not None else "fallback"
+        support_unknown = descriptor.source in {"custom", "fallback"} or catalog_source == "fallback"
+        if support_unknown:
+            availability = (
+                "지원 여부 미확인"
+                if descriptor.source == "custom"
+                else "내장 목록 항목 · 계정 지원 여부 미확인"
+            )
+            self.model_detail_label.setText(
+                f"{availability} · 입력: 지원 여부 미확인 · "
+                "추론 단계: 지원 여부 미확인 · 빠른 응답: 지원 여부 미확인"
+            )
+            return
+
+        availability = (
+            "마지막 확인 기준 현재 계정에서 사용 가능"
+            if catalog_source == "cache"
+            else "현재 계정에서 사용 가능"
+        )
+        modality_labels = ["텍스트" if value == "text" else "이미지" for value in descriptor.input_modalities]
+        reasoning_labels = [
+            REASONING_EFFORT_LABELS[value].split(" (")[0]
+            for value in descriptor.supported_reasoning_efforts
+            if value in REASONING_EFFORT_LABELS
+        ]
+        reasoning_text = ", ".join(reasoning_labels) if reasoning_labels else "지원 안 함"
+        speed_text = "지원" if "fast" in descriptor.speed_tiers else "미지원"
+        self.model_detail_label.setText(
+            f"{availability} · 입력: {', '.join(modality_labels) or '미확인'} · "
+            f"추론 단계: {reasoning_text} · 빠른 응답: {speed_text}"
+        )
+
+    def _update_model_catalog_status(self, catalog: AiModelCatalog, activity: str = "") -> None:
+        source_labels = {
+            "live": "실시간 모델 목록",
+            "cache": "저장된 모델 목록",
+            "fallback": "내장 대체 목록",
+            "custom": "직접 입력",
+        }
+        parts = [activity] if activity else []
+        parts.append(source_labels.get(catalog.source, "모델 목록"))
+        if catalog.fetched_at:
+            fetched = QDateTime.fromString(catalog.fetched_at, Qt.DateFormat.ISODate)
+            if fetched.isValid():
+                parts.append(f"마지막 갱신 {fetched.toLocalTime().toString('yyyy-MM-dd HH:mm')}")
+        if catalog.cli_version:
+            parts.append(catalog.cli_version)
+        if catalog.provider_key != "codex" and catalog.source == "fallback":
+            parts.append("실시간 조회는 아직 지원하지 않음")
+        self.model_catalog_status_label.setText(" · ".join(parts))
+        self.model_catalog_status_label.setToolTip("")
+
+    def _enter_custom_model(self) -> None:
+        current_model = str(self.model_combo.currentData() or "")
+        model_id, accepted = QInputDialog.getText(
+            self,
+            "모델 ID 직접 입력",
+            "CLI에 전달할 모델 ID를 입력하세요.",
+            QLineEdit.EchoMode.Normal,
+            current_model,
+        )
+        if not accepted:
+            return
+        model_id = str(model_id)
+        if not CUSTOM_MODEL_ID_RE.fullmatch(model_id):
+            QMessageBox.warning(
+                self,
+                "모델 ID 확인",
+                "1~128자의 영문, 숫자, 마침표, 밑줄, 콜론, 슬래시, 하이픈만 사용할 수 있습니다. "
+                "공백과 제어문자는 사용할 수 없습니다.",
+            )
+            return
+
+        key = self.current_provider_key()
+        catalog = self._model_catalogs.get(key) or self._model_catalog_service.fallback_catalog(key)
+        if model_id not in {model.model for model in catalog.models}:
+            catalog.models.append(
+                AiModelDescriptor(
+                    id=model_id,
+                    model=model_id,
+                    display_name=model_id,
+                    source="custom",
+                )
+            )
+        self._model_catalogs[key] = catalog
+        self._populate_model_combo(key, model_id)
+        self._handle_model_changed()
 
     def _sync_codex_controls(self) -> None:
         is_codex = self.current_provider_key() == "codex"
         self.reasoning_combo.setEnabled(is_codex)
         self.speed_combo.setEnabled(is_codex)
+
+    def _refresh_model_catalog_manually(self) -> None:
+        self._ensure_model_catalog_fresh(self.current_provider_key(), force=True)
+
+    def _ensure_model_catalog_fresh(self, provider_key: str | None = None, *, force: bool = False) -> None:
+        key = provider_key or self.current_provider_key()
+        if key not in KNOWN_AI_PROVIDERS:
+            return
+        config = (
+            self.current_provider_config()
+            if key == self.current_provider_key()
+            else self._providers.get(key, AiProviderConfig(key=key))
+        )
+        catalog = self._model_catalogs.get(key) or self._model_catalog_service.load_catalog(key, config.model)
+        self._model_catalogs[key] = catalog
+        if self._active_model_catalog_request is not None:
+            active_key, _active_generation = self._active_model_catalog_request
+            if active_key != key or force:
+                self._pending_model_catalog_refreshes[key] = (
+                    self._pending_model_catalog_refreshes.get(key, False) or force
+                )
+            if key == self.current_provider_key():
+                self._update_model_catalog_status(catalog, "모델 목록을 갱신하는 중입니다.")
+            return
+
+        self._pending_model_catalog_refreshes.pop(key, None)
+        if key != "codex":
+            catalog = self._model_catalog_service.fallback_catalog(key, config.model)
+            self._model_catalogs[key] = catalog
+            if key == self.current_provider_key():
+                self._populate_model_combo(key, config.model)
+            return
+
+        health = inspect_provider(config)
+        if not health.installed:
+            if key == self.current_provider_key():
+                self._update_model_catalog_status(catalog, "Codex CLI를 찾지 못해 기존 목록을 사용합니다.")
+            return
+
+        self._model_catalog_request_generation += 1
+        generation = self._model_catalog_request_generation
+        self._active_model_catalog_request = (key, generation)
+        self._model_catalog_cancel_event = Event()
+        if key == self.current_provider_key():
+            self.model_refresh_button.setEnabled(False)
+            self._update_model_catalog_status(catalog, "현재 계정에서 사용 가능한 모델을 확인하는 중입니다.")
+
+        self._job_runner.start(
+            self._model_catalog_service.refresh,
+            config,
+            catalog,
+            force,
+            self._model_catalog_cancel_event,
+            on_result=lambda result, key=key, generation=generation: self._accept_model_catalog_result(
+                key, generation, result
+            ),
+            on_error=lambda message, key=key, generation=generation: self._handle_model_catalog_error(
+                key, generation, message
+            ),
+            on_finished=lambda key=key, generation=generation: self._finish_model_catalog_refresh(
+                key, generation
+            ),
+        )
+
+    def _accept_model_catalog_result(self, key: str, generation: int, result: object) -> None:
+        if not isinstance(result, AiModelCatalog):
+            self._handle_model_catalog_error(key, generation, "모델 목록 응답 형식이 올바르지 않습니다.")
+            return
+        self._model_catalogs[key] = result
+        if self._active_model_catalog_request != (key, generation) or key != self.current_provider_key():
+            return
+        current_model = self._providers.get(key, AiProviderConfig(key=key)).model
+        self._populate_model_combo(key, current_model)
+
+    def _handle_model_catalog_error(self, key: str, generation: int, message: str) -> None:
+        if self._active_model_catalog_request != (key, generation) or key != self.current_provider_key():
+            return
+        catalog = self._model_catalogs.get(key) or self._model_catalog_service.fallback_catalog(key)
+        source = "기존 목록을 유지합니다." if catalog and catalog.models else "자동 선택을 계속 사용할 수 있습니다."
+        self._update_model_catalog_status(catalog, f"모델 목록 갱신 실패 · {source}")
+        self.model_catalog_status_label.setToolTip(message)
+
+    def _finish_model_catalog_refresh(self, key: str, generation: int) -> None:
+        if self._active_model_catalog_request == (key, generation):
+            self._active_model_catalog_request = None
+        if self._active_model_catalog_request is None:
+            try:
+                self.model_refresh_button.setEnabled(self._process is None and not self._context_collecting)
+            except RuntimeError:
+                return
+            self._retry_pending_model_catalog_refresh()
+
+    def _retry_pending_model_catalog_refresh(self) -> None:
+        if self._active_model_catalog_request is not None or not self._pending_model_catalog_refreshes:
+            return
+        key = self.current_provider_key()
+        if key not in self._pending_model_catalog_refreshes:
+            return
+        force = self._pending_model_catalog_refreshes.pop(key)
+        self._run_later(
+            0,
+            lambda key=key, force=force: self._ensure_model_catalog_fresh(key, force=force),
+        )
 
     def current_provider_key(self) -> str:
         return str(self.provider_combo.currentData() or "codex")
@@ -513,8 +1534,16 @@ class AiChatTab(QWidget):
             enabled=True,
             command_path=self.command_edit.text().strip(),
             model=str(self.model_combo.currentData() or ""),
-            reasoning_effort=str(self.reasoning_combo.currentData() or "") if key == "codex" else "",
-            speed=str(self.speed_combo.currentData() or "") if key == "codex" else "",
+            reasoning_effort=(
+                str(self.reasoning_combo.currentData() or "")
+                if key == "codex" and str(self.reasoning_combo.currentData() or "") in {"", *REASONING_EFFORT_ORDER}
+                else ""
+            ),
+            speed=(
+                str(self.speed_combo.currentData() or "")
+                if key == "codex" and str(self.speed_combo.currentData() or "") in {"", "fast", "flex"}
+                else ""
+            ),
             role_prompt="",
             extra_args=extra_args,
             timeout_seconds=existing.timeout_seconds,
@@ -524,6 +1553,9 @@ class AiChatTab(QWidget):
 
     def save_current_config(self) -> None:
         self.current_provider_config()
+        self._persist_ai_config()
+
+    def _persist_ai_config(self) -> None:
         config = dict(self.state.app_config)
         providers = {key: provider.to_dict() for key, provider in self._providers.items()}
         config["ai_chat"] = normalize_ai_chat_config(
@@ -555,9 +1587,14 @@ class AiChatTab(QWidget):
         files, _selected_filter = QFileDialog.getOpenFileNames(self, "첨부할 파일 선택", str(self.state.paths.root))
         if not files:
             return
+        self.attach_paths([Path(file_name) for file_name in files])
+
+    def attach_paths(self, paths: list[Path | str]) -> None:
         known = {str(path).casefold() for path in self._attachments}
-        for file_name in files:
-            path = Path(file_name)
+        for item in paths:
+            path = Path(item)
+            if not path.exists() or not path.is_file():
+                continue
             key = str(path).casefold()
             if key in known:
                 continue
@@ -585,16 +1622,21 @@ class AiChatTab(QWidget):
     def _refresh_attachment_view(self) -> None:
         self.attachment_list.clear()
         for path in self._attachments:
-            label = f"{path.name} · {self._attachment_display_detail(path)}"
+            label = f"{path.name}\n{self._attachment_display_detail(path)}"
             item = QListWidgetItem(label)
             item.setData(Qt.ItemDataRole.UserRole, str(path))
             item.setToolTip(str(path))
+            if path.exists() and path.suffix.lower() in IMAGE_ATTACHMENT_EXTENSIONS:
+                item.setIcon(QIcon(str(path)))
+            item.setSizeHint(QSize(112, 56))
             self.attachment_list.addItem(item)
+        self.attachment_list.setVisible(bool(self._attachments))
         self._update_attachment_buttons()
-        self._update_context_status()
 
     def _update_attachment_buttons(self) -> None:
         has_attachments = bool(self._attachments)
+        self.remove_attachment_button.setVisible(has_attachments)
+        self.clear_attachments_button.setVisible(has_attachments)
         self.remove_attachment_button.setEnabled(bool(self.attachment_list.selectedItems()))
         self.clear_attachments_button.setEnabled(has_attachments)
 
@@ -607,39 +1649,6 @@ class AiChatTab(QWidget):
             return "읽기 불가"
         kind = "이미지" if path.suffix.lower() in IMAGE_ATTACHMENT_EXTENSIONS else "파일"
         return f"{kind}, {self._format_bytes(size)}"
-
-    def _update_context_status(self) -> None:
-        if not hasattr(self, "context_status_label"):
-            return
-        if self._active_context_status_text:
-            self.context_status_label.setText(self._active_context_status_text)
-            return
-        prompt_chars = len(self.prompt_edit.toPlainText()) if hasattr(self, "prompt_edit") else 0
-        attachment_chars = self._estimated_attachment_context_chars()
-        self.context_status_label.setText(
-            self._context_status_text("이번 요청", prompt_chars, attachment_chars, len(self._attachments))
-        )
-
-    @staticmethod
-    def _context_status_text(prefix: str, prompt_chars: int, attachment_chars: int, attachment_count: int) -> str:
-        total_chars = prompt_chars + attachment_chars
-        approx_tokens = (total_chars + 3) // 4 if total_chars else 0
-        suffix = " · 첨부 일부만 포함" if attachment_chars >= MAX_ATTACHMENT_CONTEXT_CHARS else ""
-        return f"{prefix} 약 {approx_tokens:,}토큰 · 첨부 {attachment_count}개 · {total_chars:,}자{suffix}"
-
-    def _estimated_attachment_context_chars(self) -> int:
-        total = 0
-        for path in self._attachments:
-            if not path.exists() or path.suffix.lower() in IMAGE_ATTACHMENT_EXTENSIONS:
-                continue
-            try:
-                size = path.stat().st_size
-            except OSError:
-                continue
-            total += min(size, MAX_ATTACHMENT_BYTES)
-            if total >= MAX_ATTACHMENT_CONTEXT_CHARS:
-                return MAX_ATTACHMENT_CONTEXT_CHARS
-        return total
 
     def refresh_provider_status(self, allow_repair: bool = False) -> None:
         self._stop_status_process()
@@ -658,17 +1667,28 @@ class AiChatTab(QWidget):
         process.setArguments(invocation.args)
         process.setWorkingDirectory(invocation.working_dir or str(self.state.paths.root))
         process.setProcessEnvironment(self._process_environment())
-        process.finished.connect(lambda exit_code, _status: self._finish_status(exit_code))
-        process.errorOccurred.connect(lambda _error: self._set_status("상태 확인 실패", "상태 확인 명령을 시작하지 못했습니다."))
+        process.finished.connect(
+            lambda exit_code, _status, process=process: self._finish_status(process, exit_code)
+        )
+        process.errorOccurred.connect(
+            lambda _error, process=process: self._fail_status_process(
+                process,
+                "상태 확인 명령을 시작하지 못했습니다.",
+            )
+        )
         self._set_status("확인 중", invocation.program)
         process.start()
-        QTimer.singleShot(invocation.timeout_seconds * 1000, self._timeout_status)
+        self._status_timeout_timer = self._run_later(
+            invocation.timeout_seconds * 1000,
+            lambda process=process: self._timeout_status(process),
+        )
 
-    def _finish_status(self, exit_code: int) -> None:
-        process = self._status_process
-        self._status_process = None
-        if process is None:
+    def _finish_status(self, process: QProcess, exit_code: int) -> None:
+        if self._status_process is not process:
+            process.deleteLater()
             return
+        self._status_process = None
+        self._cancel_named_timer("_status_timeout_timer")
         try:
             stdout = decode_cli_output(bytes(process.readAllStandardOutput())).strip()
             stderr = decode_cli_output(bytes(process.readAllStandardError())).strip()
@@ -681,7 +1701,14 @@ class AiChatTab(QWidget):
             self._set_status("사용 가능", detail)
             process.deleteLater()
             if self._help_loaded_for != provider_key:
-                QTimer.singleShot(0, self.refresh_cli_help_options)
+                self._run_later(0, self.refresh_cli_help_options)
+            self._run_later(
+                0,
+                lambda provider_key=provider_key, force=allow_repair: self._ensure_model_catalog_fresh(
+                    provider_key,
+                    force=force,
+                ),
+            )
             return
 
         detail = "\n".join(part for part in (stderr, stdout) if part).strip()
@@ -691,7 +1718,7 @@ class AiChatTab(QWidget):
                 self._append_block("시스템", repair.message)
                 self._set_status("CLI 설정 자동 복구", repair.message)
                 process.deleteLater()
-                QTimer.singleShot(200, self.refresh_provider_status)
+                self._run_later(200, self.refresh_provider_status)
                 return
             message = diagnose_cli_error(provider_key, detail)
             if repair is not None and repair.attempted and repair.message:
@@ -701,16 +1728,25 @@ class AiChatTab(QWidget):
             self._set_status("로그인 필요", diagnose_cli_error(provider_key, detail))
         process.deleteLater()
 
-    def _timeout_status(self) -> None:
-        process = self._status_process
-        if process is None:
+    def _fail_status_process(self, process: QProcess, message: str) -> None:
+        if self._status_process is not process:
             return
+        self._status_process = None
+        self._cancel_named_timer("_status_timeout_timer")
+        process.deleteLater()
+        self._set_status("상태 확인 실패", message)
+
+    def _timeout_status(self, process: QProcess) -> None:
+        if self._status_process is not process:
+            return
+        self._status_timeout_timer = None
         try:
             if process.state() != QProcess.ProcessState.NotRunning:
                 process.kill()
                 self._set_status("상태 확인 시간 초과", "상태 확인 명령이 끝나지 않았습니다.")
         except RuntimeError:
-            self._status_process = None
+            if self._status_process is process:
+                self._status_process = None
 
     def refresh_cli_help_options(self) -> None:
         self._stop_help_process()
@@ -731,29 +1767,40 @@ class AiChatTab(QWidget):
         process.setArguments(invocation.args)
         process.setWorkingDirectory(invocation.working_dir or str(self.state.paths.root))
         process.setProcessEnvironment(self._process_environment())
-        process.readyReadStandardOutput.connect(self._read_help_stdout)
-        process.readyReadStandardError.connect(self._read_help_stderr)
-        process.finished.connect(lambda exit_code, _status: self._finish_help_options(exit_code))
-        process.errorOccurred.connect(lambda _error: self._fail_help_options("CLI help 명령을 시작하지 못했습니다."))
+        process.readyReadStandardOutput.connect(lambda process=process: self._read_help_stdout(process))
+        process.readyReadStandardError.connect(lambda process=process: self._read_help_stderr(process))
+        process.finished.connect(
+            lambda exit_code, _status, process=process: self._finish_help_options(process, exit_code)
+        )
+        process.errorOccurred.connect(
+            lambda _error, process=process: self._fail_help_options(
+                process,
+                "CLI help 명령을 시작하지 못했습니다.",
+            )
+        )
         self.help_status_label.setText(f"--help 불러오는 중: {subprocess.list2cmdline([invocation.program, *invocation.args])}")
         process.start()
-        QTimer.singleShot(invocation.timeout_seconds * 1000, self._timeout_help_options)
+        self._help_timeout_timer = self._run_later(
+            invocation.timeout_seconds * 1000,
+            lambda process=process: self._timeout_help_options(process),
+        )
 
-    def _read_help_stdout(self) -> None:
-        if self._help_process is None:
+    def _read_help_stdout(self, process: QProcess) -> None:
+        if self._help_process is not process:
             return
-        self._help_stdout += bytes(self._help_process.readAllStandardOutput())
+        self._help_stdout += bytes(process.readAllStandardOutput())
 
-    def _read_help_stderr(self) -> None:
-        if self._help_process is None:
+    def _read_help_stderr(self, process: QProcess) -> None:
+        if self._help_process is not process:
             return
-        self._help_stderr += bytes(self._help_process.readAllStandardError())
+        self._help_stderr += bytes(process.readAllStandardError())
 
-    def _finish_help_options(self, exit_code: int) -> None:
-        process = self._help_process
+    def _finish_help_options(self, process: QProcess, exit_code: int) -> None:
+        if self._help_process is not process:
+            process.deleteLater()
+            return
         self._help_process = None
-        if process is None:
-            return
+        self._cancel_named_timer("_help_timeout_timer")
         provider_key = str(process.property("provider_key") or self.current_provider_key())
         process.deleteLater()
         help_text = "\n".join(
@@ -765,27 +1812,34 @@ class AiChatTab(QWidget):
         options = self._populate_help_options(help_text)
         self._help_loaded_for = provider_key if options else ""
         if options:
-            self.help_status_label.setText(f"{PROVIDER_SPECS[provider_key].display_name} 옵션 {len(options)}개를 불러왔습니다.")
+            self.help_status_label.setText(
+                f"{PROVIDER_SPECS[provider_key].display_name}에서 선택 가능한 기능 {len(options)}개를 불러왔습니다."
+            )
         elif exit_code == 0:
-            self.help_status_label.setText("help 출력은 받았지만 옵션을 자동 인식하지 못했습니다. 추가 인자를 직접 입력할 수 있습니다.")
+            self.help_status_label.setText("선택 가능한 기능을 자동으로 찾지 못했습니다. 필요한 경우 위 입력란에 직접 설정할 수 있습니다.")
         else:
-            self.help_status_label.setText("help 명령이 실패했습니다. 추가 인자를 직접 입력할 수 있습니다.")
+            self.help_status_label.setText("사용 가능한 기능을 불러오지 못했습니다. 연결 상태를 확인한 뒤 다시 시도하세요.")
 
-    def _fail_help_options(self, message: str) -> None:
+    def _fail_help_options(self, process: QProcess, message: str) -> None:
+        if self._help_process is not process:
+            return
         self._help_process = None
+        self._cancel_named_timer("_help_timeout_timer")
+        process.deleteLater()
         self.help_status_label.setText(message)
         self._populate_help_options("")
 
-    def _timeout_help_options(self) -> None:
-        process = self._help_process
-        if process is None:
+    def _timeout_help_options(self, process: QProcess) -> None:
+        if self._help_process is not process:
             return
+        self._help_timeout_timer = None
         try:
             if process.state() != QProcess.ProcessState.NotRunning:
                 process.kill()
                 self.help_status_label.setText("help 명령 시간이 초과되었습니다.")
         except RuntimeError:
-            self._help_process = None
+            if self._help_process is process:
+                self._help_process = None
 
     def _populate_help_options(self, help_text: str) -> list[CliHelpOption]:
         options = extra_arg_options_from_help(help_text) if help_text.strip() else []
@@ -795,7 +1849,7 @@ class AiChatTab(QWidget):
             for option in options:
                 self.option_combo.addItem(self._help_option_label(option), option)
         else:
-            self.option_combo.addItem("불러온 옵션 없음", None)
+            self.option_combo.addItem("선택 가능한 기능 없음", None)
         self.option_combo.blockSignals(False)
         self.option_value_edit.clear()
         self.add_option_button.setEnabled(bool(options))
@@ -808,7 +1862,7 @@ class AiChatTab(QWidget):
         self._help_loaded_for = ""
         if hasattr(self, "raw_help_edit"):
             self.raw_help_edit.clear()
-            self.help_status_label.setText("로그인 확인 후 CLI --help에서 옵션을 불러옵니다.")
+            self.help_status_label.setText("연결 상태를 확인하면 선택 가능한 기능을 자동으로 불러옵니다.")
             self._populate_help_options("")
 
     def _handle_help_option_changed(self) -> None:
@@ -816,15 +1870,14 @@ class AiChatTab(QWidget):
         if option is None:
             self.option_value_edit.setEnabled(False)
             self.option_value_edit.clear()
-            self.option_description.setPlainText("")
+            self.option_value_edit.setPlaceholderText("선택한 기능에 설정값이 필요한 경우 입력합니다")
+            self.option_description.setText("기능을 불러오면 쉬운 한국어 설명과 입력 예시를 확인할 수 있습니다.")
             return
         self.option_value_edit.setEnabled(option.takes_value)
-        self.option_value_edit.setPlaceholderText(option.value_hint or "값이 필요한 옵션이면 입력")
+        self.option_value_edit.setPlaceholderText(self._help_option_value_placeholder(option))
         if not option.takes_value:
             self.option_value_edit.clear()
-        description = option.description or "이 옵션은 CLI help에 별도 설명이 없습니다."
-        value_note = f"\n\n값 필요: {option.value_hint}" if option.takes_value else "\n\n값 필요 없음"
-        self.option_description.setPlainText(f"{option.flag}{value_note}\n\n{description}")
+        self.option_description.setText(self._help_option_korean_description(option))
 
     def add_selected_extra_arg(self) -> None:
         option = self._current_help_option()
@@ -832,7 +1885,7 @@ class AiChatTab(QWidget):
             return
         value = self.option_value_edit.text().strip()
         if option.takes_value and not value:
-            QMessageBox.warning(self, "옵션 값 필요", f"{option.flag} 옵션 값을 입력하세요.")
+            QMessageBox.warning(self, "설정값 필요", "선택한 기능에 사용할 설정값을 입력하세요.")
             return
 
         tokens = self._split_extra_args()
@@ -855,8 +1908,54 @@ class AiChatTab(QWidget):
         return option if isinstance(option, CliHelpOption) else None
 
     def _help_option_label(self, option: CliHelpOption) -> str:
-        value = f" {option.value_hint}" if option.value_hint else ""
-        return f"{option.flag}{value}"
+        title, _description, _example = self._help_option_korean_info(option)
+        return title
+
+    @staticmethod
+    def _help_option_korean_info(option: CliHelpOption) -> tuple[str, str, str]:
+        if option.flag in CLI_OPTION_KOREAN_HELP:
+            return CLI_OPTION_KOREAN_HELP[option.flag]
+        title = "기타 고급 설정"
+        description = (
+            "CLI에서 자동으로 찾은 고급 설정입니다. "
+            "아래 실제 옵션과 원문 설명을 확인한 뒤 필요한 경우에만 적용하세요."
+        )
+        return title, description, ""
+
+    @classmethod
+    def _help_option_korean_description(cls, option: CliHelpOption) -> str:
+        title, description, example = cls._help_option_korean_info(option)
+        visible_flag = option.flag
+        if option.short_flag:
+            visible_flag = f"{option.short_flag}, {option.flag}"
+        value_hint = cls._localized_value_hint(option.value_hint)
+        value_note = f"값: 필요 ({value_hint})" if option.takes_value else "값: 필요 없음"
+        lines = [
+            title,
+            f"실제 CLI 옵션: {visible_flag}",
+            value_note,
+            "",
+            description,
+        ]
+        if example:
+            lines.extend(["", f"입력 예시: {example}"])
+        return "\n".join(lines).strip()
+
+    @classmethod
+    def _help_option_value_placeholder(cls, option: CliHelpOption) -> str:
+        if not option.takes_value:
+            return "이 옵션은 값을 입력하지 않습니다."
+        _title, _description, example = cls._help_option_korean_info(option)
+        if example:
+            return example
+        return cls._localized_value_hint(option.value_hint) or "옵션 값을 입력하세요."
+
+    @staticmethod
+    def _localized_value_hint(value_hint: str) -> str:
+        hint = str(value_hint or "").strip()
+        if not hint:
+            return "값"
+        return CLI_VALUE_HINT_KOREAN.get(hint, "입력값")
 
     def _split_extra_args(self) -> list[str]:
         text = self.extra_args_edit.text().strip()
@@ -919,10 +2018,12 @@ class AiChatTab(QWidget):
         if config.key != "codex":
             return []
         args: list[str] = []
-        if config.reasoning_effort.strip():
-            args.extend(["-c", f'model_reasoning_effort="{config.reasoning_effort.strip()}"'])
-        if config.speed.strip():
-            args.extend(["-c", f'service_tier="{config.speed.strip()}"'])
+        reasoning_effort = config.reasoning_effort.strip()
+        if reasoning_effort in REASONING_EFFORT_ORDER:
+            args.extend(["-c", f'model_reasoning_effort="{reasoning_effort}"'])
+        speed = config.speed.strip()
+        if speed in {"fast", "flex"}:
+            args.extend(["-c", f'service_tier="{speed}"'])
         return args
 
     def _attachment_context_and_args(self, provider_key: str) -> tuple[str, list[str]]:
@@ -1073,11 +2174,11 @@ class AiChatTab(QWidget):
             categories.add("transfer")
         if any(keyword in normalized for keyword in BASIC_NETOPS_CONTEXT_KEYWORDS):
             categories.add("overview")
-        if "템플릿" in normalized and any(keyword in normalized for keyword in ("장비", "점검", "백업", "inspection", "backup")):
+        if "프로파일" in normalized and any(keyword in normalized for keyword in ("장비", "점검", "백업", "inspection", "backup")):
             categories.add("inspector")
-        if "백업" in normalized and any(keyword in normalized for keyword in ("장비", "템플릿", "인벤토리", "점검")):
+        if "백업" in normalized and any(keyword in normalized for keyword in ("장비", "프로파일", "장비 목록", "인벤토리", "점검")):
             categories.add("inspector")
-        if "점검" in normalized and any(keyword in normalized for keyword in ("장비", "템플릿", "인벤토리", "백업")):
+        if "점검" in normalized and any(keyword in normalized for keyword in ("장비", "프로파일", "장비 목록", "인벤토리", "백업")):
             categories.add("inspector")
         if "프로파일" in normalized and any(keyword in normalized for keyword in ("cli", "설정", "스위치", "라우터", "config")):
             categories.add("config_builder")
@@ -1111,36 +2212,57 @@ class AiChatTab(QWidget):
             ("수집 시각", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
         ]
 
-    def _collect_internal_netops_context(self, prompt: str) -> str:
+    @staticmethod
+    def _context_was_cancelled(cancel_event: Event | None) -> bool:
+        return bool(cancel_event is not None and cancel_event.is_set())
+
+    def _collect_internal_netops_context(self, prompt: str, cancel_event: Event | None = None) -> str:
         categories = self._netops_context_categories(prompt)
         sections = self._base_internal_context_sections(prompt, categories)
-        if "overview" in categories:
+        if "overview" in categories and not self._context_was_cancelled(cancel_event):
             self._collect_app_overview_sections(sections)
-        if "profiles" in categories:
+        if "profiles" in categories and not self._context_was_cancelled(cancel_event):
             self._collect_saved_profile_sections(sections)
-        if "inspector" in categories:
+        if "inspector" in categories and not self._context_was_cancelled(cancel_event):
             self._collect_inspector_context_sections(sections)
-        if "config_builder" in categories:
+        if "config_builder" in categories and not self._context_was_cancelled(cancel_event):
             self._collect_config_builder_context_sections(sections)
-        if "transfer" in categories:
+        if "transfer" in categories and not self._context_was_cancelled(cancel_event):
             self._collect_transfer_context_sections(sections)
-        if "network" in categories:
-            self._collect_network_context_sections(sections, prompt)
+        if "network" in categories and not self._context_was_cancelled(cancel_event):
+            self._collect_network_context_sections(sections, prompt, cancel_event)
         return self._format_internal_context_sections(sections)
 
-    def _collect_internal_network_context(self, prompt: str) -> str:
+    def _collect_internal_network_context(self, prompt: str, cancel_event: Event | None = None) -> str:
         categories = {"network", "overview"}
         sections = self._base_internal_context_sections(prompt, categories)
-        self._collect_app_overview_sections(sections)
-        self._collect_network_context_sections(sections, prompt)
+        if not self._context_was_cancelled(cancel_event):
+            self._collect_app_overview_sections(sections)
+        if not self._context_was_cancelled(cancel_event):
+            self._collect_network_context_sections(sections, prompt, cancel_event)
         return self._format_internal_context_sections(sections)
 
-    def _collect_network_context_sections(self, sections: list[tuple[str, str]], prompt: str) -> None:
+    def _collect_network_context_sections(
+        self,
+        sections: list[tuple[str, str]],
+        prompt: str,
+        cancel_event: Event | None = None,
+    ) -> None:
         adapters = self._collect_network_adapters_section(sections)
+        if self._context_was_cancelled(cancel_event):
+            return
         self._collect_gateway_ping_sections(sections, adapters)
+        if self._context_was_cancelled(cancel_event):
+            return
         self._collect_external_connectivity_sections(sections)
+        if self._context_was_cancelled(cancel_event):
+            return
         self._collect_dns_section(sections)
+        if self._context_was_cancelled(cancel_event):
+            return
         self._collect_public_ip_section(sections)
+        if self._context_was_cancelled(cancel_event):
+            return
         self._collect_optional_command_sections(sections, prompt)
 
     def _collect_app_overview_sections(self, sections: list[tuple[str, str]]) -> None:
@@ -1152,7 +2274,7 @@ class AiChatTab(QWidget):
                         "- 네트워크 설정: 어댑터 조회, DHCP/수동 IP, DNS, 저장된 IP 프로파일 적용",
                         "- 연결 진단: Ping, TCP 포트 확인, DNS 조회, tracert/pathping, ipconfig/route/ARP/OUI",
                         "- Wi-Fi 분석: 현재 무선 연결과 주변 AP 정보 확인",
-                        "- 장비 점검/백업: Excel 인벤토리 기반 장비 접속, 점검 명령, 백업 명령, 사용자 명령 실행",
+                        "- 장비 점검/백업: Excel 장비 목록 기반 장비 접속, 점검 명령, 백업 명령, 사용자 명령 실행",
                         "- CLI 설정 생성: YAML 프로파일과 장비값 CSV/XLSX를 기반으로 장비별 CLI 생성",
                         "- 파일 전송: FTP/SCP/TFTP 클라이언트와 서버 도구",
                     ]
@@ -1210,27 +2332,27 @@ class AiChatTab(QWidget):
                 work_dir=Path(data_root) / "inspector" / "runs",
                 user_data_dir=Path(data_root) / "inspector",
             )
-            templates = service.supported_profile_templates()
+            profiles = service.supported_profile_definitions()
             lines = [
-                f"지원 템플릿: {len(templates)}개",
+                f"지원 프로파일: {len(profiles)}개",
                 f"사용자 custom_rules.yaml: {self._safe_context_path(service.custom_rules_path)}",
                 f"사용자 custom_parsers 폴더: {self._safe_context_path(service.custom_parsers_dir)}",
-                "인벤토리 필수 컬럼: ip, vendor, os, connection_type, port, password",
+                "장비 목록 필수 컬럼: ip, vendor, os, connection_type, port, password",
                 "선택 컬럼: username, enable_password",
                 "실행 모드: inspection, backup, inspection_backup, custom_commands",
-                "템플릿 생성 요청 시 custom_rules.yaml 형식으로 inspection_commands, backup_commands, parsing_rules, connection_overrides를 작성하세요.",
+                "프로파일 생성 요청 시 custom_rules.yaml 형식으로 inspection_commands, backup_commands, parsing_rules, connection_overrides를 작성하세요.",
             ]
-            for template in templates[:16]:
+            for profile in profiles[:16]:
                 lines.append(
                     "- "
-                    f"{template.get('display_name') or template.get('key')}: "
-                    f"commands={template.get('command_count', 0)}, "
-                    f"backup={'yes' if template.get('has_backup') else 'no'}, "
-                    f"columns={len(template.get('output_columns') or [])}, "
-                    f"source={template.get('source', '-')}"
+                    f"{profile.get('display_name') or profile.get('key')}: "
+                    f"commands={profile.get('command_count', 0)}, "
+                    f"backup={'yes' if profile.get('has_backup') else 'no'}, "
+                    f"columns={len(profile.get('output_columns') or [])}, "
+                    f"source={profile.get('source', '-')}"
                 )
-            if len(templates) > 16:
-                lines.append(f"... 템플릿 {len(templates) - 16}개 생략")
+            if len(profiles) > 16:
+                lines.append(f"... 프로파일 {len(profiles) - 16}개 생략")
             sections.append(("장비 점검/백업 컨텍스트", "\n".join(lines)))
         except Exception as exc:
             sections.append(("장비 점검/백업 컨텍스트", f"실패: {exc}"))
@@ -1369,6 +2491,196 @@ class AiChatTab(QWidget):
             parts.append(details)
         return "\n".join(parts)
 
+    def _run_netops_chat_action(
+        self,
+        action: NetOpsChatAction,
+        approved: bool = False,
+        cancel_event: Event | None = None,
+    ) -> str:
+        sections: list[tuple[str, str]] = [
+            ("NetOps 기능", action.title),
+            ("실행 시각", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+        ]
+        try:
+            sections.append(
+                (
+                    "실행 결과",
+                    self._execute_netops_chat_action(
+                        action,
+                        approved=approved,
+                        cancel_event=cancel_event,
+                    ),
+                )
+            )
+        except Exception as exc:
+            sections.append(("실행 결과", f"실패: {exc}"))
+        return self._format_netops_tool_sections(sections)
+
+    def _execute_netops_chat_action(
+        self,
+        action: NetOpsChatAction,
+        *,
+        approved: bool = False,
+        cancel_event: Event | None = None,
+    ) -> str:
+        call = tool_call_from_netops_action(action, user_intent=action.title)
+        decision, result = self._assistant_executor.execute(
+            call,
+            self._assistant_policy_context(approved=approved),
+            cancel_event=cancel_event,
+        )
+        if not decision.allowed:
+            return self._format_assistant_policy_decision(decision)
+        if result is None:
+            return "실패: 등록된 도구 실행 결과가 없습니다."
+        return self._format_assistant_tool_result(result)
+
+    def _assistant_policy_context(self, *, approved: bool = False) -> PolicyContext:
+        return PolicyContext(
+            is_admin=bool(getattr(self.state, "is_admin", False)),
+            actor="netops_assistant_tab",
+            approved=approved,
+        )
+
+    @staticmethod
+    def _format_assistant_tool_result(result: ToolResult) -> str:
+        text = result.to_text() if hasattr(result, "to_text") else str(getattr(result, "output", "") or "")
+        error = str(getattr(result, "error", "") or "").strip()
+        if not bool(getattr(result, "success", False)) and error:
+            text = "\n".join(part for part in (text, error) if part)
+        return text.strip() or ("성공" if bool(getattr(result, "success", False)) else "실패")
+
+    @staticmethod
+    def _format_assistant_policy_decision(decision: PolicyDecision) -> str:
+        status = str(getattr(decision, "status", "") or "")
+        reason = str(getattr(decision, "reason", "") or "").strip()
+        metadata = dict(getattr(decision, "metadata", {}) or {})
+        tool_name = str(metadata.get("tool_name", "") or "")
+        permission = getattr(decision, "permission_class", None)
+        permission_text = str(getattr(permission, "value", permission or "") or "")
+        lines = ["정책 결정: " + (status or "denied")]
+        if tool_name:
+            lines.append(f"도구: {tool_name}")
+        if permission_text:
+            lines.append(f"권한 등급: {permission_text}")
+        if reason:
+            lines.append(f"사유: {reason}")
+        if bool(getattr(decision, "requires_approval", False)):
+            lines.append("사용자 승인이 필요해서 실행하지 않았습니다.")
+        if bool(getattr(decision, "blocked", False)):
+            lines.append("차단되어 실행하지 않았습니다.")
+        return "\n".join(lines)
+
+    def _confirm_netops_chat_action(self, action: NetOpsChatAction) -> bool:
+        call = tool_call_from_netops_action(action, user_intent=action.title)
+        descriptor = self._assistant_registry.resolve(call)
+        decision = self._assistant_executor.evaluate(call, self._assistant_policy_context(approved=False))
+
+        if decision.allowed:
+            return True
+
+        if decision.blocked:
+            message = (
+                "NetOps 어시스턴트 정책에 의해 실행할 수 없습니다.\n\n"
+                f"작업: {action.title}\n"
+                f"사유: {decision.reason}"
+            )
+            if descriptor is not None and descriptor.admin_required and not bool(getattr(self.state, "is_admin", False)):
+                message += "\n\n이 작업은 Windows 관리자 권한이 필요합니다. 왼쪽 아래 관리자 버튼으로 관리자 권한으로 다시 실행한 뒤 요청해 주세요."
+            title = "관리자 권한 필요" if "관리자 권한" in message else "NetOps 실행 차단"
+            QMessageBox.warning(self, title, message)
+            self._append_block("시스템", message)
+            return False
+
+        if not decision.requires_approval:
+            message = (
+                "NetOps 어시스턴트 정책이 이 요청을 허용하지 않았습니다.\n\n"
+                f"작업: {action.title}\n"
+                f"사유: {decision.reason or '알 수 없는 정책 결정'}"
+            )
+            QMessageBox.warning(self, "NetOps 실행 불가", message)
+            self._append_block("시스템", message)
+            return False
+
+        display_name = descriptor.display_name if descriptor is not None else action.title
+        permission = getattr(decision.permission_class, "value", str(decision.permission_class or ""))
+        risk_level = descriptor.risk_level if descriptor is not None else action.risk_level
+        impact = (descriptor.impact if descriptor is not None else "") or action.impact
+        reversibility = descriptor.reversibility if descriptor is not None else ""
+        lines = [
+            "이 요청은 NetOps 어시스턴트가 등록된 도구를 통해 시스템 또는 설정을 변경합니다.",
+            "",
+            f"작업: {action.title}",
+            f"도구: {display_name}",
+            f"권한 등급: {permission or '-'}",
+            f"리스크: {risk_level or '-'}",
+        ]
+        if impact:
+            lines.extend(["", "영향:", impact])
+        if reversibility:
+            lines.extend(["", "복구/되돌리기:", reversibility])
+        lines.extend(["", "승인하면 즉시 실행됩니다. 취소하면 아무 작업도 하지 않습니다."])
+        confirmed = (
+            QMessageBox.question(
+                self,
+                "NetOps 실행 승인",
+                "\n".join(lines),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            == QMessageBox.StandardButton.Yes
+        )
+        if not confirmed:
+            self._append_block("시스템", f"사용자가 NetOps 변경 작업을 취소했습니다.\n{action.title}")
+        return confirmed
+
+    def _required_state_service(self, attr_name: str, display_name: str) -> Any:
+        service = getattr(self.state, attr_name, None)
+        if service is None:
+            raise RuntimeError(f"{display_name}가 준비되지 않았습니다.")
+        return service
+
+    @staticmethod
+    def _format_tcp_check_result(result: Any) -> str:
+        lines = [
+            f"대상: {getattr(result, 'target', '-')}:{getattr(result, 'port', '-')}",
+            f"상태: {getattr(result, 'status', '-')}",
+            f"성공/시도: {getattr(result, 'successful', 0)}/{getattr(result, 'sent', 0)}",
+            f"손실률: {float(getattr(result, 'packet_loss', 0) or 0):.0f}%",
+        ]
+        response_ms = getattr(result, "response_ms", None)
+        if response_ms is not None:
+            lines.append(f"평균 응답: {response_ms} ms")
+        error = str(getattr(result, "error", "") or "").strip()
+        if error:
+            lines.append(f"오류: {error}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_wireless_info(info: Any) -> str:
+        return "\n".join(
+            [
+                f"인터페이스: {getattr(info, 'interface_name', '') or '-'}",
+                f"설명: {getattr(info, 'description', '') or '-'}",
+                f"상태: {getattr(info, 'state', '') or '-'}",
+                f"SSID: {getattr(info, 'ssid', '') or '-'}",
+                f"BSSID: {getattr(info, 'bssid', '') or '-'}",
+                f"무선 규격: {getattr(info, 'radio_type', '') or '-'}",
+                f"채널/대역: {getattr(info, 'channel', '') or '-'} / {getattr(info, 'band', '') or '-'}",
+                f"신호: {getattr(info, 'signal_text', '-')}",
+                f"송수신 속도: {getattr(info, 'receive_rate_mbps', '') or '-'} / {getattr(info, 'transmit_rate_mbps', '') or '-'} Mbps",
+            ]
+        )
+
+    @staticmethod
+    def _format_netops_tool_sections(sections: list[tuple[str, str]]) -> str:
+        output: list[str] = ["NetOps Suite tool result"]
+        for title, body in sections:
+            text = str(body or "").strip()
+            if text:
+                output.append(f"\n## {title}\n{text}")
+        return "\n".join(output).strip()
+
     def _format_internal_context_sections(self, sections: list[tuple[str, str]]) -> str:
         output: list[str] = ["NetOps Suite internal diagnostics snapshot"]
         total_chars = len(output[0])
@@ -1407,40 +2719,85 @@ class AiChatTab(QWidget):
             value /= 1024
 
     def open_provider_login(self) -> None:
+        if self._login_preflight_active:
+            return
         config = self.current_provider_config()
         health = inspect_provider(config)
         if not health.installed:
             QMessageBox.warning(self, "CLI 없음", f"{PROVIDER_SPECS[config.key].display_name}: {health.detail}")
             return
 
-        invocation = build_login_invocation(config, str(self.state.paths.root))
-        preflight_error = self._login_preflight_error(config)
-        if preflight_error:
+        self._login_preflight_active = True
+        self.login_button.setEnabled(False)
+        self.login_button.setText("로그인 준비 중…")
+        self._set_status("로그인 준비 중", "Codex CLI 설정과 로그인 명령을 확인하고 있습니다.")
+        self._job_runner.start(
+            self._prepare_provider_login,
+            config,
+            on_result=self._complete_provider_login_preflight,
+            on_error=self._fail_provider_login_preflight,
+            on_finished=self._finish_provider_login_preflight,
+        )
+
+    def _prepare_provider_login(self, config: AiProviderConfig) -> dict[str, Any]:
+        repair_messages: list[str] = []
+        for _attempt in range(3):
+            preflight_error = self._login_preflight_error(config)
+            if not preflight_error:
+                return {"config": config, "repair_messages": repair_messages, "error": ""}
             repair = repair_cli_configuration_error(config.key, preflight_error)
             if repair.repaired:
-                self._set_status("CLI 설정 자동 복구", repair.message)
-                self._append_block("시스템", repair.message)
-                preflight_error = self._login_preflight_error(config)
-            if preflight_error:
-                message = preflight_error
-                if repair.attempted and repair.message and not repair.repaired:
-                    message = f"{repair.message}\n\n{preflight_error}"
-                elif repair.repaired:
-                    message = f"Codex 설정을 자동 복구했지만 CLI 상태 확인이 아직 실패합니다.\n\n{preflight_error}"
-                self._set_status("CLI 설정 오류", message)
-                self._append_block("오류", message)
-                QMessageBox.warning(self, "CLI 설정 오류", message)
-                return
+                repair_messages.append(repair.message)
+                continue
+            message = preflight_error
+            if repair.attempted and repair.message:
+                message = f"{repair.message}\n\n{preflight_error}"
+            return {"config": config, "repair_messages": repair_messages, "error": message}
+        return {
+            "config": config,
+            "repair_messages": repair_messages,
+            "error": "Codex 설정을 자동 복구했지만 CLI 상태 확인이 계속 실패합니다.",
+        }
 
+    def _complete_provider_login_preflight(self, result: object) -> None:
+        if not isinstance(result, dict) or not isinstance(result.get("config"), AiProviderConfig):
+            self._fail_provider_login_preflight("로그인 준비 결과 형식이 올바르지 않습니다.")
+            return
+        for message in result.get("repair_messages", []):
+            if isinstance(message, str) and message.strip():
+                self._append_block("시스템", message)
+        error = str(result.get("error", "") or "").strip()
+        if error:
+            self._set_status("CLI 설정 오류", error)
+            self._append_block("오류", error)
+            QMessageBox.warning(self, "CLI 설정 오류", error)
+            return
+        self._launch_provider_login(result["config"])
+
+    def _launch_provider_login(self, config: AiProviderConfig) -> None:
+        invocation = build_login_invocation(config, str(self.state.paths.root))
         command = subprocess.list2cmdline([invocation.program, *invocation.args])
         if sys.platform == "win32":
-            ok = QProcess.startDetached("cmd.exe", ["/k", command], invocation.working_dir)
+            started = QProcess.startDetached("cmd.exe", ["/k", command], invocation.working_dir)
         else:
-            ok = QProcess.startDetached(invocation.program, invocation.args, invocation.working_dir)
+            started = QProcess.startDetached(invocation.program, invocation.args, invocation.working_dir)
+        ok = bool(started[0]) if isinstance(started, tuple) else bool(started)
         if not ok:
+            self._set_status("로그인 실행 실패", "로그인 터미널을 열지 못했습니다.")
             QMessageBox.warning(self, "로그인 실행 실패", "로그인 터미널을 열지 못했습니다.")
             return
+        self._set_status("로그인 터미널 열림", invocation.program)
         self._append_block("시스템", f"로그인 터미널을 열었습니다.\n{command}")
+
+    def _fail_provider_login_preflight(self, message: str) -> None:
+        detail = str(message or "로그인 준비 중 오류가 발생했습니다.")
+        self._set_status("로그인 준비 실패", detail)
+        QMessageBox.warning(self, "로그인 준비 실패", detail)
+
+    def _finish_provider_login_preflight(self) -> None:
+        self._login_preflight_active = False
+        self.login_button.setText("로그인 터미널")
+        self.login_button.setEnabled(self._process is None and not self._context_collecting)
 
     def _login_preflight_error(self, config: AiProviderConfig) -> str:
         invocation = build_status_invocation(config, str(self.state.paths.root))
@@ -1489,8 +2846,9 @@ class AiChatTab(QWidget):
                 + ", ".join(blocked_args),
             )
             return
-        health = inspect_provider(config)
-        if not health.installed:
+        netops_action = plan_netops_chat_action(prompt)
+        health = inspect_provider(config) if netops_action is None else None
+        if health is not None and not health.installed:
             QMessageBox.warning(self, "CLI 없음", health.detail)
             self._set_status("CLI 없음", health.detail)
             return
@@ -1509,42 +2867,121 @@ class AiChatTab(QWidget):
             "attachment_context": attachment_context,
             "attachment_args": attachment_args,
             "sent_attachments": sent_attachments,
-            "estimated_attachment_chars": self._estimated_attachment_context_chars(),
         }
-        if self._should_collect_internal_netops_context(prompt):
+        if netops_action is not None:
+            action_approved = self._confirm_netops_chat_action(netops_action)
+            if not action_approved:
+                self._set_status("NetOps 실행 취소", netops_action.title)
+                return
+            request_id = self._next_context_request_id()
+            cancel_event = Event()
             self._pending_prompt_payload = payload
             self._context_collection_cancelled = False
+            self._active_context_request = request_id
+            self._context_cancel_event = cancel_event
+            self._set_preparing(True)
+            self._set_status("NetOps 기능 실행 중", netops_action.title)
+            self._append_block("시스템", f"NetOps Suite 기능을 실행합니다.\n{netops_action.title}")
+            self._job_runner.start(
+                self._run_netops_chat_action,
+                netops_action,
+                action_approved,
+                cancel_event,
+                on_result=lambda result, request_id=request_id: self._continue_prompt_with_netops_action_result(
+                    request_id,
+                    result,
+                ),
+                on_error=lambda message, request_id=request_id: self._handle_netops_action_error(
+                    request_id,
+                    message,
+                ),
+                on_finished=lambda request_id=request_id: self._finish_internal_context_collection(request_id),
+            )
+            return
+
+        if self._should_collect_internal_netops_context(prompt):
+            request_id = self._next_context_request_id()
+            cancel_event = Event()
+            self._pending_prompt_payload = payload
+            self._context_collection_cancelled = False
+            self._active_context_request = request_id
+            self._context_cancel_event = cancel_event
             self._set_preparing(True)
             self._set_status("내부 컨텍스트 수집 중", "NetOps Suite 기능 정보를 먼저 수집합니다.")
-            self._append_block("시스템", "NetOps Suite 내부 기능 정보를 수집한 뒤 AI에게 전달합니다.")
             self._job_runner.start(
                 self._collect_internal_netops_context,
                 prompt,
-                on_result=self._continue_prompt_with_internal_context,
-                on_error=self._handle_internal_context_error,
-                on_finished=self._finish_internal_context_collection,
+                cancel_event,
+                on_result=lambda result, request_id=request_id: self._continue_prompt_with_internal_context(
+                    request_id,
+                    result,
+                ),
+                on_error=lambda message, request_id=request_id: self._handle_internal_context_error(
+                    request_id,
+                    message,
+                ),
+                on_finished=lambda request_id=request_id: self._finish_internal_context_collection(request_id),
             )
             return
 
         self._start_prompt_process(payload, "")
 
-    def _continue_prompt_with_internal_context(self, internal_context: object) -> None:
-        if self._context_collection_cancelled:
-            self._pending_prompt_payload = None
+    def _next_context_request_id(self) -> int:
+        self._context_request_generation += 1
+        return self._context_request_generation
+
+    def _is_active_context_request(self, request_id: int) -> bool:
+        return self._active_context_request == request_id
+
+    def _continue_prompt_with_netops_action_result(self, request_id: int, result_context: object) -> None:
+        if not self._is_active_context_request(request_id):
+            return
+        payload = self._pending_prompt_payload
+        self._pending_prompt_payload = None
+        if payload is None:
+            return
+
+        context_text = str(result_context or "").strip()
+        if context_text:
+            self._append_block("NetOps", self._truncate_text(context_text, 12000))
+
+        config = payload["config"]
+        health = inspect_provider(config)
+        if not health.installed:
+            self._set_status("NetOps 기능 완료", f"AI CLI 없음: {health.detail}")
+            self._append_block("시스템", f"AI CLI를 찾지 못해 NetOps 실행 결과만 표시했습니다.\n{health.detail}")
+            return
+        self._start_prompt_process(payload, context_text)
+
+    def _handle_netops_action_error(self, request_id: int, message: str) -> None:
+        if not self._is_active_context_request(request_id):
+            return
+        payload = self._pending_prompt_payload
+        self._pending_prompt_payload = None
+        self._set_preparing(False)
+        detail = f"NetOps Suite 기능 실행 중 오류가 발생했습니다: {message}"
+        self._append_block("오류", detail)
+        if payload is None:
+            return
+        config = payload["config"]
+        health = inspect_provider(config)
+        if health.installed:
+            self._start_prompt_process(payload, detail)
+        else:
+            self._set_status("NetOps 기능 실패", detail)
+
+    def _continue_prompt_with_internal_context(self, request_id: int, internal_context: object) -> None:
+        if not self._is_active_context_request(request_id):
             return
         payload = self._pending_prompt_payload
         self._pending_prompt_payload = None
         if payload is None:
             return
         context_text = str(internal_context or "").strip()
-        if context_text:
-            self._append_block("시스템", "NetOps Suite 내부 컨텍스트를 AI 요청에 포함했습니다.")
         self._start_prompt_process(payload, context_text)
 
-    def _handle_internal_context_error(self, message: str) -> None:
-        if self._context_collection_cancelled:
-            self._pending_prompt_payload = None
-            self._set_preparing(False)
+    def _handle_internal_context_error(self, request_id: int, message: str) -> None:
+        if not self._is_active_context_request(request_id):
             return
         payload = self._pending_prompt_payload
         self._pending_prompt_payload = None
@@ -1555,7 +2992,11 @@ class AiChatTab(QWidget):
         self._append_block("오류", detail)
         self._start_prompt_process(payload, detail)
 
-    def _finish_internal_context_collection(self) -> None:
+    def _finish_internal_context_collection(self, request_id: int) -> None:
+        if not self._is_active_context_request(request_id):
+            return
+        self._active_context_request = None
+        self._context_cancel_event = None
         self._context_collecting = False
         if self._process is None:
             self._set_preparing(False)
@@ -1566,7 +3007,6 @@ class AiChatTab(QWidget):
         attachment_context = str(payload.get("attachment_context", "") or "")
         attachment_args = list(payload.get("attachment_args", []))
         sent_attachments = list(payload.get("sent_attachments", []))
-        estimated_attachment_chars = int(payload.get("estimated_attachment_chars", 0) or 0)
         combined_context = "\n\n".join(part for part in (attachment_context, internal_context.strip()) if part)
 
         try:
@@ -1582,22 +3022,15 @@ class AiChatTab(QWidget):
             return
 
         self._stdout_buffer = b""
+        self._cli_error_text = ""
         self._stderr_text = ""
         self._stream_message_index = None
-        self._active_context_status_text = self._context_status_text(
-            "실행 중",
-            len(prompt) + len(internal_context),
-            estimated_attachment_chars,
-            len(sent_attachments),
-        )
         self._append_block("사용자", self._display_prompt_with_attachments(prompt, sent_attachments))
         self.prompt_edit.clear()
         self.prompt_edit.setEnabled(True)
         if sent_attachments:
             self._attachments.clear()
             self._refresh_attachment_view()
-        else:
-            self._update_context_status()
         self._set_running(True)
         self._set_status("실행 중", invocation.program)
 
@@ -1608,50 +3041,76 @@ class AiChatTab(QWidget):
         process.setArguments(invocation.args)
         process.setWorkingDirectory(invocation.working_dir or str(self.state.paths.root))
         process.setProcessEnvironment(self._process_environment())
-        process.readyReadStandardOutput.connect(self._read_stdout)
-        process.readyReadStandardError.connect(self._read_stderr)
-        process.finished.connect(lambda exit_code, _status: self._finish_prompt(exit_code))
-        process.errorOccurred.connect(lambda _error: self._fail_prompt("CLI 프로세스를 시작하지 못했습니다."))
+        process.readyReadStandardOutput.connect(lambda process=process: self._read_stdout(process))
+        process.readyReadStandardError.connect(lambda process=process: self._read_stderr(process))
+        process.finished.connect(
+            lambda exit_code, _status, process=process: self._finish_prompt(process, exit_code)
+        )
+        process.errorOccurred.connect(
+            lambda _error, process=process: self._fail_prompt(
+                process,
+                "CLI 프로세스를 시작하지 못했습니다.",
+            )
+        )
         process.start()
         if invocation.stdin_text:
             process.write(invocation.stdin_text.encode("utf-8"))
             process.closeWriteChannel()
-        QTimer.singleShot(invocation.timeout_seconds * 1000, self._timeout_prompt)
+        self._prompt_timeout_timer = self._run_later(
+            invocation.timeout_seconds * 1000,
+            lambda process=process: self._timeout_prompt(process),
+        )
 
-    def _read_stdout(self) -> None:
-        if self._process is None:
+    def _read_stdout(self, process: QProcess) -> None:
+        if self._process is not process:
             return
-        self._stdout_buffer += bytes(self._process.readAllStandardOutput())
+        self._stdout_buffer += bytes(process.readAllStandardOutput())
         while b"\n" in self._stdout_buffer:
             line, rest = self._stdout_buffer.split(b"\n", 1)
             self._stdout_buffer = rest
             decoded_line = decode_cli_output(line.rstrip(b"\r"))
             if should_ignore_cli_output_text(decoded_line):
                 continue
+            cli_error = extract_error_from_cli_line(decoded_line)
+            if cli_error:
+                self._cli_error_text = cli_error
+                continue
             chunk = extract_text_from_cli_line(decoded_line)
             if chunk and not should_ignore_cli_output_text(chunk):
                 self._append_stream(chunk + "\n")
 
-    def _read_stderr(self) -> None:
-        if self._process is None:
+    def _read_stderr(self, process: QProcess) -> None:
+        if self._process is not process:
             return
-        self._stderr_text += decode_cli_output(bytes(self._process.readAllStandardError()))
+        self._stderr_text += decode_cli_output(bytes(process.readAllStandardError()))
 
-    def _finish_prompt(self, exit_code: int) -> None:
-        process = self._process
+    def _finish_prompt(self, process: QProcess, exit_code: int) -> None:
+        if self._process is not process:
+            process.deleteLater()
+            return
         provider_key = self.current_provider_key()
         self._process = None
-        if process is not None:
-            provider_key = str(process.property("provider_key") or provider_key)
-            process.deleteLater()
+        self._cancel_named_timer("_prompt_timeout_timer")
+        provider_key = str(process.property("provider_key") or provider_key)
+        process.deleteLater()
         tail_text = decode_cli_output(self._stdout_buffer.strip())
-        tail = extract_text_from_cli_line(tail_text)
-        if tail and not should_ignore_cli_output_text(tail):
-            self._append_stream(tail + "\n")
-        if exit_code == 0:
+        tail_error = extract_error_from_cli_line(tail_text)
+        if tail_error:
+            self._cli_error_text = tail_error
+        else:
+            tail = extract_text_from_cli_line(tail_text)
+            if tail and not should_ignore_cli_output_text(tail):
+                self._append_stream(tail + "\n")
+        if exit_code == 0 and not self._cli_error_text:
             self._set_status("사용 가능", "요청 완료")
         else:
-            detail = self._stderr_text.strip() or f"CLI가 종료 코드 {exit_code}로 끝났습니다."
+            stderr_detail, cache_warning = split_codex_model_cache_warning(self._stderr_text)
+            detail = self._cli_error_text.strip() or stderr_detail or f"CLI가 종료 코드 {exit_code}로 끝났습니다."
+            if cache_warning and not self._cli_error_text and not stderr_detail:
+                detail = (
+                    "Codex 모델 캐시가 현재 CLI 버전과 호환되지 않습니다. "
+                    "모델 목록을 새로고침한 뒤 요청을 다시 보내세요."
+                )
             repair = repair_cli_configuration_error(provider_key, detail)
             if repair.repaired:
                 detail = f"{repair.message}\n\n설정을 자동 복구했습니다. 요청을 다시 보내세요."
@@ -1668,32 +3127,40 @@ class AiChatTab(QWidget):
                 else "실패"
             )
             self._set_status(status_text, detail[:500])
+        self._cli_error_text = ""
         self._stream_message_index = None
         self._set_running(False)
-        self._active_context_status_text = ""
-        self._update_context_status()
 
-    def _fail_prompt(self, message: str) -> None:
+    def _fail_prompt(self, process: QProcess, message: str) -> None:
+        if self._process is not process:
+            return
         self._append_block("오류", message)
         self._set_status("실패", message)
         self._process = None
+        self._cancel_named_timer("_prompt_timeout_timer")
+        process.deleteLater()
         self._stream_message_index = None
         self._set_running(False)
-        self._active_context_status_text = ""
-        self._update_context_status()
 
-    def _timeout_prompt(self) -> None:
-        if self._process is None:
+    def _timeout_prompt(self, process: QProcess) -> None:
+        if self._process is not process:
             return
+        self._prompt_timeout_timer = None
         try:
-            if self._process.state() != QProcess.ProcessState.NotRunning:
-                self._process.kill()
+            if process.state() != QProcess.ProcessState.NotRunning:
+                process.kill()
                 self._append_block("시스템", "요청 시간이 초과되어 중지했습니다.")
         except RuntimeError:
-            self._process = None
+            if self._process is process:
+                self._process = None
 
     def cancel_prompt(self) -> None:
         if self._context_collecting:
+            if self._context_cancel_event is not None:
+                self._context_cancel_event.set()
+            self._context_request_generation += 1
+            self._active_context_request = None
+            self._context_cancel_event = None
             self._context_collection_cancelled = True
             self._pending_prompt_payload = None
             self._set_preparing(False)
@@ -1702,16 +3169,19 @@ class AiChatTab(QWidget):
             return
         if self._process is None:
             return
+        process = self._process
+        self._process = None
+        self._cancel_named_timer("_prompt_timeout_timer")
         try:
-            self._process.kill()
+            process.blockSignals(True)
+            if process.state() != QProcess.ProcessState.NotRunning:
+                process.kill()
         except RuntimeError:
             pass
-        self._process = None
+        process.deleteLater()
         self._append_block("시스템", "사용자가 요청을 중지했습니다.")
         self._set_status("중지됨")
         self._set_running(False)
-        self._active_context_status_text = ""
-        self._update_context_status()
 
     def export_session(self) -> Path | None:
         text = self._plain_transcript_text().strip()
@@ -1719,7 +3189,7 @@ class AiChatTab(QWidget):
             QMessageBox.information(self, "내보낼 내용 없음", "내보낼 대화 내용이 없습니다.")
             return None
         path = timestamped_export_path(self.state.paths.exports_dir, "ai_chat_session", "md")
-        path.write_text("# AI 채팅 세션\n\n" + text + "\n", encoding="utf-8")
+        path.write_text("# NetOps 어시스턴트 세션\n\n" + text + "\n", encoding="utf-8")
         QMessageBox.information(self, "내보내기 완료", f"대화 내용을 저장했습니다:\n{path}")
         return path
 
@@ -1732,6 +3202,17 @@ class AiChatTab(QWidget):
         self._render_transcript()
 
     def shutdown(self) -> None:
+        self._model_catalog_cancel_event.set()
+        self._pending_model_catalog_refreshes.clear()
+        self._context_request_generation += 1
+        if self._context_cancel_event is not None:
+            self._context_cancel_event.set()
+        self._active_context_request = None
+        self._context_cancel_event = None
+        self._context_collection_cancelled = True
+        self._pending_prompt_payload = None
+        self._context_collecting = False
+        self._cancel_deferred_timers()
         self._stop_status_process()
         self._stop_help_process()
         if self._process is not None:
@@ -1742,6 +3223,46 @@ class AiChatTab(QWidget):
             except RuntimeError:
                 pass
             self._process = None
+
+    def _run_later(self, msec: int, callback: Callable[[], None]) -> QTimer:
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        self._deferred_timers.append(timer)
+
+        def _on_timeout() -> None:
+            if timer in self._deferred_timers:
+                self._deferred_timers.remove(timer)
+            timer.deleteLater()
+            callback()
+
+        timer.timeout.connect(_on_timeout)
+        timer.start(max(0, msec))
+        return timer
+
+    def _cancel_named_timer(self, attribute: str) -> None:
+        timer = getattr(self, attribute, None)
+        setattr(self, attribute, None)
+        if timer is None:
+            return
+        if timer in self._deferred_timers:
+            self._deferred_timers.remove(timer)
+        try:
+            timer.stop()
+            timer.deleteLater()
+        except RuntimeError:
+            return
+
+    def _cancel_deferred_timers(self) -> None:
+        for timer in list(getattr(self, "_deferred_timers", [])):
+            try:
+                timer.stop()
+                timer.deleteLater()
+            except RuntimeError:
+                pass
+        self._deferred_timers = []
+        self._prompt_timeout_timer = None
+        self._status_timeout_timer = None
+        self._help_timeout_timer = None
 
     def closeEvent(self, event) -> None:
         self.shutdown()
@@ -1762,28 +3283,36 @@ class AiChatTab(QWidget):
         if self.ai_chat_tabs.currentWidget() is self.chat_page and self._render_deferred:
             self._render_deferred = False
             self._render_transcript()
+        if self.ai_chat_tabs.currentWidget() is self.connection_page:
+            self._ensure_model_catalog_fresh(self.current_provider_key())
 
     def _stop_status_process(self) -> None:
-        if self._status_process is None:
+        self._cancel_named_timer("_status_timeout_timer")
+        process = self._status_process
+        self._status_process = None
+        if process is None:
             return
         try:
-            self._status_process.blockSignals(True)
-            if self._status_process.state() != QProcess.ProcessState.NotRunning:
-                self._status_process.kill()
+            process.blockSignals(True)
+            if process.state() != QProcess.ProcessState.NotRunning:
+                process.kill()
         except RuntimeError:
             pass
-        self._status_process = None
+        process.deleteLater()
 
     def _stop_help_process(self) -> None:
-        if self._help_process is None:
+        self._cancel_named_timer("_help_timeout_timer")
+        process = self._help_process
+        self._help_process = None
+        if process is None:
             return
         try:
-            self._help_process.blockSignals(True)
-            if self._help_process.state() != QProcess.ProcessState.NotRunning:
-                self._help_process.kill()
+            process.blockSignals(True)
+            if process.state() != QProcess.ProcessState.NotRunning:
+                process.kill()
         except RuntimeError:
             pass
-        self._help_process = None
+        process.deleteLater()
 
     def _set_status(self, text: str, tooltip: str = "") -> None:
         timestamp = self._time_text()
@@ -1797,8 +3326,10 @@ class AiChatTab(QWidget):
         self.send_button.setEnabled(not running)
         self.stop_button.setEnabled(running)
         self.check_button.setEnabled(not running)
-        self.login_button.setEnabled(not running)
+        self.login_button.setEnabled(not running and not self._login_preflight_active)
         self.save_button.setEnabled(not running)
+        self.model_refresh_button.setEnabled(not running and self._active_model_catalog_request is None)
+        self.custom_model_button.setEnabled(not running)
         if hasattr(self, "attach_button"):
             self.attach_button.setEnabled(not running)
             self.attachment_list.setEnabled(not running)
@@ -1813,8 +3344,10 @@ class AiChatTab(QWidget):
         self.send_button.setEnabled(not preparing)
         self.stop_button.setEnabled(preparing)
         self.check_button.setEnabled(not preparing)
-        self.login_button.setEnabled(not preparing)
+        self.login_button.setEnabled(not preparing and not self._login_preflight_active)
         self.save_button.setEnabled(not preparing)
+        self.model_refresh_button.setEnabled(not preparing and self._active_model_catalog_request is None)
+        self.custom_model_button.setEnabled(not preparing)
         self.prompt_edit.setEnabled(not preparing)
         if hasattr(self, "attach_button"):
             self.attach_button.setEnabled(not preparing)
@@ -1877,6 +3410,8 @@ class AiChatTab(QWidget):
             )
             self.message_layout.addWidget(placeholder)
             self.message_layout.addStretch(1)
+            self._sync_message_container_height()
+            self._run_later(0, self._sync_message_container_height)
             self._scroll_transcript()
             return
 
@@ -1889,7 +3424,40 @@ class AiChatTab(QWidget):
             kind = self._message_kind(title)
             self._add_message_widget(title, timestamp, body, kind)
         self.message_layout.addStretch(1)
+        self._sync_message_container_height()
+        self._run_later(0, self._sync_message_container_height)
         self._scroll_transcript()
+
+    def _sync_message_container_height(self) -> None:
+        if not hasattr(self, "message_layout"):
+            return
+        margins = self.message_layout.contentsMargins()
+        spacing = max(0, self.message_layout.spacing())
+        content_height = margins.top() + margins.bottom()
+        visible_items = 0
+        for index in range(self.message_layout.count()):
+            item = self.message_layout.itemAt(index)
+            widget = item.widget()
+            if widget is None:
+                continue
+            if widget.isHidden():
+                continue
+            item_height = max(
+                widget.height(),
+                widget.minimumHeight(),
+                widget.sizeHint().height(),
+                widget.minimumSizeHint().height(),
+                item.sizeHint().height(),
+                item.minimumSize().height(),
+            )
+            content_height += item_height
+            visible_items += 1
+        if visible_items > 1:
+            content_height += spacing * (visible_items - 1)
+        target_height = max(self.transcript_scroll.viewport().height(), content_height)
+        self.message_container.setMinimumHeight(target_height)
+        self.message_container.resize(max(self.message_container.width(), self._transcript_container_width()), target_height)
+        self.message_container.updateGeometry()
 
     def _clear_message_widgets(self) -> None:
         while self.message_layout.count():
@@ -1959,15 +3527,21 @@ class AiChatTab(QWidget):
         meta = QLabel(f"{title} · {timestamp}")
         meta.setStyleSheet("color: #667085; font-size: 11px;")
 
-        text = QLabel(body)
-        text.setTextFormat(Qt.TextFormat.PlainText)
-        text.setWordWrap(True)
-        text.setFixedWidth(max(160, bubble_width - 22))
-        text.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        text.setStyleSheet(f"color: {text_color}; font-size: 13px; line-height: 145%;")
+        text = MessageBodyView()
+        body_width = max(160, bubble_width - 22)
+        if self._message_body_has_markdown(body):
+            text.set_message_body(
+                self._markdown_to_html(body),
+                rich_text=True,
+                width=body_width,
+                text_color=text_color,
+            )
+        else:
+            text.set_message_body(body, rich_text=False, width=body_width, text_color=text_color)
 
         bubble_layout.addWidget(meta)
         bubble_layout.addWidget(text)
+        bubble.setMinimumHeight(bubble_layout.sizeHint().height())
 
         if align == "right":
             qt_align = Qt.AlignmentFlag.AlignRight
@@ -1976,6 +3550,117 @@ class AiChatTab(QWidget):
         else:
             qt_align = Qt.AlignmentFlag.AlignLeft
         self.message_layout.addWidget(bubble, 0, qt_align)
+
+    @staticmethod
+    def _message_body_has_markdown(body: str) -> bool:
+        text = str(body or "")
+        return bool(
+            re.search(r"(^|\n)\s{0,3}#{1,6}\s+", text)
+            or re.search(r"(^|\n)\s*([-*]|\d+\.)\s+", text)
+            or "```" in text
+            or re.search(r"\*\*[^*]+\*\*", text)
+            or re.search(r"`[^`\n]+`", text)
+            or re.search(r"\[[^\]]+\]\(https?://[^)]+\)", text)
+        )
+
+    @classmethod
+    def _markdown_to_html(cls, body: str) -> str:
+        lines = str(body or "").splitlines()
+        output: list[str] = []
+        code_lines: list[str] = []
+        in_code = False
+        list_kind = ""
+
+        def close_list() -> None:
+            nonlocal list_kind
+            if list_kind:
+                output.append(f"</{list_kind}>")
+                list_kind = ""
+
+        for raw_line in lines:
+            stripped = raw_line.strip()
+            if stripped.startswith("```"):
+                if in_code:
+                    escaped_code = html.escape("\n".join(code_lines))
+                    output.append(
+                        "<pre style='white-space: pre-wrap; background: #f2f4f7; "
+                        "border: 1px solid #e4e7ec; border-radius: 6px; padding: 8px;'>"
+                        f"<code>{escaped_code}</code></pre>"
+                    )
+                    code_lines = []
+                    in_code = False
+                else:
+                    close_list()
+                    in_code = True
+                    code_lines = []
+                continue
+
+            if in_code:
+                code_lines.append(raw_line)
+                continue
+
+            if not stripped:
+                close_list()
+                output.append("<div style='height: 6px;'></div>")
+                continue
+
+            heading = re.match(r"^\s{0,3}(#{1,6})\s+(.+)$", raw_line)
+            if heading:
+                close_list()
+                level = len(heading.group(1))
+                size = max(13, 18 - level)
+                output.append(
+                    f"<div style='font-weight: 700; font-size: {size}px; margin: 6px 0 3px;'>"
+                    f"{cls._inline_markdown_to_html(heading.group(2))}</div>"
+                )
+                continue
+
+            bullet = re.match(r"^\s*[-*]\s+(.+)$", raw_line)
+            if bullet:
+                if list_kind != "ul":
+                    close_list()
+                    list_kind = "ul"
+                    output.append("<ul style='margin: 4px 0 4px 18px; padding: 0;'>")
+                output.append(f"<li>{cls._inline_markdown_to_html(bullet.group(1))}</li>")
+                continue
+
+            numbered = re.match(r"^\s*\d+\.\s+(.+)$", raw_line)
+            if numbered:
+                if list_kind != "ol":
+                    close_list()
+                    list_kind = "ol"
+                    output.append("<ol style='margin: 4px 0 4px 18px; padding: 0;'>")
+                output.append(f"<li>{cls._inline_markdown_to_html(numbered.group(1))}</li>")
+                continue
+
+            close_list()
+            output.append(f"<div>{cls._inline_markdown_to_html(raw_line)}</div>")
+
+        close_list()
+        if in_code:
+            escaped_code = html.escape("\n".join(code_lines))
+            output.append(
+                "<pre style='white-space: pre-wrap; background: #f2f4f7; "
+                "border: 1px solid #e4e7ec; border-radius: 6px; padding: 8px;'>"
+                f"<code>{escaped_code}</code></pre>"
+            )
+        return "".join(output)
+
+    @staticmethod
+    def _inline_markdown_to_html(text: str) -> str:
+        escaped = html.escape(str(text or ""))
+        escaped = re.sub(
+            r"\[([^\]]+)\]\((https?://[^)\s]+)\)",
+            r"<a href='\2' style='color: #175cd3;'>\1</a>",
+            escaped,
+        )
+        escaped = re.sub(
+            r"`([^`\n]+)`",
+            r"<code style='background: #f2f4f7; border: 1px solid #e4e7ec; border-radius: 4px; padding: 1px 4px;'>\1</code>",
+            escaped,
+        )
+        escaped = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", escaped)
+        return escaped
 
     @staticmethod
     def _message_kind(title: str) -> str:
@@ -1998,7 +3683,7 @@ class AiChatTab(QWidget):
         return "#ffffff", "#d6deeb", "#172033", "left"
 
     def _scroll_transcript(self) -> None:
-        QTimer.singleShot(0, self._scroll_transcript_now)
+        self._run_later(0, self._scroll_transcript_now)
 
     def _scroll_transcript_now(self) -> None:
         try:

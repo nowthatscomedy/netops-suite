@@ -71,7 +71,7 @@ class ConfigEngine:
             for block in profile.blocks:
                 for line in block.lines:
                     issues.extend(
-                        self._validate_template_line(
+                        self._validate_jinja_line(
                             line=line,
                             declared_variables=declared_variables,
                             profile=profile,
@@ -179,8 +179,8 @@ class ConfigEngine:
 
             block_lines: list[str] = []
             for line in block.lines:
-                template = self.environment.from_string(line)
-                rendered = template.render(**context).rstrip()
+                compiled_line = self.environment.from_string(line)
+                rendered = compiled_line.render(**context).rstrip()
                 if rendered.strip():
                     block_lines.append(rendered)
 
@@ -205,7 +205,7 @@ class ConfigEngine:
     ) -> list[RenderedConfig]:
         return [self.render_device(record, skip_blocks=skip_blocks) for record in records]
 
-    def _validate_template_line(
+    def _validate_jinja_line(
         self,
         line: str,
         declared_variables: set[str],

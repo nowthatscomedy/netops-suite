@@ -10,6 +10,7 @@ from app.models.ai_models import normalize_ai_chat_config
 from app.models.ftp_models import FtpProfile
 from app.models.profile_models import IPProfile
 from app.models.scp_models import ScpProfile
+from app.services.ai_model_catalog_service import AiModelCatalogService
 from app.services.arp_scan_service import ArpScanService
 from app.services.dns_service import DnsService
 from app.services.ftp_client_service import FtpClientService
@@ -36,14 +37,19 @@ from app.utils.file_utils import (
     default_app_config,
     ensure_runtime_files,
     load_json,
+    migrate_config_directory,
     normalize_update_config,
+    resolve_app_paths_with_settings,
     save_json,
+    validate_path_settings,
 )
 
 
 class AppState(QObject):
     log_message = Signal(str)
     config_reloaded = Signal()
+    admin_status_changed = Signal(bool)
+    paths_changed = Signal()
 
     def __init__(
         self,
@@ -60,6 +66,7 @@ class AppState(QObject):
         report("로깅 준비", "앱 로그 파일과 화면 로그 전달자를 연결합니다.")
         self.logger: logging.Logger = configure_logging(self.paths.app_log, self._emit_log_message)
         self.thread_pool = QThreadPool.globalInstance()
+        self._is_admin = False
         report("권한 상태 확인", "관리자 권한 실행 여부를 확인합니다.")
         self.is_admin = is_running_as_admin()
 
@@ -85,6 +92,7 @@ class AppState(QObject):
         self.public_ip_service = PublicIpService(self.logger)
         self.trace_service = TraceService(self.logger)
         self.wireless_service = WirelessService(self.powershell_service, self.logger, self.oui_service)
+        self.ai_model_catalog_service = AiModelCatalogService(self.paths.ai_model_catalog_cache)
         report("파일 전송 서비스 준비", "FTP, SCP, TFTP, iperf 관련 런타임을 초기화합니다.")
         self.ftp_client_service = FtpClientService(self.paths, self.logger)
         self.ftp_server_service = FtpServerService(self.paths, self.logger)
@@ -95,6 +103,18 @@ class AppState(QObject):
         self.public_iperf_service = PublicIperfService(self.paths, self.logger)
         report("업데이트 서비스 준비", "릴리스 확인과 설치 파일 검증 기능을 준비합니다.")
         self.update_service = UpdateService(self.logger)
+
+    @property
+    def is_admin(self) -> bool:
+        return self._is_admin
+
+    @is_admin.setter
+    def is_admin(self, value: bool) -> None:
+        normalized = bool(value)
+        if self._is_admin == normalized:
+            return
+        self._is_admin = normalized
+        self.admin_status_changed.emit(normalized)
 
     def _emit_log_message(self, message: str) -> None:
         self.log_message.emit(message)
@@ -157,6 +177,64 @@ class AppState(QObject):
         self.app_config = normalized
         save_json(self.paths.app_config, self.app_config)
         self.logger.info("Saved app_config.json")
+
+    def save_path_settings(self, settings: dict) -> dict:
+        normalized_settings = validate_path_settings(settings)
+        target_paths = resolve_app_paths_with_settings(self.paths, normalized_settings)
+
+        current_config_dir = Path(self.paths.config_dir).resolve(strict=False)
+        target_config_dir = Path(target_paths.config_dir).resolve(strict=False)
+        current_logs_dir = Path(self.paths.logs_dir).resolve(strict=False)
+        target_logs_dir = Path(target_paths.logs_dir).resolve(strict=False)
+        config_changed = current_config_dir != target_config_dir
+        logs_changed = current_logs_dir != target_logs_dir
+
+        copied_files: tuple[Path, ...] = ()
+        skipped_files: tuple[Path, ...] = ()
+        if config_changed:
+            copied_files, skipped_files = migrate_config_directory(current_config_dir, target_config_dir)
+
+        ensure_runtime_files(target_paths)
+        if self.paths.path_settings is None:
+            raise RuntimeError("Path settings file is not configured.")
+        save_json(self.paths.path_settings, normalized_settings)
+
+        if config_changed:
+            for attribute in (
+                "config_dir",
+                "app_config",
+                "ip_profiles",
+                "ftp_profiles",
+                "ftp_runtime",
+                "scp_profiles",
+                "scp_runtime",
+                "tftp_runtime",
+                "vendor_presets",
+                "public_iperf_cache",
+                "ai_model_catalog_cache",
+                "oui_cache",
+                "ftp_keys_dir",
+            ):
+                setattr(self.paths, attribute, getattr(target_paths, attribute))
+        self.paths.exports_dir = target_paths.exports_dir
+        restart_required = config_changed or logs_changed
+        result = {
+            "target_paths": target_paths,
+            "copied_files": copied_files,
+            "skipped_files": skipped_files,
+            "restart_required": restart_required,
+        }
+        self.logger.info(
+            "Saved path settings (config=%s, logs=%s, exports=%s, copied=%s, skipped=%s, restart_required=%s).",
+            target_paths.config_dir,
+            target_paths.logs_dir,
+            target_paths.exports_dir,
+            len(copied_files),
+            len(skipped_files),
+            restart_required,
+        )
+        self.paths_changed.emit()
+        return result
 
     def get_ui_state(self) -> dict:
         ui_state = self.app_config.get("ui_state", {})

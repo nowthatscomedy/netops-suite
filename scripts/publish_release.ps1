@@ -6,6 +6,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ReleaseName,
     [Parameter(Mandatory = $true)]
+    [string]$TargetCommitish,
+    [Parameter(Mandatory = $true)]
     [string]$AssetPath,
     [string]$ChecksumPath = "",
     [switch]$IsPrerelease,
@@ -16,6 +18,10 @@ $ErrorActionPreference = "Stop"
 
 if (-not $env:GITHUB_TOKEN) {
     throw "The GITHUB_TOKEN environment variable is required."
+}
+
+if ($TargetCommitish -notmatch '^[0-9a-fA-F]{40}$') {
+    throw "TargetCommitish must be the exact 40-character source commit SHA for this release."
 }
 
 if (-not (Test-Path $AssetPath)) {
@@ -67,36 +73,123 @@ function Invoke-GitHubRest {
     return Invoke-RestMethod -Method $Method -Uri $Uri -Headers $apiHeaders
 }
 
-$releaseApi = "https://api.github.com/repos/$Repository/releases/tags/$TagName"
-$release = $null
+function Get-ReleaseByTag {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Tag
+    )
 
-try {
-    $release = Invoke-GitHubRest -Method GET -Uri $releaseApi
-}
-catch {
-    $response = $_.Exception.Response
-    $statusCode = $null
-    if ($response) {
-        $statusCode = [int]$response.StatusCode
+    $escapedTag = [System.Uri]::EscapeDataString($Tag)
+    try {
+        return Invoke-GitHubRest -Method GET -Uri "https://api.github.com/repos/$Repository/releases/tags/$escapedTag"
+    }
+    catch {
+        $statusCode = $null
+        if ($_.Exception.Response) {
+            $statusCode = [int]$_.Exception.Response.StatusCode
+        }
+        if ($statusCode -ne 404) {
+            throw
+        }
     }
 
-    if ($statusCode -ne 404) {
+    # The tag endpoint omits unpublished drafts, so inspect the authenticated
+    # release list before deciding that a release does not exist.
+    $releases = @(Invoke-GitHubRest -Method GET -Uri "https://api.github.com/repos/$Repository/releases?per_page=100")
+    return @($releases | Where-Object { $_.tag_name -eq $Tag }) | Select-Object -First 1
+}
+
+$release = Get-ReleaseByTag -Tag $TagName
+
+function Resolve-TagCommitSha {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Tag
+    )
+
+    $escapedTag = [System.Uri]::EscapeDataString($Tag)
+    try {
+        $reference = Invoke-GitHubRest -Method GET -Uri "https://api.github.com/repos/$Repository/git/ref/tags/$escapedTag"
+    }
+    catch {
+        $statusCode = $null
+        if ($_.Exception.Response) {
+            $statusCode = [int]$_.Exception.Response.StatusCode
+        }
+        if ($statusCode -eq 404) {
+            return ""
+        }
         throw
+    }
+
+    $objectType = [string]$reference.object.type
+    $objectSha = [string]$reference.object.sha
+    for ($depth = 0; $depth -lt 5 -and $objectType -eq "tag"; $depth++) {
+        $tagObject = Invoke-GitHubRest -Method GET -Uri "https://api.github.com/repos/$Repository/git/tags/$objectSha"
+        $objectType = [string]$tagObject.object.type
+        $objectSha = [string]$tagObject.object.sha
+    }
+    if ($objectType -ne "commit") {
+        throw "Tag $Tag does not resolve to a commit."
+    }
+    return $objectSha
+}
+
+$releaseWasExisting = $null -ne $release
+if ($releaseWasExisting) {
+    if (-not $release.draft) {
+        throw "Release $TagName is already published and is immutable. Create a new version instead."
+    }
+    if (-not $AllowAssetReplace.IsPresent) {
+        throw "Draft release $TagName already exists. Use -AllowAssetReplace only to repair this unpublished draft."
+    }
+}
+
+$existingTagCommit = Resolve-TagCommitSha -Tag $TagName
+if ($existingTagCommit -and $existingTagCommit -ne $TargetCommitish) {
+    throw "Existing tag $TagName points to $existingTagCommit, not requested source commit $TargetCommitish."
+}
+if (-not $existingTagCommit) {
+    try {
+        Invoke-GitHubRest -Method POST -Uri "https://api.github.com/repos/$Repository/git/refs" -Body @{
+            ref = "refs/tags/$TagName"
+            sha = $TargetCommitish
+        } | Out-Null
+    }
+    catch {
+        # A concurrent run may have created the tag after the initial read.
+        # Resolve it below and accept it only when it points to the same commit.
+        $statusCode = $null
+        if ($_.Exception.Response) {
+            $statusCode = [int]$_.Exception.Response.StatusCode
+        }
+        if ($statusCode -ne 422) {
+            throw
+        }
+    }
+    $existingTagCommit = Resolve-TagCommitSha -Tag $TagName
+    if ($existingTagCommit -ne $TargetCommitish) {
+        throw "Could not create tag $TagName at requested source commit $TargetCommitish."
     }
 }
 
 if (-not $release) {
     $release = Invoke-GitHubRest -Method POST -Uri "https://api.github.com/repos/$Repository/releases" -Body @{
-        tag_name              = $TagName
-        name                  = $ReleaseName
-        draft                 = $true
-        prerelease            = $prereleaseFlag
+        tag_name               = $TagName
+        target_commitish       = $TargetCommitish
+        name                   = $ReleaseName
+        draft                  = $true
+        prerelease             = $prereleaseFlag
         generate_release_notes = $true
     }
 }
 
 if (-not $release.id) {
     throw "GitHub release id was not returned. Cannot upload release asset."
+}
+
+if (-not $release.draft) {
+    throw "Refusing to upload assets to an already-published release."
 }
 
 function Publish-ReleaseAsset {
@@ -107,6 +200,10 @@ function Publish-ReleaseAsset {
         [string]$Path,
         [string]$ContentType = "application/octet-stream"
     )
+
+    if (-not $Release.draft) {
+        throw "Refusing to replace assets on an already-published release."
+    }
 
     $assetName = Split-Path -Path $Path -Leaf
     $existingAsset = @($Release.assets | Where-Object { $_.name -eq $assetName }) | Select-Object -First 1
@@ -138,10 +235,11 @@ if (-not [string]::IsNullOrWhiteSpace($ChecksumPath)) {
 
 if ($release.draft) {
     $release = Invoke-GitHubRest -Method PATCH -Uri "https://api.github.com/repos/$Repository/releases/$($release.id)" -Body @{
-        tag_name   = $TagName
-        name       = $ReleaseName
-        draft      = $false
-        prerelease = $prereleaseFlag
+        tag_name         = $TagName
+        target_commitish = $TargetCommitish
+        name             = $ReleaseName
+        draft            = $false
+        prerelease       = $prereleaseFlag
     }
     if ($prereleaseFlag) {
         Write-Host "Published prerelease: $TagName"
@@ -149,4 +247,9 @@ if ($release.draft) {
     else {
         Write-Host "Published release: $TagName"
     }
+}
+
+$publishedTagCommit = Resolve-TagCommitSha -Tag $TagName
+if ($publishedTagCommit -ne $TargetCommitish) {
+    throw "Published tag $TagName does not resolve to requested source commit $TargetCommitish."
 }

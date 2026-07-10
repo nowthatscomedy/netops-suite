@@ -6,7 +6,6 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QComboBox,
     QFormLayout,
     QGridLayout,
     QGroupBox,
@@ -43,6 +42,7 @@ from app.utils.validators import (
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
+from netops_suite.ui.selection_inputs import NoWheelComboBox
 
 class InterfaceTab(QWidget):
     status_message = Signal(str)
@@ -57,6 +57,7 @@ class InterfaceTab(QWidget):
 
         self._build_ui()
         self.state.config_reloaded.connect(self._reload_lists)
+        self.state.admin_status_changed.connect(lambda _is_admin: self._update_admin_ui())
         self._reload_lists()
 
     def start_initial_refresh(self) -> None:
@@ -72,7 +73,7 @@ class InterfaceTab(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(make_step_hint("작업 흐름: 어댑터 선택 → DHCP/수동 설정 → 변경 내용 확인 → 적용"))
+        layout.addWidget(make_step_hint("작업 흐름: 어댑터 선택, DHCP/수동 설정, 변경 내용 확인, 적용"))
 
         self.admin_banner = QWidget()
         admin_layout = QHBoxLayout(self.admin_banner)
@@ -134,7 +135,7 @@ class InterfaceTab(QWidget):
         form_layout.setVerticalSpacing(6)
         form_group_layout.addLayout(form_layout)
         self.selected_interface_label = QLabel("-")
-        self.mode_combo = QComboBox()
+        self.mode_combo = NoWheelComboBox()
         self.mode_combo.addItem("자동 (DHCP)", "dhcp")
         self.mode_combo.addItem("수동 IP", "static")
         self.ip_edit = QLineEdit()
@@ -245,6 +246,10 @@ class InterfaceTab(QWidget):
                 "background:transparent; color:#475467; padding:4px 0 4px 9px; "
                 "border:0; border-left:3px solid #fdba74; font-weight:500;"
             )
+
+    def _update_admin_ui(self) -> None:
+        self._update_admin_banner()
+        self._update_action_states()
 
     def _reload_lists(self) -> None:
         selected_name = self._selected_profile().name if self._selected_profile() else ""

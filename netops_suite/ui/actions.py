@@ -34,28 +34,29 @@ _ICON_MAP = {
     ActionKind.REFRESH: QStyle.StandardPixmap.SP_BrowserReload,
     ActionKind.ADD: QStyle.StandardPixmap.SP_FileDialogNewFolder,
     ActionKind.DELETE: QStyle.StandardPixmap.SP_TrashIcon,
-    ActionKind.START: QStyle.StandardPixmap.SP_MediaPlay,
     ActionKind.STOP: QStyle.StandardPixmap.SP_MediaStop,
     ActionKind.CANCEL: QStyle.StandardPixmap.SP_DialogCancelButton,
 }
 
+_NEUTRAL_PALETTE = ("#ffffff", "#182230", "#cbd5e1", "#f8fafc")
+
 _PALETTE = {
-    ActionKind.PRIMARY: ("#f8fafc", "#182230", "#cbd5e1", "#eef2f6"),
-    ActionKind.START: ("#ecfdf3", "#166534", "#bbf7d0", "#dcfce7"),
-    ActionKind.SAVE: ("#eef2f6", "#344054", "#cbd5e1", "#e4e7ec"),
-    ActionKind.DANGER: ("#fff1f2", "#b42318", "#fecdd3", "#ffe4e6"),
-    ActionKind.DELETE: ("#fff1f2", "#b42318", "#fecdd3", "#ffe4e6"),
-    ActionKind.STOP: ("#fff1f2", "#b42318", "#fecdd3", "#ffe4e6"),
-    ActionKind.CANCEL: ("#ffffff", "#667085", "#d0d5dd", "#f8fafc"),
-    ActionKind.UTILITY: ("#ffffff", "#475467", "#d0d5dd", "#f8fafc"),
-    ActionKind.SECONDARY: ("#ffffff", "#475467", "#d0d5dd", "#f8fafc"),
-    ActionKind.BROWSE: ("#ffffff", "#475467", "#d0d5dd", "#f8fafc"),
-    ActionKind.OPEN: ("#ffffff", "#475467", "#d0d5dd", "#f8fafc"),
-    ActionKind.EXPORT: ("#ffffff", "#475467", "#d0d5dd", "#f8fafc"),
-    ActionKind.COPY: ("#ffffff", "#475467", "#d0d5dd", "#f8fafc"),
-    ActionKind.ADD: ("#ecfdf3", "#166534", "#bbf7d0", "#dcfce7"),
-    ActionKind.EDIT: ("#ffffff", "#475467", "#d0d5dd", "#f8fafc"),
-    ActionKind.REFRESH: ("#ffffff", "#475467", "#d0d5dd", "#f8fafc"),
+    ActionKind.PRIMARY: _NEUTRAL_PALETTE,
+    ActionKind.SECONDARY: _NEUTRAL_PALETTE,
+    ActionKind.UTILITY: _NEUTRAL_PALETTE,
+    ActionKind.BROWSE: _NEUTRAL_PALETTE,
+    ActionKind.REFRESH: _NEUTRAL_PALETTE,
+    ActionKind.OPEN: _NEUTRAL_PALETTE,
+    ActionKind.SAVE: _NEUTRAL_PALETTE,
+    ActionKind.EXPORT: _NEUTRAL_PALETTE,
+    ActionKind.COPY: _NEUTRAL_PALETTE,
+    ActionKind.ADD: _NEUTRAL_PALETTE,
+    ActionKind.EDIT: _NEUTRAL_PALETTE,
+    ActionKind.START: _NEUTRAL_PALETTE,
+    ActionKind.STOP: _NEUTRAL_PALETTE,
+    ActionKind.CANCEL: _NEUTRAL_PALETTE,
+    ActionKind.DELETE: _NEUTRAL_PALETTE,
+    ActionKind.DANGER: _NEUTRAL_PALETTE,
 }
 
 
@@ -71,9 +72,9 @@ def make_action_button(
     action_kind = ActionKind(kind)
     button = QPushButton(text)
     button.setProperty("actionKind", action_kind.value)
-    button.setMinimumHeight(24)
-    button.setMaximumHeight(26)
-    button.setIconSize(QSize(13, 13))
+    button.setMinimumHeight(28)
+    button.setMaximumHeight(32)
+    button.setIconSize(QSize(14, 14))
     button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
     if min_width is not None:
         button.setMinimumWidth(min_width)
@@ -123,9 +124,9 @@ def _polish_existing_button(button: QPushButton, text: str | None, kind: ActionK
     if text is not None:
         button.setText(text)
     button.setProperty("actionKind", kind.value)
-    button.setMinimumHeight(max(button.minimumHeight(), 24))
-    button.setMaximumHeight(26)
-    button.setIconSize(QSize(13, 13))
+    button.setMinimumHeight(max(button.minimumHeight(), 28))
+    button.setMaximumHeight(32)
+    button.setIconSize(QSize(14, 14))
     icon = _standard_icon(kind)
     if icon is not None:
         button.setIcon(icon)
@@ -151,8 +152,8 @@ QPushButton {{
     color: {color};
     border: 1px solid {border};
     border-radius: 4px;
-    padding: 3px 8px;
-    min-height: 20px;
+    padding: 4px 9px;
+    min-height: 22px;
     font-size: 11px;
     font-weight: 500;
 }}

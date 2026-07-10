@@ -7,7 +7,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QComboBox,
     QFileDialog,
     QFormLayout,
     QGridLayout,
@@ -50,6 +49,7 @@ from app.utils.validators import (
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
+from netops_suite.ui.selection_inputs import NoWheelComboBox
 
 class FtpDiagnosticsMixin:
     def _build_ftp_tab(self) -> QWidget:
@@ -85,11 +85,11 @@ class FtpDiagnosticsMixin:
         selector_layout = QHBoxLayout(selector_widget)
         selector_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.file_transfer_role_combo = QComboBox()
+        self.file_transfer_role_combo = NoWheelComboBox()
         self.file_transfer_role_combo.addItem("클라이언트", 0)
         self.file_transfer_role_combo.addItem("서버", 1)
         self.file_transfer_role_combo.setMinimumWidth(120)
-        self.file_transfer_mode_combo = QComboBox()
+        self.file_transfer_mode_combo = NoWheelComboBox()
         self.file_transfer_mode_combo.addItem("FTP/FTPS/SFTP", 0)
         self.file_transfer_mode_combo.addItem("SCP", 1)
         self.file_transfer_mode_combo.addItem("TFTP", 2)
@@ -323,7 +323,7 @@ class FtpDiagnosticsMixin:
         connection_layout = QVBoxLayout(connection_group)
 
         profile_row = QHBoxLayout()
-        self.ftp_profile_combo = QComboBox()
+        self.ftp_profile_combo = NoWheelComboBox()
         self.ftp_profile_add_button = make_action_button("추가", ActionKind.ADD)
         self.ftp_profile_edit_button = make_action_button("수정", ActionKind.EDIT)
         self.ftp_profile_delete_button = make_action_button("삭제", ActionKind.DELETE)
@@ -337,7 +337,7 @@ class FtpDiagnosticsMixin:
         form = QGridLayout()
         self._configure_transfer_form_grid(form)
 
-        self.ftp_client_protocol_combo = QComboBox()
+        self.ftp_client_protocol_combo = NoWheelComboBox()
         self.ftp_client_protocol_combo.addItem("FTP", "ftp")
         self.ftp_client_protocol_combo.addItem("FTPS", "ftps")
         self.ftp_client_protocol_combo.addItem("SFTP", "sftp")
@@ -549,7 +549,7 @@ class FtpDiagnosticsMixin:
         form.setColumnStretch(1, 1)
         form.setColumnStretch(3, 1)
 
-        self.ftp_server_protocol_combo = QComboBox()
+        self.ftp_server_protocol_combo = NoWheelComboBox()
         self.ftp_server_protocol_combo.addItem("FTP", "ftp")
         self.ftp_server_protocol_combo.addItem("FTPS", "ftps")
         self.ftp_server_protocol_combo.addItem("SFTP", "sftp")
@@ -1020,7 +1020,7 @@ class FtpDiagnosticsMixin:
         if not confirm_risky_action(
             self,
             "원격 항목 이름 변경",
-            impact=f"원격 항목 이름이 변경됩니다: {entries[0].remote_path} → {new_name.strip()}",
+            impact=f"원격 항목 이름이 변경됩니다: {entries[0].remote_path} 에서 {new_name.strip()} 로",
             reversibility="새 이름을 알고 있으면 다시 변경할 수 있지만, 자동 되돌리기는 제공되지 않습니다.",
             output_location="실행 결과와 오류는 파일 전송 로그와 애플리케이션 로그에 기록됩니다.",
             confirm_text="이름 변경",
@@ -1076,7 +1076,7 @@ class FtpDiagnosticsMixin:
 
     def _finish_ftp_job_with_refresh(self) -> None:
         self._set_ftp_client_busy(False)
-        if self._ftp_client_connected and self._ftp_session_id:
+        if not self._shutting_down and self._ftp_client_connected and self._ftp_session_id:
             self._refresh_ftp_remote_list()
 
     def _cancel_ftp_client_job(self) -> None:

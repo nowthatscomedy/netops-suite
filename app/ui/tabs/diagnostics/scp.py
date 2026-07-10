@@ -6,7 +6,6 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QComboBox,
     QFileDialog,
     QFormLayout,
     QGridLayout,
@@ -32,6 +31,7 @@ from app.utils.file_utils import open_in_explorer, timestamped_export_path
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
+from netops_suite.ui.selection_inputs import NoWheelComboBox
 
 class ScpDiagnosticsMixin:
     def _build_scp_client_page(self) -> QWidget:
@@ -44,7 +44,7 @@ class ScpDiagnosticsMixin:
         connection_layout = QVBoxLayout(connection_group)
 
         profile_row = QHBoxLayout()
-        self.scp_profile_combo = QComboBox()
+        self.scp_profile_combo = NoWheelComboBox()
         self.scp_profile_add_button = make_action_button("추가", ActionKind.ADD)
         self.scp_profile_edit_button = make_action_button("수정", ActionKind.EDIT)
         self.scp_profile_delete_button = make_action_button("삭제", ActionKind.DELETE)
@@ -228,7 +228,7 @@ class ScpDiagnosticsMixin:
         self.scp_server_password_edit = QLineEdit()
         self.scp_server_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.scp_server_password_edit.setPlaceholderText("접속 비밀번호")
-        self.scp_server_readonly_combo = QComboBox()
+        self.scp_server_readonly_combo = NoWheelComboBox()
         self.scp_server_readonly_combo.addItem("읽기/쓰기", False)
         self.scp_server_readonly_combo.addItem("읽기 전용", True)
 

@@ -9,6 +9,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from threading import Event
 from typing import Any, Literal
 
 import yaml
@@ -57,7 +58,8 @@ class InspectorService:
         self.user_data_dir = Path(user_data_dir) if user_data_dir else self.work_dir
         self.user_data_dir.mkdir(parents=True, exist_ok=True)
         self.custom_parsers_dir.mkdir(parents=True, exist_ok=True)
-        self.vendor_templates_dir = package_root / "inspector" / "vendor_templates"
+        self.bundled_vendor_profiles_dir = package_root / "inspector" / "vendor_profiles"
+        self.vendor_profiles_dir = self.user_data_dir / "vendor_profiles"
 
     @property
     def custom_rules_path(self) -> Path:
@@ -73,7 +75,7 @@ class InspectorService:
 
             return {vendor: sorted(os_map.keys()) for vendor, os_map in sorted(INSPECTION_COMMANDS.items())}
 
-    def supported_profile_templates(self) -> list[dict[str, Any]]:
+    def supported_profile_definitions(self) -> list[dict[str, Any]]:
         with self._runtime_import_path():
             from vendors import (
                 BACKUP_COMMANDS,
@@ -85,7 +87,7 @@ class InspectorService:
                 is_custom_rule_pair,
             )
 
-            templates: list[dict[str, Any]] = []
+            profiles: list[dict[str, Any]] = []
             custom_parsers = sorted(CUSTOM_PARSERS.keys())
             for vendor, os_map in sorted(INSPECTION_COMMANDS.items()):
                 for os_name, commands in sorted(os_map.items()):
@@ -95,7 +97,7 @@ class InspectorService:
                     backup_command = BACKUP_COMMANDS.get(vendor, {}).get(os_name, "")
                     connection = CONNECTION_OVERRIDES.get(vendor, {}).get(os_name, {})
                     handler = HANDLER_OVERRIDES.get(vendor, {}).get(os_name, {})
-                    templates.append(
+                    profiles.append(
                         {
                             "vendor": vendor,
                             "model": "",
@@ -118,11 +120,11 @@ class InspectorService:
                             "source": "runtime",
                         }
                     )
-            existing_keys = {str(template["key"]) for template in templates}
-            templates.extend(self._load_reference_template_files(existing_keys, custom_parsers))
-            return templates
+            existing_keys = {str(profile["key"]) for profile in profiles}
+            profiles.extend(self._load_reference_profile_files(existing_keys, custom_parsers))
+            return profiles
 
-    def build_vendor_template_yaml(self, vendor: str, os_name: str) -> str:
+    def build_vendor_profile_yaml(self, vendor: str, os_name: str) -> str:
         vendor_key = self._normalize_key(vendor)
         os_key = self._normalize_key(os_name)
         if not vendor_key or not os_key:
@@ -140,14 +142,14 @@ class InspectorService:
             }
         return yaml.safe_dump(document, sort_keys=False, allow_unicode=True)
 
-    def ensure_vendor_template_files(self) -> int:
-        self.vendor_templates_dir.mkdir(parents=True, exist_ok=True)
+    def ensure_vendor_profile_files(self) -> int:
+        self.vendor_profiles_dir.mkdir(parents=True, exist_ok=True)
         count = 0
-        for template in self.supported_profile_templates():
-            vendor = template["vendor"]
-            os_name = template["os"]
-            path = self.vendor_templates_dir / f"{self._safe_file_part(vendor)}__{self._safe_file_part(os_name)}.yaml"
-            path.write_text(self.build_vendor_template_yaml(vendor, os_name), encoding="utf-8")
+        for profile in self.supported_profile_definitions():
+            vendor = profile["vendor"]
+            os_name = profile["os"]
+            path = self.vendor_profiles_dir / f"{self._safe_file_part(vendor)}__{self._safe_file_part(os_name)}.yaml"
+            path.write_text(self.build_vendor_profile_yaml(vendor, os_name), encoding="utf-8")
             count += 1
         return count
 
@@ -242,7 +244,12 @@ class InspectorService:
 
             return read_command_file(path)
 
-    def run(self, request: InspectorRunRequest, progress_callback: Any | None = None) -> InspectorRunResult:
+    def run(
+        self,
+        request: InspectorRunRequest,
+        progress_callback: Any | None = None,
+        cancel_event: Event | None = None,
+    ) -> InspectorRunResult:
         def emit(event: dict[str, Any]) -> None:
             if progress_callback is None:
                 return
@@ -252,14 +259,16 @@ class InspectorService:
                 progress_callback(event)
 
         run_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self._raise_if_cancelled(cancel_event)
         with self._runtime_import_path(), self._working_directory():
             from core.file_handler import save_results_to_excel
             from core.inspector import NetworkInspector
             from core.settings import load_settings, resolve_inspection_column_order
 
-            emit({"type": "running", "message": "인벤토리를 불러오는 중입니다."})
+            emit({"type": "running", "message": "대상 장비 목록을 불러오는 중입니다."})
             settings = load_settings()
             devices = self.load_inventory(request.inventory_path, request.inventory_password)
+            self._raise_if_cancelled(cancel_event)
             for device in devices:
                 device.setdefault("username", "")
                 device.setdefault("enable_password", "")
@@ -279,6 +288,7 @@ class InspectorService:
                 max_workers=request.max_workers or settings.max_workers,
                 column_aliases=settings.column_aliases,
                 status_callback=emit,
+                cancel_event=cancel_event,
             )
             inspector.load_devices(devices)
             emit({"type": "progress", "message": f"장비 {len(devices)}대를 실행 대기열에 올렸습니다."})
@@ -293,20 +303,24 @@ class InspectorService:
 
             if request.mode == "backup":
                 inspector.inspect_devices(backup_only=True)
+                self._raise_if_cancelled(cancel_event)
                 result_excel = inspector.output_excel.replace("inspection_results", "backup_summary")
                 save_results_to_excel(inspector.results, result_excel, column_order=column_order, column_aliases=settings.column_aliases)
             elif request.mode == "inspection_backup":
                 inspector.inspect_and_backup_devices()
+                self._raise_if_cancelled(cancel_event)
                 result_excel = inspector.output_excel
                 save_results_to_excel(inspector.results, result_excel, column_order=column_order, column_aliases=settings.column_aliases)
             elif request.mode == "custom_commands":
                 if not commands:
                     raise ValueError("사용자 명령 파일 또는 명령 목록이 필요합니다.")
                 inspector.run_custom_commands(commands)
+                self._raise_if_cancelled(cancel_event)
                 result_excel = inspector.output_excel.replace("inspection_results", "command_results")
                 save_results_to_excel(inspector.results, result_excel, column_aliases=settings.column_aliases)
             else:
                 inspector.inspect_devices(backup_only=False)
+                self._raise_if_cancelled(cancel_event)
                 result_excel = inspector.output_excel
                 save_results_to_excel(inspector.results, result_excel, column_order=column_order, column_aliases=settings.column_aliases)
 
@@ -320,6 +334,11 @@ class InspectorService:
                 session_log_dir=str(Path(inspector.session_log_dir).resolve()) if Path(inspector.session_log_dir).exists() else None,
                 results=list(inspector.results),
             )
+
+    @staticmethod
+    def _raise_if_cancelled(cancel_event: Event | None) -> None:
+        if cancel_event is not None and cancel_event.is_set():
+            raise RuntimeError("장비 점검 작업이 취소되었습니다.")
 
     @contextlib.contextmanager
     def _runtime_import_path(self):
@@ -386,16 +405,23 @@ class InspectorService:
                 add(process.get("output_column"))
         return columns
 
-    def _load_reference_template_files(
+    def _load_reference_profile_files(
         self,
         existing_keys: set[str],
         custom_parsers: list[str],
     ) -> list[dict[str, Any]]:
-        templates: list[dict[str, Any]] = []
-        if not self.vendor_templates_dir.exists():
-            return templates
+        profiles: list[dict[str, Any]] = []
+        profile_paths: list[Path] = []
+        for directory in (self.vendor_profiles_dir, self.bundled_vendor_profiles_dir):
+            if directory.exists():
+                profile_paths.extend(
+                    sorted(
+                        [*directory.glob("*.yaml"), *directory.glob("*.yml")],
+                        key=lambda item: item.name.casefold(),
+                    )
+                )
 
-        for path in sorted([*self.vendor_templates_dir.glob("*.yaml"), *self.vendor_templates_dir.glob("*.yml")]):
+        for path in profile_paths:
             try:
                 data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
             except Exception:
@@ -443,7 +469,7 @@ class InspectorService:
                     if not isinstance(output_columns, list):
                         output_columns = self._collect_output_columns(parse_rules)
 
-                    templates.append(
+                    profiles.append(
                         {
                             "vendor": vendor,
                             "model": str(metadata.get("model", "")),
@@ -467,7 +493,7 @@ class InspectorService:
                         }
                     )
                     existing_keys.add(key)
-        return templates
+        return profiles
 
     def available_custom_parsers(self) -> list[str]:
         with self._runtime_import_path():

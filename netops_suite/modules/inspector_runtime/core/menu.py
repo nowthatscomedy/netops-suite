@@ -70,7 +70,7 @@ def show_main_menu() -> str:
         message="원하는 작업을 선택하세요:",
         choices=choices,
         default="1",
-        pointer="▶",
+        pointer=" ",
     ).execute()
 
 
@@ -93,7 +93,7 @@ def show_netmiko_device_types() -> None:
     result = inquirer.fuzzy(
         message="device_type 검색 (ESC=뒤로가기):",
         choices=device_types,
-        pointer="▶",
+        pointer=" ",
         info=True,
         mandatory=False,
     ).execute()
@@ -120,7 +120,7 @@ def show_action_menu() -> str | None:
         message="작업:",
         choices=choices,
         default="1",
-        pointer="▶",
+        pointer=" ",
     ).execute()
 
 
@@ -153,7 +153,7 @@ def select_console_log_level(current_level: str) -> str:
         message="로그 레벨:",
         choices=level_choices,
         default=current_level,
-        pointer="▶",
+        pointer=" ",
     ).execute()
 
     return result if result is not None else current_level
@@ -250,7 +250,7 @@ def show_settings_menu(settings: AppSettings) -> None:
         choice = inquirer.select(
             message="설정:",
             choices=choices,
-            pointer="▶",
+            pointer=" ",
         ).execute()
 
         if choice is None:
@@ -312,7 +312,7 @@ def _print_reorder_frame(
             label = f"  {entry['label']}"
 
         if is_selected:
-            console.print(f"[bold green]▶{label}[/bold green]")
+            console.print(f"[bold green]{label}[/bold green]")
         else:
             console.print(f" {label}")
 
@@ -577,7 +577,7 @@ def show_inspection_exclude_menu(settings: AppSettings) -> None:
         choice = inquirer.select(
             message="벤더:",
             choices=choices,
-            pointer="▶",
+            pointer=" ",
         ).execute()
 
         if choice is None:
@@ -617,7 +617,7 @@ def _show_inspection_exclude_os_menu(settings: AppSettings, vendor: str) -> None
         choice = inquirer.select(
             message="OS:",
             choices=choices,
-            pointer="▶",
+            pointer=" ",
         ).execute()
 
         if choice is None:
@@ -675,7 +675,7 @@ def _show_inspection_exclude_commands_menu(settings: AppSettings, vendor: str, o
         choice = inquirer.select(
             message="항목:",
             choices=choices,
-            pointer="▶",
+            pointer=" ",
         ).execute()
 
         if choice is None:

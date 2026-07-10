@@ -48,6 +48,7 @@ class MainWindow(QMainWindow):
     ) -> None:
         super().__init__(parent)
         self.state = state
+        self._shutdown_started = False
         self._startup_callback = startup_callback or (lambda _message, _detail="": None)
         self._report_startup("메인 창 준비", "윈도우 기본 속성과 작업 실행기를 준비합니다.")
         self._job_runner = JobRunner(self.state.thread_pool, self)
@@ -109,15 +110,15 @@ class MainWindow(QMainWindow):
         self.diagnostics_tab = DiagnosticsTab(self.state)
         self._report_startup("Wi-Fi 분석 화면 구성", "무선 인터페이스와 주변 AP 분석 화면을 준비합니다.")
         self.wireless_tab = WirelessTab(self.state)
-        self._report_startup("장비 점검 화면 구성", "인벤토리 점검과 백업 작업 화면을 준비합니다.")
+        self._report_startup("장비 점검 화면 구성", "대상 장비 목록 기반 점검과 백업 작업 화면을 준비합니다.")
         self.inspector_tab = InspectorTab(self.state)
         self._report_startup("CLI 설정 생성 화면 구성", "장비 설정 생성 도구를 포함합니다.")
         self.config_builder_tab = ConfigBuilderTab(self.state)
-        self._report_startup("AI Chat 화면 구성", "Codex, Claude, Gemini 개인 계정 CLI 채팅 화면을 준비합니다.")
+        self._report_startup("NetOps 어시스턴트 화면 구성", "승인 기반 NetOps 도구 채팅 화면을 준비합니다.")
         self.ai_chat_tab = AiChatTab(self.state)
         self._report_startup("결과 파일 화면 구성", "로그와 내보내기 결과 탐색 화면을 준비합니다.")
         self.artifacts_tab = ArtifactsTab(self.state)
-        self._report_startup("프로그램 설정 화면 구성", "업데이트와 저장 위치 설정 화면을 준비합니다.")
+        self._report_startup("설정 화면 구성", "업데이트와 저장 위치 설정 화면을 준비합니다.")
         self.settings_tab = SettingsTab(self.state)
 
         self.tab_widget.addTab(self.interface_tab, "네트워크 설정")
@@ -125,9 +126,9 @@ class MainWindow(QMainWindow):
         self.tab_widget.addTab(self.wireless_tab, "Wi-Fi 분석")
         self.tab_widget.addTab(self.inspector_tab, "장비 점검/백업")
         self.tab_widget.addTab(self.config_builder_tab, "CLI 설정 생성")
-        self.tab_widget.addTab(self.ai_chat_tab, "AI 채팅")
+        self.tab_widget.addTab(self.ai_chat_tab, "NetOps 어시스턴트")
         self.tab_widget.addTab(self.artifacts_tab, "결과 파일")
-        self.tab_widget.addTab(self.settings_tab, "프로그램 설정")
+        self.tab_widget.addTab(self.settings_tab, "설정")
 
         self.view_menu = QMenu("보기", self)
         self.toggle_log_view_action = QAction("애플리케이션 로그", self)
@@ -175,8 +176,8 @@ class MainWindow(QMainWindow):
         self.admin_button.setDefaultAction(self.restart_admin_action)
         self.view_button = make_menu_button("보기", self.view_menu, "로그와 분리된 결과 표를 표시합니다.")
         self.view_button.setObjectName("sideUtilityButton")
-        self.view_button.setMinimumHeight(24)
-        self.view_button.setMaximumHeight(26)
+        self.view_button.setMinimumHeight(28)
+        self.view_button.setMaximumHeight(32)
         utility_row.addWidget(self.admin_button)
         utility_row.addWidget(self.view_button)
         utility_row.addStretch(1)
@@ -236,6 +237,8 @@ class MainWindow(QMainWindow):
         self.state.log_message.connect(self.log_view.appendPlainText)
         self.interface_tab.status_message.connect(self.statusBar().showMessage)
         self.state.config_reloaded.connect(self._update_admin_status)
+        self.state.admin_status_changed.connect(lambda _is_admin: self._update_admin_status())
+        self.state.paths_changed.connect(self.artifacts_tab.refresh)
         self.diagnostics_tab.result_dock_visibility_changed.connect(self._sync_result_dock_action)
         self.log_dock.topLevelChanged.connect(self._sync_log_dock_state)
         self.log_dock.visibilityChanged.connect(self._sync_log_dock_state)
@@ -501,7 +504,7 @@ class MainWindow(QMainWindow):
             "업데이트 설치",
             impact="현재 프로그램을 종료하고 검증된 설치 프로그램을 실행합니다. 설치 중에는 NetOps Suite를 사용할 수 없습니다.",
             reversibility="설치 전에는 취소할 수 있습니다. 설치 후 되돌리기는 Windows 앱 제거 또는 이전 버전 재설치가 필요할 수 있습니다.",
-            output_location=f"업데이트 상태와 검증 정보는 프로그램 설정 화면에 표시되고 설치 파일은 {downloaded.asset_path}에 남습니다.",
+            output_location=f"업데이트 상태와 검증 정보는 설정 화면에 표시되고 설치 파일은 {downloaded.asset_path}에 남습니다.",
             question="검증한 설치 프로그램을 실행할까요?",
             confirm_text="설치 실행",
         ):
@@ -542,8 +545,23 @@ class MainWindow(QMainWindow):
         self._job_runner._discard_worker(worker)
 
     def closeEvent(self, event) -> None:
-        if hasattr(self, "ai_chat_tab"):
-            self.ai_chat_tab.shutdown()
+        if hasattr(self, "config_builder_tab") and not self.config_builder_tab.prepare_close():
+            event.ignore()
+            return
         self._save_ui_state()
-        self.state.shutdown()
+        self.shutdown()
         super().closeEvent(event)
+
+    def shutdown(self) -> None:
+        if self._shutdown_started:
+            return
+        self._shutdown_started = True
+        for tab_name in ("diagnostics_tab", "wireless_tab", "inspector_tab", "ai_chat_tab"):
+            tab = getattr(self, tab_name, None)
+            shutdown = getattr(tab, "shutdown", None)
+            if callable(shutdown):
+                shutdown()
+        thread_pool = getattr(self.state, "thread_pool", None)
+        if thread_pool is not None:
+            thread_pool.waitForDone(5000)
+        self.state.shutdown()
