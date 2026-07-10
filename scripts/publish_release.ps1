@@ -167,7 +167,15 @@ if (-not $existingTagCommit) {
             throw
         }
     }
-    $existingTagCommit = Resolve-TagCommitSha -Tag $TagName
+    # GitHub may briefly return 404 immediately after creating a ref. Retry
+    # only the empty/not-yet-visible case; a visible mismatched SHA fails below.
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+        $existingTagCommit = Resolve-TagCommitSha -Tag $TagName
+        if ($existingTagCommit -or $attempt -eq 5) {
+            break
+        }
+        Start-Sleep -Seconds 2
+    }
     if ($existingTagCommit -ne $TargetCommitish) {
         throw "Could not create tag $TagName at requested source commit $TargetCommitish."
     }
