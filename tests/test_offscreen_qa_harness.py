@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from threading import Event
@@ -69,6 +70,36 @@ def test_offscreen_user_flow_configuration_runs_all_scenarios(qapp, tmp_path):
     assert report.json_path.is_file()
     assert report.markdown_path.is_file()
     assert len(list(output_dir.glob("*.png"))) == 15
+
+
+def test_offscreen_normal_permission_flow_does_not_inherit_elevated_host(
+    qapp,
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr("app.app_state.is_running_as_admin", lambda: True)
+    config = json.loads(QA_CONFIG.read_text(encoding="utf-8"))
+    config["layout_sweep_viewports"] = []
+    config["scenarios"] = [
+        scenario
+        for scenario in config["scenarios"]
+        if scenario["id"] == "interface_refresh"
+    ]
+    config_path = tmp_path / "interface-refresh.json"
+    config_path.write_text(
+        json.dumps(config, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    report = OffscreenQaHarness(
+        project_root=PROJECT_ROOT,
+        config_path=config_path,
+        output_dir=tmp_path / "offscreen-elevated-host",
+    ).run()
+
+    assert len(report.results) == 1
+    assert report.results[0].scenario_id == "interface_refresh"
+    assert report.results[0].ok
 
 
 class _RealPoolPingService(DeterministicPingService):

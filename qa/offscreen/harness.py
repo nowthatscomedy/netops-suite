@@ -202,6 +202,10 @@ class OffscreenQaHarness:
             patcher.start()
 
         self.state = AppState(self.runtime_root)
+        # The user-flow contract exercises the normal-permission experience.
+        # GitHub-hosted Windows runners may themselves be elevated, so never
+        # inherit the host process token for this deterministic QA scenario.
+        self.state.is_admin = False
         self.state.app_config["update"]["check_on_startup"] = False
         self.state.app_config["ui_state"] = {}
         self.pool = ControlledThreadPool()
