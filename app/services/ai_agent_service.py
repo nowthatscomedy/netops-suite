@@ -18,7 +18,9 @@ from app.models.ai_models import AiProviderConfig, CliInvocation
 MAX_ARGUMENT_PROMPT_CHARS = 28000
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 IPV4_RE = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
-CIDR_RE = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}/(?:[0-9]|[12][0-9]|3[0-2])(?![\d.])")
+CIDR_RE = re.compile(
+    r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}/(?:[0-9]|[12][0-9]|3[0-2])(?![\d.])"
+)
 DOMAIN_RE = re.compile(
     r"(?<![A-Za-z0-9_-])(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
     r"[A-Za-z]{2,63}(?![A-Za-z0-9_-])"
@@ -28,17 +30,31 @@ MAC_RE = re.compile(
 )
 RESERVED_EXTRA_ARG_FLAGS = {
     "-a",
+    "-s",
+    "-C",
+    "-r",
     "--help",
     "--version",
     "--ask-for-approval",
+    "--sandbox",
+    "--cd",
+    "--add-dir",
     "--model",
     "--image",
     "--output-format",
     "--json",
     "--verbose",
+    "--continue",
+    "--resume",
+    "--last",
+    "--session-id",
+    "--fork-session",
+    "--full-auto",
+    "--skip-git-repo-check",
     "--dangerously-bypass-approvals-and-sandbox",
 }
 CODEX_NONINTERACTIVE_GLOBAL_ARGS = ("-a", "never", "-s", "read-only")
+CODEX_SANDBOX_MODES = frozenset({"read-only", "workspace-write", "danger-full-access"})
 DNS_RECORD_TYPES = ("AAAA", "CNAME", "PTR", "TXT", "MX", "NS", "A")
 DEFAULT_EXTERNAL_PING_TARGETS = ("8.8.8.8", "1.1.1.1", "google.com")
 
@@ -58,6 +74,11 @@ class NetOpsChatAction:
     gateway: str = ""
     dns_servers: tuple[str, ...] = ()
     targets: tuple[str, ...] = ()
+    ports: tuple[int, ...] = ()
+    endpoints: tuple[tuple[str, int], ...] = ()
+    count: int = 0
+    timeout_ms: int = 0
+    continuous: bool = False
     duration_seconds: int = 0
     interval_seconds: int = 0
     requires_approval: bool = False
@@ -72,9 +93,15 @@ def plan_netops_chat_action(prompt: str) -> NetOpsChatAction | None:
         return None
 
     lowered = text.casefold()
-    target = _extract_netops_target(text)
-    port = _extract_netops_port(text)
-    mac_address = _extract_netops_mac(text)
+    targets = _extract_netops_targets(text)
+    target = targets[0] if targets else ""
+    ports = _extract_netops_ports(text)
+    port = ports[0] if ports else 0
+    probe_count = _extract_probe_count(text)
+    probe_timeout_ms = _extract_probe_timeout_ms(text)
+    continuous = _is_continuous_probe_request(lowered)
+    mac_addresses = _extract_netops_macs(text)
+    mac_address = mac_addresses[0] if mac_addresses else ""
 
     if _is_oui_cache_refresh_request(lowered) and not mac_address:
         return NetOpsChatAction(
@@ -95,53 +122,202 @@ def plan_netops_chat_action(prompt: str) -> NetOpsChatAction | None:
             admin_required=True,
         )
 
-    cidr = _extract_cidr(text)
-    if cidr and _contains_any(lowered, ("subnet", "cidr", "서브넷", "대역", "network calculate", "계산")):
-        return NetOpsChatAction("subnet_calculate", f"Subnet calculate: {cidr}", target=cidr)
+    cidrs = _extract_cidrs(text)
+    cidr = cidrs[0] if cidrs else ""
+    if cidr and _contains_any(
+        lowered, ("subnet", "cidr", "서브넷", "대역", "network calculate", "계산")
+    ):
+        return NetOpsChatAction(
+            "subnet_calculate",
+            _multi_item_title("Subnet calculate", cidrs),
+            target=cidr,
+            targets=tuple(cidrs),
+        )
 
     if _contains_any(lowered, ("oui", "vendor", "벤더", "제조사")) and mac_address:
-        return NetOpsChatAction("oui_lookup", f"OUI 제조사 조회: {mac_address}", target=mac_address)
+        return NetOpsChatAction(
+            "oui_lookup",
+            _multi_item_title("OUI 제조사 조회", mac_addresses),
+            target=mac_address,
+            targets=tuple(mac_addresses),
+        )
 
-    if _contains_any(lowered, ("공인 ip", "공인아이피", "외부 ip", "public ip", "external ip", "what is my ip", "내 공인")):
+    if _contains_any(
+        lowered,
+        (
+            "공인 ip",
+            "공인아이피",
+            "외부 ip",
+            "public ip",
+            "external ip",
+            "what is my ip",
+            "내 공인",
+        ),
+    ):
         return NetOpsChatAction("public_ip", "공인 IP 확인")
 
+    if _has_change_intent(lowered) and len(_extract_interface_names(text)) > 1:
+        return None
     change_action = _plan_network_change_action(text, lowered)
     if change_action is not None:
         return change_action
 
-    ping_alias_target = _ping_alias_target(lowered)
+    ping_alias_target = _ping_alias_target(lowered) if not targets else ""
     if ping_alias_target:
-        return NetOpsChatAction("ping", f"Ping: {ping_alias_target}", target=ping_alias_target)
-
-    if _is_external_ping_request(lowered):
         return NetOpsChatAction(
-            "external_ping",
-            "외부 Ping 테스트",
-            targets=DEFAULT_EXTERNAL_PING_TARGETS,
+            "ping_batch" if continuous else "ping",
+            f"Ping: {ping_alias_target}",
+            target=ping_alias_target,
+            targets=(ping_alias_target,),
+            count=probe_count,
+            timeout_ms=probe_timeout_ms,
+            continuous=continuous,
         )
 
-    if _contains_any(lowered, ("tcping", "tcp", "포트", "port", "열려", "열렸", "접속", "연결 확인")) and target and port:
-        return NetOpsChatAction("tcp_check", f"TCP 포트 확인: {target}:{port}", target=target, port=port)
+    if _is_external_ping_request(lowered):
+        external_targets = tuple(targets or DEFAULT_EXTERNAL_PING_TARGETS)
+        return NetOpsChatAction(
+            "external_ping",
+            _multi_item_title("외부 Ping 테스트", external_targets),
+            target=external_targets[0],
+            targets=external_targets,
+            count=probe_count,
+            timeout_ms=probe_timeout_ms,
+            continuous=continuous,
+        )
 
-    if _contains_any(lowered, ("dns", "nslookup", "도메인 조회", "레코드 조회")) and target:
+    if (
+        _contains_any(
+            lowered,
+            ("tcping", "tcp", "포트", "port", "열려", "열렸", "접속", "연결 확인"),
+        )
+        and target
+        and port
+    ):
+        endpoints = _extract_tcp_endpoints(text, targets)
+        if _has_ambiguous_tcp_endpoint_request(text, targets, ports, endpoints):
+            return None
+        if len(endpoints) > 1:
+            if continuous:
+                return None
+            return NetOpsChatAction(
+                "tcp_check",
+                "TCP 포트 확인: "
+                + ", ".join(
+                    f"{host}:{endpoint_port}" for host, endpoint_port in endpoints
+                ),
+                target=endpoints[0][0],
+                port=endpoints[0][1],
+                targets=tuple(host for host, _endpoint_port in endpoints),
+                ports=tuple(endpoint_port for _host, endpoint_port in endpoints),
+                endpoints=tuple(endpoints),
+                count=probe_count,
+                timeout_ms=probe_timeout_ms,
+            )
+        if len(targets) > 1 or len(ports) > 1:
+            return NetOpsChatAction(
+                "tcp_batch",
+                f"TCP 포트 확인: {', '.join(targets)} / {', '.join(str(value) for value in ports)}",
+                target=target,
+                port=port,
+                targets=tuple(targets),
+                ports=tuple(ports),
+                count=probe_count,
+                timeout_ms=probe_timeout_ms,
+                continuous=continuous,
+            )
+        return NetOpsChatAction(
+            "tcp_check",
+            f"TCP 포트 확인: {target}:{port}",
+            target=target,
+            port=port,
+            targets=tuple(targets),
+            ports=tuple(ports),
+            count=probe_count,
+            timeout_ms=probe_timeout_ms,
+            continuous=continuous,
+        )
+
+    if (
+        _contains_any(lowered, ("dns", "nslookup", "도메인 조회", "레코드 조회"))
+        and target
+    ):
+        server = _extract_dns_server(text)
+        query_targets = [
+            item
+            for item in targets
+            if not server or item.casefold() != server.casefold()
+        ]
+        if not query_targets:
+            return None
+        target = query_targets[0]
         record_type = _extract_dns_record_type(text)
-        if record_type == "A" and _is_ipv4_address(target) and _contains_any(lowered, ("ptr", "reverse", "역방향")):
+        if (
+            record_type == "A"
+            and _is_ipv4_address(target)
+            and _contains_any(lowered, ("ptr", "reverse", "역방향"))
+        ):
             record_type = "PTR"
-        return NetOpsChatAction("dns_lookup", f"DNS 조회: {target} {record_type}", target=target, record_type=record_type)
+        return NetOpsChatAction(
+            "dns_lookup",
+            f"DNS 조회 ({record_type}): {', '.join(query_targets)}",
+            target=target,
+            targets=tuple(query_targets),
+            record_type=record_type,
+            server=server,
+        )
 
     if _contains_any(lowered, ("pathping", "패스핑")) and target:
-        return NetOpsChatAction("pathping", f"pathping: {target}", target=target, resolve_names=not _no_resolve_requested(lowered))
+        return NetOpsChatAction(
+            "pathping",
+            _multi_item_title("pathping", targets),
+            target=target,
+            targets=tuple(targets),
+            resolve_names=not _no_resolve_requested(lowered),
+        )
 
-    if _contains_any(lowered, ("tracert", "traceroute", "trace route", "경로 추적", "홉 추적")) and target:
-        return NetOpsChatAction("tracert", f"tracert: {target}", target=target, resolve_names=not _no_resolve_requested(lowered))
+    if (
+        _contains_any(
+            lowered, ("tracert", "traceroute", "trace route", "경로 추적", "홉 추적")
+        )
+        and target
+    ):
+        return NetOpsChatAction(
+            "tracert",
+            _multi_item_title("tracert", targets),
+            target=target,
+            targets=tuple(targets),
+            resolve_names=not _no_resolve_requested(lowered),
+        )
 
     if _contains_any(lowered, ("ping", "핑")) and target:
-        return NetOpsChatAction("ping", f"Ping: {target}", target=target)
+        if len(targets) > 1 or continuous:
+            return NetOpsChatAction(
+                "ping_batch",
+                _multi_item_title("Ping", targets),
+                target=target,
+                targets=tuple(targets),
+                count=probe_count,
+                timeout_ms=probe_timeout_ms,
+                continuous=continuous,
+            )
+        return NetOpsChatAction(
+            "ping",
+            f"Ping: {target}",
+            target=target,
+            targets=tuple(targets),
+            count=probe_count,
+            timeout_ms=probe_timeout_ms,
+        )
 
-    if _contains_any(lowered, ("ipconfig", "ip 구성", "어댑터 상세", "인터페이스 상세")):
+    if _contains_any(
+        lowered, ("ipconfig", "ip 구성", "어댑터 상세", "인터페이스 상세")
+    ):
         return NetOpsChatAction("ipconfig", "ipconfig /all")
 
-    if _contains_any(lowered, ("route print", "라우팅 테이블", "라우트 테이블", "경로 테이블")):
+    if _contains_any(
+        lowered, ("route print", "라우팅 테이블", "라우트 테이블", "경로 테이블")
+    ):
         return NetOpsChatAction("route_print", "route print")
 
     if _contains_any(lowered, ("arp -a", "arp 테이블", "arp 목록")):
@@ -172,22 +348,48 @@ def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
 
 
 def _is_external_ping_request(text: str) -> bool:
-    has_ping_intent = _contains_any(text, ("ping", "핑", "핑테스트", "핑 테스트", "icmp"))
-    has_external_scope = _contains_any(text, ("외부", "인터넷", "internet", "external", "outside", "wan", "공용 dns"))
+    has_ping_intent = _contains_any(
+        text, ("ping", "핑", "핑테스트", "핑 테스트", "icmp")
+    )
+    has_external_scope = _contains_any(
+        text, ("외부", "인터넷", "internet", "external", "outside", "wan", "공용 dns")
+    )
     return has_ping_intent and has_external_scope
 
 
 def _is_dns_flush_request(text: str) -> bool:
-    return _contains_any(text, ("dns", "도메인")) and _contains_any(text, ("cache", "캐시")) and _contains_any(
-        text,
-        ("flush", "clear", "delete", "reset", "비워", "비우", "삭제", "초기화", "플러시"),
+    return (
+        _contains_any(text, ("dns", "도메인"))
+        and _contains_any(text, ("cache", "캐시"))
+        and _contains_any(
+            text,
+            (
+                "flush",
+                "clear",
+                "delete",
+                "reset",
+                "비워",
+                "비우",
+                "삭제",
+                "초기화",
+                "플러시",
+            ),
+        )
     )
 
 
 def _is_oui_cache_refresh_request(text: str) -> bool:
     return _contains_any(text, ("oui", "vendor", "벤더")) and _contains_any(
         text,
-        ("cache refresh", "refresh", "update", "캐시 갱신", "캐시 업데이트", "갱신", "업데이트"),
+        (
+            "cache refresh",
+            "refresh",
+            "update",
+            "캐시 갱신",
+            "캐시 업데이트",
+            "갱신",
+            "업데이트",
+        ),
     )
 
 
@@ -243,9 +445,8 @@ def _extract_scan_timing(text: str) -> tuple[int, int]:
     return duration_seconds, interval_seconds
 
 
-def _extract_cidr(text: str) -> str:
-    match = CIDR_RE.search(text)
-    return match.group(0) if match else ""
+def _extract_cidrs(text: str) -> list[str]:
+    return _ordered_unique(match.group(0) for match in CIDR_RE.finditer(text))
 
 
 def _extract_interval_seconds(text: str, *, default: int) -> int:
@@ -312,9 +513,10 @@ def _plan_network_change_action(text: str, lowered: str) -> NetOpsChatAction | N
     if not _has_change_intent(lowered):
         return None
 
-    interface_name = _extract_interface_name(text)
-    if not interface_name:
+    interface_names = _extract_interface_names(text)
+    if len(interface_names) != 1:
         return None
+    interface_name = interface_names[0]
 
     if "dhcp" in lowered:
         return NetOpsChatAction(
@@ -331,7 +533,9 @@ def _plan_network_change_action(text: str, lowered: str) -> NetOpsChatAction | N
         )
 
     static_config = _extract_static_ip_config(text)
-    if static_config is not None and _contains_any(lowered, ("ip", "ipv4", "고정", "static", "주소")):
+    if static_config is not None and _contains_any(
+        lowered, ("ip", "ipv4", "고정", "static", "주소")
+    ):
         ip_address, prefix, gateway, static_dns_servers = static_config
         return NetOpsChatAction(
             "set_static_ip",
@@ -346,7 +550,11 @@ def _plan_network_change_action(text: str, lowered: str) -> NetOpsChatAction | N
             impact=(
                 f"{interface_name} 인터페이스에 고정 IP {ip_address}/{prefix}"
                 + (f", 게이트웨이 {gateway}" if gateway else "")
-                + (f", DNS {', '.join(static_dns_servers)}" if static_dns_servers else "")
+                + (
+                    f", DNS {', '.join(static_dns_servers)}"
+                    if static_dns_servers
+                    else ""
+                )
                 + "를 적용합니다. "
                 "값이 틀리면 현재 네트워크 연결이 끊기거나 원격 접속이 중단될 수 있습니다."
             ),
@@ -373,24 +581,46 @@ def _plan_network_change_action(text: str, lowered: str) -> NetOpsChatAction | N
 
 
 def _has_change_intent(text: str) -> bool:
-    return _contains_any(text, ("변경", "설정", "적용", "바꿔", "바꾸", "전환", "수정", "change", "set", "apply"))
+    return _contains_any(
+        text,
+        (
+            "변경",
+            "설정",
+            "적용",
+            "바꿔",
+            "바꾸",
+            "전환",
+            "수정",
+            "change",
+            "set",
+            "apply",
+        ),
+    )
 
 
 def _extract_interface_name(text: str) -> str:
-    quoted = re.search(r"['\"“”]([^'\"“”]{1,80})['\"“”]", text)
-    if quoted:
-        return quoted.group(1).strip()
+    interface_names = _extract_interface_names(text)
+    return interface_names[0] if interface_names else ""
 
-    keyword_match = re.search(
+
+def _extract_interface_names(text: str) -> list[str]:
+    matches: list[tuple[int, str]] = []
+    for quoted in re.finditer(r"['\"“”]([^'\"“”]{1,80})['\"“”]", text):
+        matches.append((quoted.start(), quoted.group(1).strip()))
+
+    keyword_pattern = (
         r"(?i)(?:인터페이스|어댑터|adapter|interface)\s*[:=]?\s*"
-        r"([A-Za-z0-9가-힣_.\- ]{1,60}?)(?=\s+(?:dhcp|dns|ip|ipv4|고정|static|주소|를|을|로|으로|변경|설정|적용|바꿔)|[,.;]|$)",
-        text,
+        r"([A-Za-z0-9가-힣_.\- ]{1,60}?)(?=\s+(?:dhcp|dns|ip|ipv4|고정|static|주소|를|을|로|으로|변경|설정|적용|바꿔)|[,.;]|$)"
     )
-    if keyword_match:
-        return keyword_match.group(1).strip()
+    for keyword_match in re.finditer(keyword_pattern, text):
+        matches.append((keyword_match.start(), keyword_match.group(1).strip()))
 
-    common_match = re.search(r"(?i)(?<![A-Za-z0-9_-])(Ethernet|Wi-?Fi|WLAN|이더넷)(?![A-Za-z0-9_-])", text)
-    return common_match.group(1).strip() if common_match else ""
+    for common_match in re.finditer(
+        r"(?i)(?<![A-Za-z0-9_-])(Ethernet|Wi-?Fi|WLAN|이더넷)(?![A-Za-z0-9_-])", text
+    ):
+        matches.append((common_match.start(), common_match.group(1).strip()))
+    matches.sort(key=lambda item: item[0])
+    return _ordered_unique(value for _position, value in matches)
 
 
 def _extract_dns_servers_from_text(text: str) -> list[str]:
@@ -408,8 +638,14 @@ def _extract_static_ip_config(text: str) -> tuple[str, int, str, list[str]] | No
     prefix = _extract_prefix_for_ip(text, ip_address)
     if not prefix:
         return None
-    gateway_match = re.search(rf"(?i)(?:gateway|gw|게이트웨이)\s*[:=]?\s*({IPV4_RE.pattern})", text)
-    gateway = gateway_match.group(1) if gateway_match and _is_ipv4_address(gateway_match.group(1)) else ""
+    gateway_match = re.search(
+        rf"(?i)(?:gateway|gw|게이트웨이)\s*[:=]?\s*({IPV4_RE.pattern})", text
+    )
+    gateway = (
+        gateway_match.group(1)
+        if gateway_match and _is_ipv4_address(gateway_match.group(1))
+        else ""
+    )
     dns_servers = _extract_dns_servers_from_text(text)
     return ip_address, prefix, gateway, dns_servers
 
@@ -419,7 +655,9 @@ def _extract_prefix_for_ip(text: str, ip_address: str) -> int:
     if ip_prefix:
         prefix = int(ip_prefix.group(1))
         return prefix if 1 <= prefix <= 32 else 0
-    prefix_match = re.search(r"(?i)(?:prefix|프리픽스|서브넷|mask|마스크)\s*[:=]?\s*(\d{1,2})", text)
+    prefix_match = re.search(
+        r"(?i)(?:prefix|프리픽스|서브넷|mask|마스크)\s*[:=]?\s*(\d{1,2})", text
+    )
     if prefix_match:
         prefix = int(prefix_match.group(1))
         return prefix if 1 <= prefix <= 32 else 0
@@ -434,41 +672,220 @@ def _valid_ipv4_values(values: list[str]) -> list[str]:
     return unique
 
 
+def _extract_netops_targets(text: str) -> list[str]:
+    matches: list[tuple[int, str]] = []
+    for match in IPV4_RE.finditer(text):
+        value = match.group(0)
+        if _is_ipv4_address(value):
+            matches.append((match.start(), value))
+    for match in DOMAIN_RE.finditer(text):
+        matches.append((match.start(), match.group(0).rstrip(".,;")))
+    for match in re.finditer(r"(?i)(?<![A-Za-z0-9_-])localhost(?![A-Za-z0-9_-])", text):
+        matches.append((match.start(), "localhost"))
+    matches.sort(key=lambda item: item[0])
+    return _ordered_unique(value for _position, value in matches)
+
+
 def _extract_netops_target(text: str) -> str:
-    ip_match = IPV4_RE.search(text)
-    if ip_match and _is_ipv4_address(ip_match.group(0)):
-        return ip_match.group(0)
-    domain_match = DOMAIN_RE.search(text)
-    if domain_match:
-        return domain_match.group(0).rstrip(".,;")
-    if re.search(r"(?i)(?<![A-Za-z0-9_-])localhost(?![A-Za-z0-9_-])", text):
-        return "localhost"
-    return ""
+    targets = _extract_netops_targets(text)
+    return targets[0] if targets else ""
 
 
-def _extract_netops_port(text: str) -> int:
+def _extract_netops_ports(text: str) -> list[int]:
+    ports: list[int] = []
+    masked_modifiers = _mask_probe_modifiers(text)
     patterns = (
         r":\s*(\d{1,5})(?!\d)",
         r"(?i)\bport\s*[:=]?\s*(\d{1,5})\b",
         r"포트\s*[:=]?\s*(\d{1,5})",
     )
     for pattern in patterns:
-        match = re.search(pattern, text)
-        if not match:
-            continue
-        port = int(match.group(1))
-        if 1 <= port <= 65535:
-            return port
-    for raw_port in re.findall(r"(?<![\d.])(\d{1,5})(?![\d.])", text):
+        for match in re.finditer(pattern, masked_modifiers):
+            port = int(match.group(1))
+            if 1 <= port <= 65535 and port not in ports:
+                ports.append(port)
+
+    masked = IPV4_RE.sub(" ", CIDR_RE.sub(" ", masked_modifiers))
+    range_spans: list[tuple[int, int]] = []
+    for range_match in re.finditer(
+        r"(?<![A-Za-z0-9.])(\d{1,5})\s*-\s*(\d{1,5})(?![A-Za-z0-9.])",
+        masked,
+    ):
+        first = int(range_match.group(1))
+        last = int(range_match.group(2))
+        if not (1 <= first <= last <= 65535) or last - first + 1 > 64:
+            return []
+        range_spans.append(range_match.span())
+        for value in range(first, last + 1):
+            if value not in ports:
+                ports.append(value)
+    for start, end in reversed(range_spans):
+        masked = masked[:start] + (" " * (end - start)) + masked[end:]
+    for raw_port in re.findall(r"(?<![A-Za-z0-9.])(\d{1,5})(?![A-Za-z0-9.])", masked):
         port = int(raw_port)
-        if 1 <= port <= 65535:
-            return port
-    return 0
+        if 1 <= port <= 65535 and port not in ports:
+            ports.append(port)
+    return ports
+
+
+def _extract_netops_port(text: str) -> int:
+    ports = _extract_netops_ports(text)
+    return ports[0] if ports else 0
+
+
+def _extract_netops_macs(text: str) -> list[str]:
+    return _ordered_unique(match.group(0).strip() for match in MAC_RE.finditer(text))
 
 
 def _extract_netops_mac(text: str) -> str:
-    match = MAC_RE.search(text)
-    return match.group(0).strip() if match else ""
+    macs = _extract_netops_macs(text)
+    return macs[0] if macs else ""
+
+
+def _extract_tcp_endpoints(text: str, targets: list[str]) -> list[tuple[str, int]]:
+    endpoints: list[tuple[str, int]] = []
+    target_segments = 0
+    paired_segments = 0
+    for segment in re.split(r"[,;\r\n]+", text):
+        segment_targets = _extract_netops_targets(segment)
+        if not segment_targets:
+            continue
+        target_segments += 1
+        segment_ports = _extract_netops_ports(segment)
+        if len(segment_targets) != 1 or len(segment_ports) != 1:
+            continue
+        paired_segments += 1
+        endpoint = (segment_targets[0], segment_ports[0])
+        if endpoint not in endpoints:
+            endpoints.append(endpoint)
+    if target_segments >= 2 and paired_segments == target_segments:
+        return endpoints
+
+    positioned: list[tuple[int, str, int]] = []
+    for target in targets:
+        for match in re.finditer(rf"{re.escape(target)}\s*:\s*(\d{{1,5}})", text):
+            port = int(match.group(1))
+            if 1 <= port <= 65535:
+                positioned.append((match.start(), target, port))
+    positioned.sort(key=lambda item: item[0])
+    return _ordered_unique(
+        (target, endpoint_port) for _position, target, endpoint_port in positioned
+    )
+
+
+def _has_ambiguous_tcp_endpoint_request(
+    text: str,
+    targets: list[str],
+    ports: list[int],
+    endpoints: list[tuple[str, int]],
+) -> bool:
+    if not endpoints:
+        return False
+    endpoint_targets = {target.casefold() for target, _port in endpoints}
+    endpoint_ports = {port for _target, port in endpoints}
+    has_colon_pair = any(
+        re.search(rf"{re.escape(target)}\s*:\s*\d{{1,5}}", text) for target in targets
+    )
+    if set(ports).difference(endpoint_ports):
+        return True
+    return (
+        has_colon_pair
+        and len(targets) > 1
+        and endpoint_targets != {target.casefold() for target in targets}
+    )
+
+
+def _extract_probe_count(text: str) -> int:
+    patterns = (
+        r"(?i)(?:count|-n)\s*[:=]?\s*(\d+)",
+        r"(\d+)\s*(?:회|번)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return int(match.group(1))
+    return 0
+
+
+def _extract_probe_timeout_ms(text: str) -> int:
+    patterns = (
+        r"(?i)(?:timeout|time\s*out|제한\s*시간|타임아웃)\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(ms|msec|milliseconds?|초|sec(?:ond)?s?|s\b)",
+        r"(?i)(\d+(?:\.\d+)?)\s*(ms|msec|milliseconds?)\s*(?:timeout|제한\s*시간|타임아웃)?",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if not match:
+            continue
+        amount = float(match.group(1))
+        unit = match.group(2).casefold()
+        multiplier = 1000 if unit in {"초", "s"} or unit.startswith("sec") else 1
+        return max(1, int(amount * multiplier))
+    return 0
+
+
+def _is_continuous_probe_request(text: str) -> bool:
+    return _contains_any(
+        text,
+        (
+            "계속",
+            "연속",
+            "지속",
+            "중지할 때까지",
+            "until stopped",
+            "continuous",
+            "continuously",
+            " -t",
+        ),
+    )
+
+
+def _mask_probe_modifiers(text: str) -> str:
+    masked = text
+    patterns = (
+        r"(?i)(?:count|-n)\s*[:=]?\s*\d+",
+        r"\d+\s*(?:회|번)",
+        r"(?i)(?:timeout|time\s*out|제한\s*시간|타임아웃)\s*[:=]?\s*\d+(?:\.\d+)?\s*(?:ms|msec|milliseconds?|초|sec(?:ond)?s?|s\b)",
+        r"(?i)\d+(?:\.\d+)?\s*(?:ms|msec|milliseconds?|초|sec(?:ond)?s?|s\b)\s*(?:timeout|제한\s*시간|타임아웃)?",
+    )
+    for pattern in patterns:
+        masked = re.sub(pattern, " ", masked)
+    return masked
+
+
+def _extract_dns_server(text: str) -> str:
+    target_pattern = rf"(?:{IPV4_RE.pattern}|{DOMAIN_RE.pattern}|localhost)"
+    patterns = (
+        rf"(?i)(?P<server>{target_pattern})\s*(?:dns\s*)?서버(?:로|에서)?",
+        rf"(?i)(?:server|서버)\s*[:=]?\s*(?P<server>{target_pattern})",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            value = match.group("server").rstrip(".,;")
+            if (
+                _is_ipv4_address(value)
+                or DOMAIN_RE.fullmatch(value)
+                or value.casefold() == "localhost"
+            ):
+                return value
+    return ""
+
+
+def _ordered_unique(values) -> list:
+    unique: list = []
+    seen: set[object] = set()
+    for value in values:
+        key = value.casefold() if isinstance(value, str) else value
+        if not value or key in seen:
+            continue
+        seen.add(key)
+        unique.append(value)
+    return unique
+
+
+def _multi_item_title(prefix: str, values) -> str:
+    items = [str(value) for value in values if str(value)]
+    return f"{prefix}: {', '.join(items)}" if items else prefix
 
 
 def _extract_dns_record_type(text: str) -> str:
@@ -481,11 +898,15 @@ def _extract_dns_record_type(text: str) -> str:
 
 def _is_ipv4_address(value: str) -> bool:
     parts = value.split(".")
-    return len(parts) == 4 and all(part.isdigit() and 0 <= int(part) <= 255 for part in parts)
+    return len(parts) == 4 and all(
+        part.isdigit() and 0 <= int(part) <= 255 for part in parts
+    )
 
 
 def _no_resolve_requested(text: str) -> bool:
-    return _contains_any(text, ("-d", "-n", "resolve 안", "이름 해석 안", "역방향 조회 안"))
+    return _contains_any(
+        text, ("-d", "-n", "resolve 안", "이름 해석 안", "역방향 조회 안")
+    )
 
 
 def diagnose_cli_error(provider_key: str, detail: str) -> str:
@@ -494,7 +915,9 @@ def diagnose_cli_error(provider_key: str, detail: str) -> str:
         return ""
     structured_error = extract_error_from_cli_line(text)
     diagnostic_text = structured_error or text
-    if provider_key == "codex" and _is_codex_model_requires_newer_version_error(diagnostic_text):
+    if provider_key == "codex" and _is_codex_model_requires_newer_version_error(
+        diagnostic_text
+    ):
         model = _extract_codex_incompatible_model(diagnostic_text)
         selected = f" '{model}'" if model else ""
         return (
@@ -544,7 +967,8 @@ def diagnose_cli_error(provider_key: str, detail: str) -> str:
 def is_blocking_cli_configuration_error(provider_key: str, detail: str) -> bool:
     text = detail.strip()
     return provider_key == "codex" and (
-        _is_codex_reasoning_effort_config_error(text) or _is_codex_service_tier_config_error(text)
+        _is_codex_reasoning_effort_config_error(text)
+        or _is_codex_service_tier_config_error(text)
     )
 
 
@@ -739,7 +1163,10 @@ def _is_codex_service_tier_config_error(detail: str) -> bool:
     return (
         "error loading configuration" in lowered
         and "unknown variant" in lowered
-        and ("service_tier" in lowered or ("expected" in lowered and "fast" in lowered and "flex" in lowered))
+        and (
+            "service_tier" in lowered
+            or ("expected" in lowered and "fast" in lowered and "flex" in lowered)
+        )
     )
 
 
@@ -751,7 +1178,10 @@ def _is_codex_reasoning_effort_config_error(detail: str) -> bool:
         and "unknown variant" in lowered
         and (
             "model_reasoning_effort" in lowered
-            or ("expected" in lowered and all(value in lowered for value in expected_values))
+            or (
+                "expected" in lowered
+                and all(value in lowered for value in expected_values)
+            )
         )
     )
 
@@ -770,7 +1200,11 @@ def _extract_codex_incompatible_model(detail: str) -> str:
 
 
 def _extract_codex_config_path(detail: str) -> str:
-    match = re.search(r"Error loading configuration:\s*(.+?config\.toml)(?::\d+:\d+)?", detail, re.IGNORECASE)
+    match = re.search(
+        r"Error loading configuration:\s*(.+?config\.toml)(?::\d+:\d+)?",
+        detail,
+        re.IGNORECASE,
+    )
     return match.group(1).strip() if match else ""
 
 
@@ -854,10 +1288,10 @@ PROVIDER_SPECS: dict[str, CliProviderSpec] = {
         login_args=(),
         status_args=("--version",),
         help_args=("--help",),
-        output_format="json",
+        output_format="stream-json",
         prompt_mode="argument",
         prompt_flag="-p",
-        chat_args_after_prompt=("--output-format", "json"),
+        chat_args_after_prompt=("--output-format", "stream-json"),
         docs_url="https://google-gemini.github.io/gemini-cli/",
         install_hint="Gemini CLI를 설치한 뒤 gemini를 실행해 Google 로그인을 완료하세요.",
     ),
@@ -866,9 +1300,7 @@ PROVIDER_SPECS: dict[str, CliProviderSpec] = {
 
 # Static choices are a recovery path only. Live provider catalogs drive the normal model picker.
 FALLBACK_MODEL_OPTIONS: dict[str, tuple[tuple[str, str], ...]] = {
-    "codex": (
-        ("자동 선택 (권장)", ""),
-    ),
+    "codex": (("자동 선택 (권장)", ""),),
     "claude": (
         ("자동 선택 (권장)", ""),
         ("Fable 자동 별칭", "fable"),
@@ -897,7 +1329,9 @@ def provider_spec(key: str) -> CliProviderSpec:
         raise ValueError(f"Unknown AI provider: {key}") from exc
 
 
-def model_options_for_provider(key: str, current_model: str = "") -> list[tuple[str, str]]:
+def model_options_for_provider(
+    key: str, current_model: str = ""
+) -> list[tuple[str, str]]:
     options = list(FALLBACK_MODEL_OPTIONS.get(key, (("자동 선택 (권장)", ""),)))
     selected = current_model.strip()
     if selected and selected not in {value for _label, value in options}:
@@ -905,9 +1339,14 @@ def model_options_for_provider(key: str, current_model: str = "") -> list[tuple[
     return options
 
 
-def provider_configs_from_app_config(ai_config: dict[str, Any]) -> dict[str, AiProviderConfig]:
+def provider_configs_from_app_config(
+    ai_config: dict[str, Any],
+) -> dict[str, AiProviderConfig]:
     providers = ai_config.get("providers", {}) if isinstance(ai_config, dict) else {}
-    return {key: AiProviderConfig.from_dict(key, providers.get(key, {})) for key in PROVIDER_SPECS}
+    return {
+        key: AiProviderConfig.from_dict(key, providers.get(key, {}))
+        for key in PROVIDER_SPECS
+    }
 
 
 def resolve_provider_program(config: AiProviderConfig) -> str:
@@ -973,7 +1412,13 @@ def _provider_program_candidates(spec: CliProviderSpec) -> list[str]:
             if local_appdata:
                 candidates.extend(
                     [
-                        str(Path(local_appdata) / "OpenAI" / "Codex" / "bin" / "codex.exe"),
+                        str(
+                            Path(local_appdata)
+                            / "OpenAI"
+                            / "Codex"
+                            / "bin"
+                            / "codex.exe"
+                        ),
                         str(
                             Path(local_appdata)
                             / "Packages"
@@ -1017,7 +1462,9 @@ def _is_windowsapps_alias(path: str) -> bool:
     return "windowsapps" in path.casefold()
 
 
-def build_login_invocation(config: AiProviderConfig, working_dir: str = "") -> CliInvocation:
+def build_login_invocation(
+    config: AiProviderConfig, working_dir: str = ""
+) -> CliInvocation:
     spec = provider_spec(config.key)
     return CliInvocation(
         provider_key=config.key,
@@ -1028,7 +1475,9 @@ def build_login_invocation(config: AiProviderConfig, working_dir: str = "") -> C
     )
 
 
-def build_status_invocation(config: AiProviderConfig, working_dir: str = "") -> CliInvocation:
+def build_status_invocation(
+    config: AiProviderConfig, working_dir: str = ""
+) -> CliInvocation:
     spec = provider_spec(config.key)
     return CliInvocation(
         provider_key=config.key,
@@ -1039,7 +1488,9 @@ def build_status_invocation(config: AiProviderConfig, working_dir: str = "") -> 
     )
 
 
-def build_help_invocation(config: AiProviderConfig, working_dir: str = "") -> CliInvocation:
+def build_help_invocation(
+    config: AiProviderConfig, working_dir: str = ""
+) -> CliInvocation:
     spec = provider_spec(config.key)
     return CliInvocation(
         provider_key=config.key,
@@ -1057,17 +1508,55 @@ def build_chat_invocation(
     role_prompt: str = "",
     context: str = "",
     working_dir: str = "",
+    session_id: str = "",
+    codex_sandbox: str = "read-only",
+    codex_workspace_root: str = "",
+    codex_writable_dirs: tuple[str, ...] = (),
 ) -> CliInvocation:
     spec = provider_spec(config.key)
-    composed_prompt = compose_agent_prompt(prompt, role_prompt=role_prompt or config.role_prompt, context=context)
-    args: list[str] = [*spec.global_args, *spec.chat_args_before_prompt]
+    composed_prompt = compose_agent_prompt(
+        prompt, role_prompt=role_prompt or config.role_prompt, context=context
+    )
+    resume_session_id = session_id.strip()
+    args: list[str]
+    if config.key == "codex":
+        sandbox = str(codex_sandbox or "read-only").strip()
+        if sandbox not in CODEX_SANDBOX_MODES:
+            raise ValueError(f"Unsupported Codex sandbox mode: {sandbox}")
+        args = ["-a", "never", "-s", sandbox]
+        workspace_root = str(codex_workspace_root or "").strip()
+        if workspace_root:
+            args.extend(("-C", workspace_root))
+        if sandbox == "workspace-write":
+            seen_writable_dirs: set[str] = set()
+            for raw_path in codex_writable_dirs:
+                path = str(raw_path or "").strip()
+                key = path.casefold()
+                if not path or key in seen_writable_dirs:
+                    continue
+                seen_writable_dirs.add(key)
+                args.extend(("--add-dir", path))
+    else:
+        args = [*spec.global_args]
+    if config.key == "codex" and resume_session_id:
+        args.extend(("exec", "resume", "--skip-git-repo-check", "--json"))
+    else:
+        if resume_session_id:
+            args.extend(("--resume", resume_session_id))
+        if config.key == "codex":
+            args.extend(("exec", "--skip-git-repo-check", "--json"))
+        else:
+            args.extend(spec.chat_args_before_prompt)
     if config.model.strip():
         args.extend([spec.model_flag, config.model.strip()])
     args.extend(config.extra_args)
     stdin_text = ""
 
     if spec.prompt_mode == "stdin":
-        args.extend(spec.chat_args_after_prompt)
+        if config.key == "codex" and resume_session_id:
+            args.extend((resume_session_id, "-"))
+        else:
+            args.extend(spec.chat_args_after_prompt)
         stdin_text = composed_prompt
     elif spec.prompt_mode == "argument":
         if len(composed_prompt) > MAX_ARGUMENT_PROMPT_CHARS:
@@ -1080,7 +1569,9 @@ def build_chat_invocation(
         args.append(composed_prompt)
         args.extend(spec.chat_args_after_prompt)
     else:
-        raise ValueError(f"Unsupported prompt mode for {spec.display_name}: {spec.prompt_mode}")
+        raise ValueError(
+            f"Unsupported prompt mode for {spec.display_name}: {spec.prompt_mode}"
+        )
 
     return CliInvocation(
         provider_key=config.key,
@@ -1136,20 +1627,29 @@ def parse_cli_help_options(help_text: str) -> list[CliHelpOption]:
 
 
 def extra_arg_options_from_help(help_text: str) -> list[CliHelpOption]:
-    return [option for option in parse_cli_help_options(help_text) if option.flag not in RESERVED_EXTRA_ARG_FLAGS]
+    return [
+        option
+        for option in parse_cli_help_options(help_text)
+        if option.flag not in RESERVED_EXTRA_ARG_FLAGS
+    ]
 
 
 def _parse_help_option_line(stripped: str) -> dict[str, str | bool] | None:
     if not stripped.startswith("-"):
         return None
     declaration, description = _split_option_declaration(stripped)
-    flags = re.findall(r"(?<![\w-])(-[A-Za-z0-9]|--[A-Za-z0-9][A-Za-z0-9-]*)", declaration)
+    flags = re.findall(
+        r"(?<![\w-])(-[A-Za-z0-9]|--[A-Za-z0-9][A-Za-z0-9-]*)", declaration
+    )
     if not flags:
         return None
 
     long_flags = [flag for flag in flags if flag.startswith("--")]
     flag = long_flags[0] if long_flags else flags[0]
-    short_flag = next((item for item in flags if item.startswith("-") and not item.startswith("--")), "")
+    short_flag = next(
+        (item for item in flags if item.startswith("-") and not item.startswith("--")),
+        "",
+    )
     value_hint = _extract_option_value_hint(declaration, flag)
     return {
         "flag": flag,
@@ -1168,13 +1668,18 @@ def _split_option_declaration(stripped: str) -> tuple[str, str]:
 
 
 def _extract_option_value_hint(declaration: str, flag: str) -> str:
-    match = re.search(rf"{re.escape(flag)}(?:[=\s]+)(<[^>]+>|\[[^\]]+\]|[A-Z][A-Z0-9_-]*(?:\.\.\.)?)", declaration)
+    match = re.search(
+        rf"{re.escape(flag)}(?:[=\s]+)(<[^>]+>|\[[^\]]+\]|[A-Z][A-Z0-9_-]*(?:\.\.\.)?)",
+        declaration,
+    )
     if not match:
         return ""
     return match.group(1).strip()
 
 
-def compose_agent_prompt(prompt: str, *, role_prompt: str = "", context: str = "") -> str:
+def compose_agent_prompt(
+    prompt: str, *, role_prompt: str = "", context: str = ""
+) -> str:
     sections = []
     if role_prompt.strip():
         sections.append(f"Agent role:\n{role_prompt.strip()}")
@@ -1199,6 +1704,77 @@ def extract_text_from_cli_line(line: str) -> str:
     return sanitize_cli_text("".join(found)).strip()
 
 
+def extract_assistant_text_from_cli_line(provider_key: str, line: str) -> str:
+    """Extract only assistant-visible text from a provider's structured event."""
+    stripped = sanitize_cli_text(line).strip()
+    if not stripped:
+        return ""
+    try:
+        payload = json.loads(stripped)
+    except json.JSONDecodeError:
+        return stripped
+    if not isinstance(payload, dict):
+        return ""
+
+    key = str(provider_key or "").casefold()
+    event_type = str(payload.get("type", "") or "").casefold()
+    if key == "claude":
+        if event_type != "assistant":
+            return ""
+        message = payload.get("message")
+        found = (
+            _collect_text_fragments(message)
+            if isinstance(message, (dict, list))
+            else []
+        )
+        return sanitize_cli_text("".join(found)).strip()
+    if key == "gemini":
+        if (
+            event_type != "message"
+            or str(payload.get("role", "") or "").casefold() != "assistant"
+        ):
+            return ""
+        found = _collect_text_fragments(payload)
+        return sanitize_cli_text("".join(found)).strip()
+    return extract_text_from_cli_line(stripped)
+
+
+def extract_cli_session_id(provider_key: str, line: str) -> str:
+    """Return the exact session identifier from a provider's initialization event."""
+    stripped = sanitize_cli_text(line).strip()
+    if not stripped:
+        return ""
+    try:
+        payload = json.loads(stripped)
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+
+    key = str(provider_key or "").casefold()
+    event_type = str(payload.get("type", "") or "").casefold()
+    candidate: object = ""
+    if key == "codex" and event_type == "thread.started":
+        candidate = payload.get("thread_id", "")
+    elif (
+        key == "claude"
+        and event_type == "system"
+        and str(payload.get("subtype", "") or "").casefold() == "init"
+    ):
+        candidate = payload.get("session_id", "")
+    elif key == "gemini" and event_type == "init":
+        candidate = payload.get("session_id", "")
+
+    session_id = candidate.strip() if isinstance(candidate, str) else ""
+    if (
+        not session_id
+        or len(session_id) > 256
+        or any(ord(char) < 32 for char in session_id)
+    ):
+        return ""
+    return session_id
+
+
 def extract_error_from_cli_line(line: str) -> str:
     """Return only the user-safe message from a structured CLI error event."""
     stripped = sanitize_cli_text(line).strip()
@@ -1208,7 +1784,10 @@ def extract_error_from_cli_line(line: str) -> str:
         payload = json.loads(stripped)
     except json.JSONDecodeError:
         return ""
-    if not isinstance(payload, dict) or str(payload.get("type", "")).casefold() != "error":
+    if (
+        not isinstance(payload, dict)
+        or str(payload.get("type", "")).casefold() != "error"
+    ):
         return ""
     error = payload.get("error")
     if isinstance(error, dict):
@@ -1219,7 +1798,11 @@ def extract_error_from_cli_line(line: str) -> str:
         except json.JSONDecodeError:
             message = error
         else:
-            message = decoded_error.get("message", "") if isinstance(decoded_error, dict) else ""
+            message = (
+                decoded_error.get("message", "")
+                if isinstance(decoded_error, dict)
+                else ""
+            )
     else:
         message = payload.get("message", "")
     return sanitize_cli_text(message).strip() if isinstance(message, str) else ""
@@ -1245,7 +1828,11 @@ def split_codex_model_cache_warning(detail: str) -> tuple[str, str]:
     regular_lines: list[str] = []
     cache_warning_lines: list[str] = []
     for line in sanitize_cli_text(detail).splitlines():
-        target = cache_warning_lines if is_codex_model_cache_compatibility_warning(line) else regular_lines
+        target = (
+            cache_warning_lines
+            if is_codex_model_cache_compatibility_warning(line)
+            else regular_lines
+        )
         target.append(line)
     return "\n".join(regular_lines).strip(), "\n".join(cache_warning_lines).strip()
 
@@ -1268,7 +1855,10 @@ def decode_cli_output(data: bytes) -> str:
             decoded = data.decode(encoding, errors="replace")
         except LookupError:
             continue
-        score = (decoded.count("\ufffd"), -sum("\uac00" <= char <= "\ud7a3" for char in decoded))
+        score = (
+            decoded.count("\ufffd"),
+            -sum("\uac00" <= char <= "\ud7a3" for char in decoded),
+        )
         if best_score is None or score < best_score:
             best_score = score
             best_text = decoded
@@ -1289,9 +1879,17 @@ def should_ignore_cli_output_text(text: str) -> bool:
 
     if replacement_count >= 3 and "pid" in lowered:
         return True
-    if "pid" in lowered and "process" in lowered and ("terminated" in lowered or "success" in lowered):
+    if (
+        "pid" in lowered
+        and "process" in lowered
+        and ("terminated" in lowered or "success" in lowered)
+    ):
         return True
-    if "pid" in lowered and "프로세스" in stripped and ("종료" in stripped or stripped.startswith("성공")):
+    if (
+        "pid" in lowered
+        and "프로세스" in stripped
+        and ("종료" in stripped or stripped.startswith("성공"))
+    ):
         return True
     return False
 

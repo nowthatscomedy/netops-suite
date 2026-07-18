@@ -1,3 +1,5 @@
+import pytest
+
 from app.utils.parser import parse_netsh_wlan_networks_output, parse_netsh_wlan_output
 
 
@@ -129,3 +131,28 @@ SSID 1 : TestNet
     aps = parse_netsh_wlan_networks_output(raw_output)
     assert len(aps) == 1
     assert aps[0].radio_standard == "802.11ax"
+
+
+@pytest.mark.parametrize("radio_label", ["라디오유형", "라디오종류"])
+def test_korean_radio_label_aliases_are_preserved_without_duplicate_mappings(radio_label):
+    interface_output = f"""
+Name                   : Wi-Fi
+State                  : connected
+SSID                   : TestNet
+{radio_label}           : 802.11be
+Channel                : 37
+"""
+    networks_output = f"""
+Interface name : Wi-Fi
+SSID 1 : TestNet
+    BSSID 1             : aa:bb:cc:dd:ee:ff
+         {radio_label}  : 802.11be
+         Channel        : 37
+"""
+
+    info = parse_netsh_wlan_output(interface_output)
+    access_points = parse_netsh_wlan_networks_output(networks_output)
+
+    assert info.radio_type == "802.11be"
+    assert len(access_points) == 1
+    assert access_points[0].radio_standard == "802.11be"

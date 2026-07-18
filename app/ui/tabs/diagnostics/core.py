@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import csv
 import ipaddress
-import re
-from datetime import datetime
+from pathlib import Path
 from threading import Event
 from typing import Callable
 
@@ -11,6 +10,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QFontDatabase
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QFileDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -62,6 +62,7 @@ class DiagnosticsTab(
     QWidget,
 ):
     result_dock_visibility_changed = Signal(str, bool)
+    tool_settings_requested = Signal(str)
 
     DNS_TYPES = [
         ("A - IPv4 주소", "A", "도메인의 IPv4 주소를 조회합니다."),
@@ -118,6 +119,7 @@ class DiagnosticsTab(
         self._public_iperf_fetched_at = ""
         self._public_iperf_from_cache = False
         self._public_iperf_stale = True
+        self._tools_request_generation = 0
         self._startup_activated = False
         self._tools_startup_requested = False
         self._iperf_startup_requested = False
@@ -244,11 +246,16 @@ class DiagnosticsTab(
         self.quick_target_edit.setPlaceholderText("IP/호스트 또는 CIDR")
         self.quick_target_edit.setMinimumWidth(240)
         self.quick_target_edit.setToolTip("예: 8.8.8.8, 192.168.0.1:443, 192.168.0.10/24")
+        self.quick_target_edit.setAccessibleName("빠른 진단 대상")
+        self.quick_target_edit.setAccessibleDescription(
+            "IP 주소, 호스트 이름 또는 CIDR을 입력합니다."
+        )
         self.quick_port_edit = QLineEdit()
         self.quick_port_edit.setObjectName("quickDiagnosticsPort")
         self.quick_port_edit.setPlaceholderText("포트")
         self.quick_port_edit.setMaximumWidth(72)
         self.quick_port_edit.setToolTip("TCPing/iperf에 사용할 포트입니다.")
+        self.quick_port_edit.setAccessibleName("빠른 진단 포트")
         self.quick_status_label = QLabel("준비")
         self.quick_status_label.setObjectName("quickDiagnosticsStatus")
         self.quick_status_label.setWordWrap(True)
@@ -281,15 +288,25 @@ class DiagnosticsTab(
             ("quick_route_button", "route", ActionKind.UTILITY, self.run_quick_route_print, "route print를 실행합니다."),
             ("quick_arp_table_button", "arp -a", ActionKind.UTILITY, self.run_quick_arp_table, "arp -a를 실행합니다."),
             ("quick_flush_dns_button", "DNS 캐시", ActionKind.DANGER, self.run_quick_flush_dns_cache, "Windows DNS 캐시를 비웁니다."),
-            ("quick_transfer_button", "파일전송(FTP/SCP)", ActionKind.UTILITY, self.run_quick_file_transfer, "FTP/SCP 파일 전송 도구로 이동합니다."),
+            (
+                "quick_transfer_button",
+                "파일전송",
+                ActionKind.UTILITY,
+                self.run_quick_file_transfer,
+                "FTP/FTPS/SFTP/SCP/TFTP 파일 전송 도구로 이동합니다.",
+            ),
         ]
         self.quick_action_buttons = []
         for index, (attr_name, text, kind, handler, tooltip) in enumerate(quick_actions):
             button = make_action_button(text, kind, tooltip=tooltip)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             setattr(self, attr_name, button)
             self.quick_action_buttons.append(button)
             action_grid.addWidget(button, index // 8, index % 8)
-        action_grid.setColumnStretch(7, 1)
+        uniform_button_width = max(button.sizeHint().width() for button in self.quick_action_buttons)
+        for column in range(8):
+            action_grid.setColumnMinimumWidth(column, uniform_button_width)
+            action_grid.setColumnStretch(column, 1)
         layout.addLayout(action_grid)
 
         self.quick_target_edit.returnPressed.connect(self.run_quick_ping)
@@ -609,9 +626,16 @@ class DiagnosticsTab(
         table.verticalHeader().setVisible(False)
         table.horizontalHeader().setStretchLastSection(True)
 
-    def _set_stretch_columns(self, table: QTableWidget, *stretch_columns: int) -> None:
+    def _set_stretch_columns(
+        self,
+        table: QTableWidget,
+        *stretch_columns: int,
+        minimum_section_size: int | None = None,
+    ) -> None:
         header = table.horizontalHeader()
         header.setStretchLastSection(False)
+        if minimum_section_size is not None:
+            header.setMinimumSectionSize(max(1, int(minimum_section_size)))
         stretch_set = set(stretch_columns)
         for column in range(table.columnCount()):
             mode = QHeaderView.ResizeMode.Stretch if column in stretch_set else QHeaderView.ResizeMode.ResizeToContents
@@ -620,6 +644,7 @@ class DiagnosticsTab(
     def _output(self) -> QPlainTextEdit:
         output = QPlainTextEdit()
         output.setReadOnly(True)
+        output.setTabChangesFocus(True)
         output.setFont(self.fixed_font)
         output.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         return output
@@ -744,16 +769,23 @@ class DiagnosticsTab(
             QMessageBox.warning(self, "선택 필요", "로그를 저장할 Ping 항목을 먼저 선택해 주세요.")
             return
 
-        folder = self._make_export_dir("ping_logs")
+        sections: list[str] = []
         for row in rows:
             name = self._cell(self.ping_table, row, 0)
             target = self._cell(self.ping_table, row, 1)
             lines = self.ping_log_lines.get((name, target), [])
-            (folder / f"{self._safe(name)}_{self._safe(target)}.log").write_text(
-                "\n".join(lines) + ("\n" if lines else ""),
-                encoding="utf-8",
-            )
-        QMessageBox.information(self, "로그 저장 완료", f"{len(rows)}개 로그 파일을 저장했습니다.\n{folder}")
+            heading = f"[{name or target} | {target}]"
+            sections.append("\n".join((heading, *lines)))
+        self._export_text_to_file(
+            "\n\n".join(sections) + "\n",
+            prefix="ping_logs",
+            extension="log",
+            dialog_title="Ping 로그 저장",
+            file_filter="로그 파일 (*.log)",
+            success_title="로그 저장 완료",
+            success_message=f"{len(rows)}개 항목 로그를 저장했습니다.\n{{path}}",
+            failure_title="로그 저장 실패",
+        )
 
     def export_selected_tcp_logs(self) -> None:
         rows = self._selected_rows(self.tcp_table)
@@ -761,7 +793,7 @@ class DiagnosticsTab(
             QMessageBox.warning(self, "선택 필요", "로그를 저장할 TCPing 항목을 먼저 선택해 주세요.")
             return
 
-        folder = self._make_export_dir("tcp_logs")
+        sections: list[str] = []
         for row in rows:
             name = self._cell(self.tcp_table, row, 0)
             target = self._cell(self.tcp_table, row, 1)
@@ -771,29 +803,150 @@ class DiagnosticsTab(
             except ValueError:
                 continue
             lines = self.tcp_log_lines.get(key, [])
-            (folder / f"{self._safe(name)}_{self._safe(target)}_{port}.log").write_text(
-                "\n".join(lines) + ("\n" if lines else ""),
-                encoding="utf-8",
-            )
-        QMessageBox.information(self, "로그 저장 완료", f"{len(rows)}개 로그 파일을 저장했습니다.\n{folder}")
-
-    def _export_table_to_csv(self, table: QTableWidget, prefix: str) -> None:
-        if table.rowCount() == 0:
-            QMessageBox.warning(self, "내보내기 불가", "저장할 결과가 없습니다.")
+            heading = f"[{name or target} | {target}:{port}]"
+            sections.append("\n".join((heading, *lines)))
+        if not sections:
+            QMessageBox.warning(self, "내보내기 불가", "저장할 TCPing 로그가 없습니다.")
             return
+        self._export_text_to_file(
+            "\n\n".join(sections) + "\n",
+            prefix="tcp_logs",
+            extension="log",
+            dialog_title="TCPing 로그 저장",
+            file_filter="로그 파일 (*.log)",
+            success_title="로그 저장 완료",
+            success_message=f"{len(sections)}개 항목 로그를 저장했습니다.\n{{path}}",
+            failure_title="로그 저장 실패",
+        )
 
-        path = timestamped_export_path(self.state.paths.exports_dir, prefix, "csv")
-        with path.open("w", encoding="utf-8-sig", newline="") as handle:
-            writer = csv.writer(handle)
-            writer.writerow([table.horizontalHeaderItem(column).text() for column in range(table.columnCount())])
-            for row in range(table.rowCount()):
-                writer.writerow([self._cell(table, row, column) for column in range(table.columnCount())])
-        QMessageBox.information(self, "CSV 저장 완료", f"결과를 저장했습니다.\n{path}")
+    def _get_export_save_file_name(
+        self,
+        caption: str,
+        suggested_path: str,
+        file_filter: str,
+    ) -> tuple[str, str]:
+        return QFileDialog.getSaveFileName(
+            self,
+            caption,
+            suggested_path,
+            file_filter,
+        )
 
-    def _make_export_dir(self, prefix: str):
-        folder = self.state.paths.exports_dir / f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        folder.mkdir(parents=True, exist_ok=True)
-        return folder
+    def _choose_export_path(
+        self,
+        prefix: str,
+        extension: str,
+        dialog_title: str,
+        file_filter: str,
+    ) -> Path | None:
+        normalized_extension = extension.lstrip(".").lower()
+        suggested_path = timestamped_export_path(
+            self.state.paths.exports_dir,
+            prefix,
+            normalized_extension,
+        )
+        selected_path, _selected_filter = self._get_export_save_file_name(
+            dialog_title,
+            str(suggested_path),
+            file_filter,
+        )
+        if not selected_path:
+            return None
+        path = Path(selected_path)
+        expected_suffix = f".{normalized_extension}"
+        if path.suffix.lower() != expected_suffix:
+            path = (
+                path.with_suffix(expected_suffix)
+                if path.suffix
+                else Path(f"{path}{expected_suffix}")
+            )
+        return path
+
+    def _export_text_to_file(
+        self,
+        text: str,
+        *,
+        prefix: str,
+        extension: str,
+        dialog_title: str,
+        file_filter: str,
+        success_title: str,
+        success_message: str,
+        failure_title: str,
+    ) -> Path | None:
+        path = self._choose_export_path(
+            prefix,
+            extension,
+            dialog_title,
+            file_filter,
+        )
+        if path is None:
+            return None
+        try:
+            path.write_text(text, encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            QMessageBox.warning(
+                self,
+                failure_title,
+                f"파일을 저장하지 못했습니다.\n{path}\n{exc}",
+            )
+            return None
+        QMessageBox.information(
+            self,
+            success_title,
+            success_message.format(path=path),
+        )
+        return path
+
+    def _export_table_to_csv(
+        self,
+        table: QTableWidget,
+        prefix: str,
+        *,
+        empty_message: str = "저장할 결과가 없습니다.",
+        success_message: str = "결과를 저장했습니다.",
+    ) -> Path | None:
+        if table.rowCount() == 0:
+            QMessageBox.warning(self, "내보내기 불가", empty_message)
+            return None
+
+        path = self._choose_export_path(
+            prefix,
+            "csv",
+            "CSV 저장",
+            "CSV 파일 (*.csv)",
+        )
+        if path is None:
+            return None
+        try:
+            with path.open("w", encoding="utf-8-sig", newline="") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(
+                    [
+                        table.horizontalHeaderItem(column).text()
+                        for column in range(table.columnCount())
+                    ]
+                )
+                for row in range(table.rowCount()):
+                    writer.writerow(
+                        [
+                            self._cell(table, row, column)
+                            for column in range(table.columnCount())
+                        ]
+                    )
+        except (OSError, UnicodeError, csv.Error) as exc:
+            QMessageBox.warning(
+                self,
+                "CSV 저장 실패",
+                f"결과를 저장하지 못했습니다.\n{path}\n{exc}",
+            )
+            return None
+        QMessageBox.information(
+            self,
+            "CSV 저장 완료",
+            f"{success_message}\n{path}",
+        )
+        return path
 
     def _selected_rows(self, table: QTableWidget) -> list[int]:
         selection_model = table.selectionModel()
@@ -804,9 +957,6 @@ class DiagnosticsTab(
     def _cell(self, table: QTableWidget, row: int, column: int) -> str:
         item = table.item(row, column)
         return item.text() if item else ""
-
-    def _safe(self, value: str) -> str:
-        return re.sub(r'[\\/:*?"<>|]+', "_", value.strip()) or "item"
 
     def save_ui_state(self) -> dict:
         if hasattr(self, "_collect_ftp_runtime_state") and hasattr(self.state, "save_ftp_runtime"):
@@ -830,7 +980,6 @@ class DiagnosticsTab(
                 "targets": self.ping_targets_edit.toPlainText(),
                 "count": self.ping_count_edit.text().strip(),
                 "timeout_ms": self.ping_timeout_edit.text().strip(),
-                "workers": self.ping_workers_edit.text().strip(),
                 "continuous": self.ping_continuous_check.isChecked(),
             },
             "tcp": {
@@ -838,7 +987,6 @@ class DiagnosticsTab(
                 "ports": self.tcp_ports_edit.text().strip(),
                 "count": self.tcp_count_edit.text().strip(),
                 "timeout_ms": self.tcp_timeout_edit.text().strip(),
-                "workers": self.tcp_workers_edit.text().strip(),
                 "continuous": self.tcp_continuous_check.isChecked(),
             },
             "dns": {
@@ -895,7 +1043,6 @@ class DiagnosticsTab(
         self.ping_targets_edit.setPlainText(str(ping_state.get("targets", "") or ""))
         self.ping_count_edit.setText(str(ping_state.get("count", self.ping_count_edit.text()) or ""))
         self.ping_timeout_edit.setText(str(ping_state.get("timeout_ms", self.ping_timeout_edit.text()) or ""))
-        self.ping_workers_edit.setText(str(ping_state.get("workers", self.ping_workers_edit.text()) or ""))
         self.ping_continuous_check.setChecked(bool(ping_state.get("continuous", False)))
 
         tcp_state = state.get("tcp", {})
@@ -903,7 +1050,6 @@ class DiagnosticsTab(
         self.tcp_ports_edit.setText(str(tcp_state.get("ports", self.tcp_ports_edit.text()) or ""))
         self.tcp_count_edit.setText(str(tcp_state.get("count", self.tcp_count_edit.text()) or ""))
         self.tcp_timeout_edit.setText(str(tcp_state.get("timeout_ms", self.tcp_timeout_edit.text()) or ""))
-        self.tcp_workers_edit.setText(str(tcp_state.get("workers", self.tcp_workers_edit.text()) or ""))
         self.tcp_continuous_check.setChecked(bool(tcp_state.get("continuous", False)))
 
         dns_state = state.get("dns", {})

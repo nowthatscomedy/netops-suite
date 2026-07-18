@@ -46,10 +46,24 @@ MCP_TOOL_ALIASES = {
         "wifi.nearby.scan",
     ),
     "oui_lookup": ("oui.lookup", "net.oui.lookup", "netops.oui.lookup"),
-    "oui_cache_summary": ("oui.cache_summary", "net.oui.cache_summary", "netops.oui.cache_summary"),
-    "oui_cache_refresh": ("oui.cache.refresh", "net.oui.cache.refresh", "netops.oui.cache.refresh"),
-    "inspector_profiles_list": ("inspector.profiles.list", "netops.inspector.profiles.list"),
-    "config_builder_profiles_list": ("config_builder.profiles.list", "netops.config_builder.profiles.list"),
+    "oui_cache_summary": (
+        "oui.cache_summary",
+        "net.oui.cache_summary",
+        "netops.oui.cache_summary",
+    ),
+    "oui_cache_refresh": (
+        "oui.cache.refresh",
+        "net.oui.cache.refresh",
+        "netops.oui.cache.refresh",
+    ),
+    "inspector_profiles_list": (
+        "inspector.profiles.list",
+        "netops.inspector.profiles.list",
+    ),
+    "config_builder_profiles_list": (
+        "config_builder.profiles.list",
+        "netops.config_builder.profiles.list",
+    ),
     "ip_profiles": ("profiles.ip.list", "netops.profiles.ip.list"),
     "ftp_profiles": ("profiles.ftp.list", "netops.profiles.ftp.list"),
     "scp_profiles": ("profiles.scp.list", "netops.profiles.scp.list"),
@@ -59,8 +73,14 @@ MCP_TOOL_ALIASES = {
     "iperf_client_test": ("net.iperf.client_test", "netops.iperf.client_test"),
     "public_iperf_cached": ("net.iperf.public.cached", "netops.iperf.public.cached"),
     "public_iperf_refresh": ("net.iperf.public.refresh", "netops.iperf.public.refresh"),
-    "ftp_client_runtime": ("file_transfer.ftp.client.runtime", "netops.ftp.client.runtime"),
-    "ftp_server_runtime": ("file_transfer.ftp.server.runtime", "netops.ftp.server.runtime"),
+    "ftp_client_runtime": (
+        "file_transfer.ftp.client.runtime",
+        "netops.ftp.client.runtime",
+    ),
+    "ftp_server_runtime": (
+        "file_transfer.ftp.server.runtime",
+        "netops.ftp.server.runtime",
+    ),
     "ftp_connect": ("file_transfer.ftp.connect", "netops.ftp.connect"),
     "ftp_disconnect": ("file_transfer.ftp.disconnect", "netops.ftp.disconnect"),
     "ftp_list": ("file_transfer.ftp.list", "netops.ftp.list"),
@@ -69,7 +89,10 @@ MCP_TOOL_ALIASES = {
     "ftp_mkdir": ("file_transfer.ftp.mkdir", "netops.ftp.mkdir"),
     "ftp_rename": ("file_transfer.ftp.rename", "netops.ftp.rename"),
     "ftp_delete": ("file_transfer.ftp.delete", "netops.ftp.delete"),
-    "scp_client_runtime": ("file_transfer.scp.client.runtime", "netops.scp.client.runtime"),
+    "scp_client_runtime": (
+        "file_transfer.scp.client.runtime",
+        "netops.scp.client.runtime",
+    ),
     "scp_upload": ("file_transfer.scp.upload", "netops.scp.upload"),
     "scp_download": ("file_transfer.scp.download", "netops.scp.download"),
     "tftp_runtime": ("file_transfer.tftp.runtime", "netops.tftp.runtime"),
@@ -104,11 +127,15 @@ def list_netops_tool_descriptors() -> list[ToolDescriptor]:
     return list(NETOPS_TOOL_DESCRIPTORS)
 
 
-def run_netops_tool(state: Any, tool_name: str, arguments: Mapping[str, Any] | None = None) -> ToolResult:
+def run_netops_tool(
+    state: Any, tool_name: str, arguments: Mapping[str, Any] | None = None
+) -> ToolResult:
     return build_netops_tool_registry().execute(state, tool_name, dict(arguments or {}))
 
 
-def _object_schema(properties: dict[str, Any], required: Sequence[str] = ()) -> dict[str, Any]:
+def _object_schema(
+    properties: dict[str, Any], required: Sequence[str] = ()
+) -> dict[str, Any]:
     return {
         "type": "object",
         "additionalProperties": False,
@@ -133,7 +160,9 @@ def _descriptor(
     tags: tuple[str, ...] = (),
     aliases: tuple[str, ...] = (),
 ) -> ToolDescriptor:
-    descriptor_aliases = tuple(dict.fromkeys((*MCP_TOOL_ALIASES.get(name, ()), *aliases)))
+    descriptor_aliases = tuple(
+        dict.fromkeys((*MCP_TOOL_ALIASES.get(name, ()), *aliases))
+    )
     return ToolDescriptor(
         name=name,
         display_name=display_name,
@@ -167,19 +196,27 @@ def _required_service(state: Any, attr_name: str) -> Any:
     return service
 
 
-def _text_arg(args: Mapping[str, Any], name: str, *, field_label: str | None = None) -> str:
+def _text_arg(
+    args: Mapping[str, Any], name: str, *, field_label: str | None = None
+) -> str:
     value = str(args.get(name, "") or "").strip()
     if not value:
         raise NetOpsToolValidationError(f"{field_label or name} is required.")
     if "\r" in value or "\n" in value:
-        raise NetOpsToolValidationError(f"{field_label or name} cannot contain line breaks.")
+        raise NetOpsToolValidationError(
+            f"{field_label or name} cannot contain line breaks."
+        )
     return value
 
 
-def _optional_text_arg(args: Mapping[str, Any], name: str, *, field_label: str | None = None) -> str:
+def _optional_text_arg(
+    args: Mapping[str, Any], name: str, *, field_label: str | None = None
+) -> str:
     value = str(args.get(name, "") or "").strip()
     if "\r" in value or "\n" in value:
-        raise NetOpsToolValidationError(f"{field_label or name} cannot contain line breaks.")
+        raise NetOpsToolValidationError(
+            f"{field_label or name} cannot contain line breaks."
+        )
     return value
 
 
@@ -197,12 +234,22 @@ def _bool_arg(args: Mapping[str, Any], name: str, *, default: bool = False) -> b
     raise NetOpsToolValidationError(f"{name} must be a boolean.")
 
 
-def _text_list_arg(args: Mapping[str, Any], name: str, *, required: bool = False, maximum: int = 64) -> list[str]:
+def _text_list_arg(
+    args: Mapping[str, Any], name: str, *, required: bool = False, maximum: int = 64
+) -> list[str]:
     raw_value = args.get(name, [])
     if isinstance(raw_value, str):
-        values = [item.strip() for item in raw_value.replace("\n", ",").split(",") if item.strip()]
-    elif isinstance(raw_value, Sequence) and not isinstance(raw_value, (bytes, bytearray)):
-        values = [str(item or "").strip() for item in raw_value if str(item or "").strip()]
+        values = [
+            item.strip()
+            for item in raw_value.replace("\n", ",").split(",")
+            if item.strip()
+        ]
+    elif isinstance(raw_value, Sequence) and not isinstance(
+        raw_value, (bytes, bytearray)
+    ):
+        values = [
+            str(item or "").strip() for item in raw_value if str(item or "").strip()
+        ]
     else:
         raise NetOpsToolValidationError(f"{name} must be a list of strings.")
     if required and not values:
@@ -211,7 +258,9 @@ def _text_list_arg(args: Mapping[str, Any], name: str, *, required: bool = False
         raise NetOpsToolValidationError(f"{name} supports at most {maximum} values.")
     for value in values:
         if "\r" in value or "\n" in value:
-            raise NetOpsToolValidationError(f"{name} values cannot contain line breaks.")
+            raise NetOpsToolValidationError(
+                f"{name} values cannot contain line breaks."
+            )
     return values
 
 
@@ -222,7 +271,9 @@ def _protocol_arg(args: Mapping[str, Any], *, default: str = "ftp") -> str:
     return protocol
 
 
-def _remote_path_arg(args: Mapping[str, Any], name: str = "remote_path", *, required: bool = True) -> str:
+def _remote_path_arg(
+    args: Mapping[str, Any], name: str = "remote_path", *, required: bool = True
+) -> str:
     value = _optional_text_arg(args, name, field_label=name)
     if not value and required:
         raise NetOpsToolValidationError(f"{name} is required.")
@@ -241,7 +292,9 @@ def _ftp_remote_entries_arg(args: Mapping[str, Any]) -> list[FtpRemoteEntry]:
             )
             for path in remote_paths
         ]
-    if not isinstance(raw_entries, Sequence) or isinstance(raw_entries, (str, bytes, bytearray)):
+    if not isinstance(raw_entries, Sequence) or isinstance(
+        raw_entries, (str, bytes, bytearray)
+    ):
         raise NetOpsToolValidationError("entries must be a list.")
     entries: list[FtpRemoteEntry] = []
     for item in raw_entries:
@@ -253,11 +306,20 @@ def _ftp_remote_entries_arg(args: Mapping[str, Any]) -> list[FtpRemoteEntry]:
         remote_path = str(item.get("remote_path", item.get("path", "")) or "").strip()
         if not remote_path:
             raise NetOpsToolValidationError("entries items require remote_path.")
-        entry_type = str(item.get("entry_type", item.get("type", "file")) or "file").strip().casefold()
+        entry_type = (
+            str(item.get("entry_type", item.get("type", "file")) or "file")
+            .strip()
+            .casefold()
+        )
         entries.append(
             FtpRemoteEntry(
-                name=str(item.get("name", PurePosixPath(remote_path).name or remote_path) or ""),
-                entry_type="dir" if entry_type == "dir" or remote_path.endswith("/") else "file",
+                name=str(
+                    item.get("name", PurePosixPath(remote_path).name or remote_path)
+                    or ""
+                ),
+                entry_type="dir"
+                if entry_type == "dir" or remote_path.endswith("/")
+                else "file",
                 size_bytes=int(item.get("size_bytes", 0) or 0),
                 modified_at=str(item.get("modified_at", "") or ""),
                 permissions=str(item.get("permissions", "") or ""),
@@ -301,7 +363,9 @@ def _int_arg(
     except (TypeError, ValueError) as exc:
         raise NetOpsToolValidationError(f"{name} must be an integer.") from exc
     if value < minimum or value > maximum:
-        raise NetOpsToolValidationError(f"{name} must be between {minimum} and {maximum}.")
+        raise NetOpsToolValidationError(
+            f"{name} must be between {minimum} and {maximum}."
+        )
     return value
 
 
@@ -318,7 +382,9 @@ def _ipv4_arg(args: Mapping[str, Any], name: str, *, required: bool = True) -> s
     try:
         return str(ipaddress.IPv4Address(value))
     except ipaddress.AddressValueError as exc:
-        raise NetOpsToolValidationError(f"{name} must be a valid IPv4 address.") from exc
+        raise NetOpsToolValidationError(
+            f"{name} must be a valid IPv4 address."
+        ) from exc
 
 
 def _prefix_arg(args: Mapping[str, Any]) -> int:
@@ -328,9 +394,17 @@ def _prefix_arg(args: Mapping[str, Any]) -> int:
 def _dns_servers_arg(args: Mapping[str, Any], *, required: bool = False) -> list[str]:
     raw_value = args.get("dns_servers", [])
     if isinstance(raw_value, str):
-        values = [item.strip() for item in raw_value.replace("\n", ",").split(",") if item.strip()]
-    elif isinstance(raw_value, Sequence) and not isinstance(raw_value, (bytes, bytearray)):
-        values = [str(item or "").strip() for item in raw_value if str(item or "").strip()]
+        values = [
+            item.strip()
+            for item in raw_value.replace("\n", ",").split(",")
+            if item.strip()
+        ]
+    elif isinstance(raw_value, Sequence) and not isinstance(
+        raw_value, (bytes, bytearray)
+    ):
+        values = [
+            str(item or "").strip() for item in raw_value if str(item or "").strip()
+        ]
     else:
         raise NetOpsToolValidationError("dns_servers must be a list of IPv4 addresses.")
     if required and not values:
@@ -342,25 +416,39 @@ def _dns_servers_arg(args: Mapping[str, Any], *, required: bool = False) -> list
         try:
             normalized.append(str(ipaddress.IPv4Address(value)))
         except ipaddress.AddressValueError as exc:
-            raise NetOpsToolValidationError(f"Invalid DNS server IPv4 address: {value}") from exc
+            raise NetOpsToolValidationError(
+                f"Invalid DNS server IPv4 address: {value}"
+            ) from exc
     return normalized
 
 
 def _record_type_arg(args: Mapping[str, Any]) -> str:
     record_type = str(args.get("record_type", "A") or "A").strip().upper()
     if record_type not in DNS_RECORD_TYPES:
-        raise NetOpsToolValidationError(f"record_type must be one of: {', '.join(DNS_RECORD_TYPES)}")
+        raise NetOpsToolValidationError(
+            f"record_type must be one of: {', '.join(DNS_RECORD_TYPES)}"
+        )
     return record_type
 
 
 def _target_list_arg(args: Mapping[str, Any]) -> list[str]:
     raw_targets = args.get("targets") or list(DEFAULT_EXTERNAL_PING_TARGETS)
     if isinstance(raw_targets, str):
-        targets = [item.strip() for item in raw_targets.replace("\n", ",").split(",") if item.strip()]
-    elif isinstance(raw_targets, Sequence) and not isinstance(raw_targets, (bytes, bytearray)):
-        targets = [str(item or "").strip() for item in raw_targets if str(item or "").strip()]
+        targets = [
+            item.strip()
+            for item in raw_targets.replace("\n", ",").split(",")
+            if item.strip()
+        ]
+    elif isinstance(raw_targets, Sequence) and not isinstance(
+        raw_targets, (bytes, bytearray)
+    ):
+        targets = [
+            str(item or "").strip() for item in raw_targets if str(item or "").strip()
+        ]
     else:
-        raise NetOpsToolValidationError("targets must be a list of hostnames or IP addresses.")
+        raise NetOpsToolValidationError(
+            "targets must be a list of hostnames or IP addresses."
+        )
     if not targets:
         raise NetOpsToolValidationError("targets must contain at least one target.")
     if len(targets) > 6:
@@ -368,7 +456,9 @@ def _target_list_arg(args: Mapping[str, Any]) -> list[str]:
     return [_validate_target_value(target, "targets") for target in targets]
 
 
-def _required_target_list_arg(args: Mapping[str, Any], *, maximum: int = 16) -> list[str]:
+def _required_target_list_arg(
+    args: Mapping[str, Any], *, maximum: int = 16
+) -> list[str]:
     targets = _text_list_arg(args, "targets", required=True, maximum=maximum)
     return [_validate_target_value(target, "targets") for target in targets]
 
@@ -377,13 +467,17 @@ def _ports_arg(args: Mapping[str, Any], *, maximum: int = 16) -> list[int]:
     raw_ports = args.get("ports")
     if raw_ports is None and "port" in args:
         raw_ports = [args.get("port")]
-    values = _text_list_arg({"ports": raw_ports or []}, "ports", required=True, maximum=maximum)
+    values = _text_list_arg(
+        {"ports": raw_ports or []}, "ports", required=True, maximum=maximum
+    )
     ports: list[int] = []
     for value in values:
         try:
             port = int(value)
         except (TypeError, ValueError) as exc:
-            raise NetOpsToolValidationError("ports must contain TCP port numbers.") from exc
+            raise NetOpsToolValidationError(
+                "ports must contain TCP port numbers."
+            ) from exc
         if port < 1 or port > 65535:
             raise NetOpsToolValidationError("ports must be between 1 and 65535.")
         ports.append(port)
@@ -392,11 +486,17 @@ def _ports_arg(args: Mapping[str, Any], *, maximum: int = 16) -> list[int]:
 
 def _validate_target_value(target: str, field_label: str) -> str:
     if len(target) > 253:
-        raise NetOpsToolValidationError(f"{field_label} contains a target that is too long.")
+        raise NetOpsToolValidationError(
+            f"{field_label} contains a target that is too long."
+        )
     if any(ch.isspace() for ch in target):
-        raise NetOpsToolValidationError(f"{field_label} targets cannot contain whitespace.")
+        raise NetOpsToolValidationError(
+            f"{field_label} targets cannot contain whitespace."
+        )
     if target.startswith("-"):
-        raise NetOpsToolValidationError(f"{field_label} targets cannot start with an option prefix.")
+        raise NetOpsToolValidationError(
+            f"{field_label} targets cannot start with an option prefix."
+        )
     return target
 
 
@@ -408,6 +508,19 @@ def _plain_data(value: Any) -> Any:
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return [_plain_data(item) for item in value]
     return value
+
+
+def _plain_result_row(value: Any) -> dict[str, Any]:
+    plain = _plain_data(value)
+    if isinstance(plain, Mapping):
+        return {str(key): item for key, item in plain.items()}
+    if hasattr(value, "__dict__"):
+        return {
+            str(key): _plain_data(item)
+            for key, item in vars(value).items()
+            if not str(key).startswith("_")
+        }
+    return {"value": plain}
 
 
 def _path_metadata(name: str, value: Any) -> dict[str, Any]:
@@ -431,7 +544,9 @@ def _path_metadata(name: str, value: Any) -> dict[str, Any]:
         if data["exists"]:
             stat = path.stat()
             data["size_bytes"] = int(stat.st_size) if data["is_file"] else None
-            data["modified_at"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(stat.st_mtime))
+            data["modified_at"] = time.strftime(
+                "%Y-%m-%d %H:%M:%S", time.localtime(stat.st_mtime)
+            )
     except OSError as exc:
         data["error"] = str(exc)
     return data
@@ -442,7 +557,11 @@ def _iter_public_attrs(value: Any) -> list[tuple[str, Any]]:
         return []
     field_map = getattr(value, "__dataclass_fields__", None)
     if isinstance(field_map, Mapping):
-        return [(name, getattr(value, name, None)) for name in field_map if not str(name).startswith("_")]
+        return [
+            (name, getattr(value, name, None))
+            for name in field_map
+            if not str(name).startswith("_")
+        ]
     try:
         items = vars(value).items()
     except TypeError:
@@ -521,13 +640,20 @@ def _artifact_item(path: Path, root_label: str, root: Path) -> dict[str, Any] | 
         "root": root_label,
         "relative_path": relative_path,
         "size_bytes": int(stat.st_size),
-        "modified_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(stat.st_mtime)),
+        "modified_at": time.strftime(
+            "%Y-%m-%d %H:%M:%S", time.localtime(stat.st_mtime)
+        ),
         "modified_timestamp": float(stat.st_mtime),
     }
 
 
-def _list_artifacts(paths: Any, *, limit: int, include_hidden: bool) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
-    roots = [{"label": label, **_path_metadata(label, root)} for label, root in _artifact_roots(paths)]
+def _list_artifacts(
+    paths: Any, *, limit: int, include_hidden: bool
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
+    roots = [
+        {"label": label, **_path_metadata(label, root)}
+        for label, root in _artifact_roots(paths)
+    ]
     artifacts: list[dict[str, Any]] = []
     seen_paths: set[str] = set()
     for root_info in roots:
@@ -588,7 +714,11 @@ def _read_only_config_builder_service(state: Any) -> Any:
     from netops_suite.modules.config_builder import ConfigBuilderService
 
     user_profiles_dir = _path_from_state(state, "config_builder", "profiles")
-    profiles_dir = user_profiles_dir if user_profiles_dir is not None and user_profiles_dir.exists() else None
+    profiles_dir = (
+        user_profiles_dir
+        if user_profiles_dir is not None and user_profiles_dir.exists()
+        else None
+    )
     return ConfigBuilderService(profiles_dir=profiles_dir)
 
 
@@ -605,7 +735,9 @@ def _tool_result(
     output = "\n".join(part for part in (message.strip(), details.strip()) if part)
     if success:
         return ToolResult.ok(output, payload=data, **metadata)
-    return ToolResult.failed(message or "Tool execution failed.", output=details, payload=data, **metadata)
+    return ToolResult.failed(
+        message or "Tool execution failed.", output=details, payload=data, **metadata
+    )
 
 
 def _operation_tool_result(result: Any) -> ToolResult:
@@ -629,47 +761,95 @@ def _handle_ping(state: Any, args: dict[str, Any]) -> ToolResult:
     target = _target_arg(args)
     count = _int_arg(args, "count", default=4, minimum=1, maximum=10)
     timeout_ms = _int_arg(args, "timeout_ms", default=4000, minimum=500, maximum=15000)
-    return _operation_tool_result(service.quick_ping(target, count=count, timeout_ms=timeout_ms))
+    continuous, cancel_event = _continuous_probe_options(args)
+    if continuous:
+        kwargs: dict[str, Any] = {
+            "count": count,
+            "timeout_ms": timeout_ms,
+            "max_workers": 1,
+            "continuous": True,
+        }
+        if cancel_event is not None:
+            kwargs["cancel_event"] = cancel_event
+        results = service.run_multi_ping(target, **kwargs)
+        return _ping_batch_tool_result([target], results)
+    return _operation_tool_result(
+        service.quick_ping(target, count=count, timeout_ms=timeout_ms)
+    )
 
 
 def _handle_ping_batch(state: Any, args: dict[str, Any]) -> ToolResult:
     service = _required_service(state, "ping_service")
     targets = _required_target_list_arg(args, maximum=16)
-    count = _int_arg(args, "count", default=2, minimum=1, maximum=5)
+    count = _int_arg(args, "count", default=2, minimum=1, maximum=10)
     timeout_ms = _int_arg(args, "timeout_ms", default=4000, minimum=500, maximum=10000)
-    max_workers = _int_arg(args, "max_workers", default=min(8, len(targets)), minimum=1, maximum=16)
-    results = service.run_multi_ping(
-        "\n".join(targets),
-        count=count,
-        timeout_ms=timeout_ms,
-        max_workers=max_workers,
-        continuous=False,
+    continuous, cancel_event = _continuous_probe_options(args)
+    max_workers = _int_arg(
+        args, "max_workers", default=min(8, len(targets)), minimum=1, maximum=16
     )
-    reachable = sum(
-        1
-        for result in results
-        if bool(getattr(result, "success", False)) or int(getattr(result, "received", 0) or 0) > 0
-    )
-    details = "\n\n".join(_format_ping_result(result) for result in results)
-    return _tool_result(
-        success=reachable > 0,
-        message=f"Ping batch completed: {reachable}/{len(results)} target(s) reachable.",
-        details=details,
-        data=[_plain_data(result) for result in results],
-        status="ok" if reachable == len(results) else "partial" if reachable else "error",
-    )
+    kwargs: dict[str, Any] = {
+        "count": count,
+        "timeout_ms": timeout_ms,
+        "max_workers": max_workers,
+        "continuous": continuous,
+    }
+    if cancel_event is not None:
+        kwargs["cancel_event"] = cancel_event
+    results = service.run_multi_ping("\n".join(targets), **kwargs)
+    return _ping_batch_tool_result(targets, results)
 
 
 def _handle_external_ping(state: Any, args: dict[str, Any]) -> ToolResult:
     service = _required_service(state, "ping_service")
     targets = _target_list_arg(args)
-    count = _int_arg(args, "count", default=2, minimum=1, maximum=5)
+    count = _int_arg(args, "count", default=2, minimum=1, maximum=10)
     timeout_ms = _int_arg(args, "timeout_ms", default=4000, minimum=500, maximum=15000)
+    continuous, cancel_event = _continuous_probe_options(args)
+
+    if continuous:
+        max_workers = min(8, len(targets))
+        kwargs: dict[str, Any] = {
+            "count": count,
+            "timeout_ms": timeout_ms,
+            "max_workers": max_workers,
+            "continuous": True,
+        }
+        if cancel_event is not None:
+            kwargs["cancel_event"] = cancel_event
+        results = service.run_multi_ping("\n".join(targets), **kwargs)
+        return _ping_batch_tool_result(targets, results)
 
     rows: list[dict[str, Any]] = []
     details: list[str] = []
     for target in targets:
-        result = service.quick_ping(target, count=count, timeout_ms=timeout_ms)
+        if cancel_event is not None and cancel_event.is_set():
+            rows.append(
+                {
+                    "target": target,
+                    "success": False,
+                    "message": "",
+                    "details": "Execution stopped before this target was attempted.",
+                    "status": "omitted",
+                }
+            )
+            details.append(
+                f"[{target}]\nStatus: omitted\nExecution stopped before this target was attempted."
+            )
+            continue
+        try:
+            result = service.quick_ping(target, count=count, timeout_ms=timeout_ms)
+        except Exception as exc:  # noqa: BLE001 - preserve the remaining targets
+            rows.append(
+                {
+                    "target": target,
+                    "success": False,
+                    "message": "",
+                    "details": str(exc),
+                    "status": "error",
+                }
+            )
+            details.append(f"[{target}]\nfailure\n{exc}")
+            continue
         rows.append(
             {
                 "target": target,
@@ -696,17 +876,17 @@ def _handle_tcp_check(state: Any, args: dict[str, Any]) -> ToolResult:
     port = _port_arg(args)
     count = _int_arg(args, "count", default=2, minimum=1, maximum=10)
     timeout_ms = _int_arg(args, "timeout_ms", default=4000, minimum=500, maximum=15000)
-    results = service.run_multi_check(target, str(port), count=count, timeout_ms=timeout_ms, max_workers=1)
-    data = [_plain_data(result) for result in results]
-    successful = sum(1 for result in results if int(getattr(result, "successful", 0) or 0) > 0)
-    details = "\n\n".join(_format_tcp_check_result(result) for result in results)
-    return _tool_result(
-        success=successful > 0,
-        message=f"TCP check completed: {successful}/{len(results)} endpoints reachable.",
-        details=details,
-        data=data,
-        status="ok" if successful == len(results) else "partial" if successful else "error",
-    )
+    continuous, cancel_event = _continuous_probe_options(args)
+    kwargs: dict[str, Any] = {
+        "count": count,
+        "timeout_ms": timeout_ms,
+        "max_workers": 1,
+        "continuous": continuous,
+    }
+    if cancel_event is not None:
+        kwargs["cancel_event"] = cancel_event
+    results = service.run_multi_check(target, str(port), **kwargs)
+    return _tcp_batch_tool_result([(target, port)], results, label="TCP check")
 
 
 def _handle_tcp_batch(state: Any, args: dict[str, Any]) -> ToolResult:
@@ -715,27 +895,154 @@ def _handle_tcp_batch(state: Any, args: dict[str, Any]) -> ToolResult:
     ports = _ports_arg(args, maximum=16)
     endpoint_count = len(targets) * len(ports)
     if endpoint_count > 64:
-        raise NetOpsToolValidationError("tcp_batch supports at most 64 target/port endpoints per run.")
-    count = _int_arg(args, "count", default=2, minimum=1, maximum=5)
+        raise NetOpsToolValidationError(
+            "tcp_batch supports at most 64 target/port endpoints per run."
+        )
+    count = _int_arg(args, "count", default=2, minimum=1, maximum=10)
     timeout_ms = _int_arg(args, "timeout_ms", default=4000, minimum=500, maximum=10000)
-    max_workers = _int_arg(args, "max_workers", default=min(16, endpoint_count), minimum=1, maximum=32)
+    continuous, cancel_event = _continuous_probe_options(args)
+    max_workers = _int_arg(
+        args, "max_workers", default=min(16, endpoint_count), minimum=1, maximum=32
+    )
+    kwargs: dict[str, Any] = {
+        "count": count,
+        "timeout_ms": timeout_ms,
+        "max_workers": max_workers,
+        "continuous": continuous,
+    }
+    if cancel_event is not None:
+        kwargs["cancel_event"] = cancel_event
     results = service.run_multi_check(
         "\n".join(targets),
         ",".join(str(port) for port in ports),
-        count=count,
-        timeout_ms=timeout_ms,
-        max_workers=max_workers,
-        continuous=False,
+        **kwargs,
     )
-    reachable = sum(1 for result in results if int(getattr(result, "successful", 0) or 0) > 0)
-    details = "\n\n".join(_format_tcp_check_result(result) for result in results)
+    expected_endpoints = [(target, port) for target in targets for port in ports]
+    return _tcp_batch_tool_result(expected_endpoints, results)
+
+
+def _ping_batch_tool_result(targets: list[str], results: list[Any]) -> ToolResult:
+    by_target: dict[str, Any] = {}
+    for result in results:
+        result_target = str(getattr(result, "target", "") or "").strip()
+        if result_target:
+            by_target.setdefault(result_target.casefold(), result)
+
+    rows: list[dict[str, Any]] = []
+    details: list[str] = []
+    reachable = 0
+    completed = 0
+    for target in targets:
+        result = by_target.get(target.casefold())
+        if result is None:
+            rows.append(
+                {
+                    "target": target,
+                    "success": False,
+                    "status": "omitted",
+                    "error": "No result was returned for this requested target.",
+                }
+            )
+            details.append(
+                f"Target: {target}\nStatus: omitted\nError: No result was returned for this requested target."
+            )
+            continue
+        completed += 1
+        is_reachable = (
+            bool(getattr(result, "success", False))
+            or int(getattr(result, "received", 0) or 0) > 0
+        )
+        reachable += int(is_reachable)
+        rows.append(_plain_result_row(result))
+        details.append(_format_ping_result(result))
+
+    requested = len(targets)
+    status = (
+        "ok"
+        if requested > 0 and completed == requested and reachable == requested
+        else "partial"
+        if completed > 0 or reachable > 0
+        else "error"
+    )
     return _tool_result(
         success=reachable > 0,
-        message=f"TCP batch completed: {reachable}/{len(results)} endpoint(s) reachable.",
-        details=details,
-        data=[_plain_data(result) for result in results],
-        status="ok" if reachable == len(results) else "partial" if reachable else "error",
+        message=(
+            f"Ping batch completed: {reachable}/{requested} target(s) reachable; "
+            f"{completed}/{requested} result(s) returned."
+        ),
+        details="\n\n".join(details),
+        data=rows,
+        status=status,
     )
+
+
+def _tcp_batch_tool_result(
+    expected_endpoints: list[tuple[str, int]],
+    results: list[Any],
+    *,
+    label: str = "TCP batch",
+) -> ToolResult:
+    by_endpoint: dict[tuple[str, int], Any] = {}
+    for result in results:
+        target = str(getattr(result, "target", "") or "").strip().casefold()
+        port = int(getattr(result, "port", 0) or 0)
+        if target and port:
+            by_endpoint.setdefault((target, port), result)
+
+    rows: list[dict[str, Any]] = []
+    details: list[str] = []
+    reachable = 0
+    completed = 0
+    for target, port in expected_endpoints:
+        result = by_endpoint.get((target.casefold(), int(port)))
+        if result is None:
+            rows.append(
+                {
+                    "target": target,
+                    "port": port,
+                    "success": False,
+                    "status": "omitted",
+                    "error": "No result was returned for this requested endpoint.",
+                }
+            )
+            details.append(
+                f"Target: {target}:{port}\nStatus: omitted\nError: No result was returned for this requested endpoint."
+            )
+            continue
+        completed += 1
+        is_reachable = int(getattr(result, "successful", 0) or 0) > 0
+        reachable += int(is_reachable)
+        rows.append(_plain_result_row(result))
+        details.append(_format_tcp_check_result(result))
+
+    requested = len(expected_endpoints)
+    status = (
+        "ok"
+        if requested > 0 and completed == requested and reachable == requested
+        else "partial"
+        if completed > 0 or reachable > 0
+        else "error"
+    )
+    return _tool_result(
+        success=reachable > 0,
+        message=(
+            f"{label} completed: {reachable}/{requested} endpoint(s) reachable; "
+            f"{completed}/{requested} result(s) returned."
+        ),
+        details="\n\n".join(details),
+        data=rows,
+        status=status,
+    )
+
+
+def _continuous_probe_options(args: Mapping[str, Any]) -> tuple[bool, Any]:
+    continuous = _bool_arg(args, "continuous", default=False)
+    cancel_event = args.get("_cancel_event")
+    if continuous and cancel_event is None:
+        raise NetOpsToolValidationError(
+            "continuous probe execution requires a cooperative cancellation context."
+        )
+    return continuous, cancel_event
 
 
 def _handle_subnet_calculate(_state: Any, args: dict[str, Any]) -> ToolResult:
@@ -746,11 +1053,15 @@ def _handle_subnet_calculate(_state: Any, args: dict[str, Any]) -> ToolResult:
         ip_address = _target_arg(args, "ip_address")
         raw_prefix = args.get("prefix")
         if raw_prefix is None:
-            raise NetOpsToolValidationError("prefix is required when cidr is not provided.")
+            raise NetOpsToolValidationError(
+                "prefix is required when cidr is not provided."
+            )
         try:
             address = ipaddress.ip_address(ip_address)
         except ValueError as exc:
-            raise NetOpsToolValidationError("ip_address must be a valid IP address.") from exc
+            raise NetOpsToolValidationError(
+                "ip_address must be a valid IP address."
+            ) from exc
         max_prefix = 32 if address.version == 4 else 128
         prefix = _int_arg(args, "prefix", default=0, minimum=0, maximum=max_prefix)
         network_text = f"{address}/{prefix}"
@@ -758,7 +1069,9 @@ def _handle_subnet_calculate(_state: Any, args: dict[str, Any]) -> ToolResult:
     try:
         network = ipaddress.ip_network(network_text, strict=False)
     except ValueError as exc:
-        raise NetOpsToolValidationError("cidr must be a valid IP network such as 192.168.1.0/24.") from exc
+        raise NetOpsToolValidationError(
+            "cidr must be a valid IP network such as 192.168.1.0/24."
+        ) from exc
 
     include_hosts = _bool_arg(args, "include_hosts", default=False)
     max_hosts = _int_arg(args, "max_hosts", default=64, minimum=1, maximum=256)
@@ -772,7 +1085,11 @@ def _handle_subnet_calculate(_state: Any, args: dict[str, Any]) -> ToolResult:
         last_host = host_text
         if include_hosts and len(host_samples) < max_hosts:
             host_samples.append(host_text)
-        if (not include_hosts or len(host_samples) >= max_hosts) and network.num_addresses > 65536 and first_host:
+        if (
+            (not include_hosts or len(host_samples) >= max_hosts)
+            and network.num_addresses > 65536
+            and first_host
+        ):
             break
 
     if first_host and network.num_addresses > 65536:
@@ -790,7 +1107,9 @@ def _handle_subnet_calculate(_state: Any, args: dict[str, Any]) -> ToolResult:
         "network": str(network),
         "version": network.version,
         "network_address": str(network.network_address),
-        "broadcast_address": str(network.broadcast_address) if network.version == 4 else "",
+        "broadcast_address": str(network.broadcast_address)
+        if network.version == 4
+        else "",
         "netmask": str(network.netmask),
         "hostmask": str(network.hostmask),
         "prefixlen": network.prefixlen,
@@ -814,7 +1133,9 @@ def _handle_subnet_calculate(_state: Any, args: dict[str, Any]) -> ToolResult:
     if data["broadcast_address"]:
         detail_lines.append(f"Broadcast: {data['broadcast_address']}")
     if include_hosts:
-        detail_lines.append("Host samples: " + (", ".join(host_samples) if host_samples else "-"))
+        detail_lines.append(
+            "Host samples: " + (", ".join(host_samples) if host_samples else "-")
+        )
     return _tool_result(
         success=True,
         message=f"Subnet calculated: {network}",
@@ -840,22 +1161,30 @@ def _handle_dns_flush_cache(state: Any, _args: dict[str, Any]) -> ToolResult:
 
 def _handle_public_ip(state: Any, args: dict[str, Any]) -> ToolResult:
     service = _required_service(state, "public_ip_service")
-    timeout_seconds = _int_arg(args, "timeout_seconds", default=5, minimum=1, maximum=30)
-    return _operation_tool_result(service.check_public_ip(timeout_seconds=timeout_seconds))
+    timeout_seconds = _int_arg(
+        args, "timeout_seconds", default=5, minimum=1, maximum=30
+    )
+    return _operation_tool_result(
+        service.check_public_ip(timeout_seconds=timeout_seconds)
+    )
 
 
 def _handle_tracert(state: Any, args: dict[str, Any]) -> ToolResult:
     service = _required_service(state, "trace_service")
     target = _target_arg(args)
     resolve_names = _bool_arg(args, "resolve_names", default=True)
-    return _operation_tool_result(service.run_tracert(target, resolve_names=resolve_names))
+    return _operation_tool_result(
+        service.run_tracert(target, resolve_names=resolve_names)
+    )
 
 
 def _handle_pathping(state: Any, args: dict[str, Any]) -> ToolResult:
     service = _required_service(state, "trace_service")
     target = _target_arg(args)
     resolve_names = _bool_arg(args, "resolve_names", default=True)
-    return _operation_tool_result(service.run_pathping(target, resolve_names=resolve_names))
+    return _operation_tool_result(
+        service.run_pathping(target, resolve_names=resolve_names)
+    )
 
 
 def _handle_ipconfig(state: Any, _args: dict[str, Any]) -> ToolResult:
@@ -879,14 +1208,23 @@ def _handle_interface_snapshot(state: Any, args: dict[str, Any]) -> ToolResult:
     adapters = list(service.list_adapters())
     if interface_name:
         normalized = interface_name.casefold()
-        adapters = [adapter for adapter in adapters if str(getattr(adapter, "name", "")).casefold() == normalized]
+        adapters = [
+            adapter
+            for adapter in adapters
+            if str(getattr(adapter, "name", "")).casefold() == normalized
+        ]
     formatter = getattr(service, "format_adapter_snapshot", None)
-    details = formatter(adapters) if callable(formatter) else "\n".join(str(adapter) for adapter in adapters)
+    details = (
+        formatter(adapters)
+        if callable(formatter)
+        else "\n".join(str(adapter) for adapter in adapters)
+    )
     if interface_name and not adapters:
         return _tool_result(
             success=False,
             message=f"Interface not found: {interface_name}",
-            details=details or "No matching interface was returned by NetworkInterfaceService.",
+            details=details
+            or "No matching interface was returned by NetworkInterfaceService.",
             data=[],
             status="error",
         )
@@ -910,7 +1248,9 @@ def _handle_app_paths(state: Any, _args: dict[str, Any]) -> ToolResult:
         )
     rows = _app_paths_payload(paths)
     details = "\n".join(f"- {row['name']}: {row['path']}" for row in rows)
-    return _tool_result(success=True, message=f"App paths: {len(rows)}", details=details, data=rows)
+    return _tool_result(
+        success=True, message=f"App paths: {len(rows)}", details=details, data=rows
+    )
 
 
 def _handle_artifacts_list(state: Any, args: dict[str, Any]) -> ToolResult:
@@ -925,13 +1265,19 @@ def _handle_artifacts_list(state: Any, args: dict[str, Any]) -> ToolResult:
         )
     limit = _int_arg(args, "limit", default=100, minimum=1, maximum=300)
     include_hidden = _bool_arg(args, "include_hidden", default=False)
-    artifacts, roots, total_count = _list_artifacts(paths, limit=limit, include_hidden=include_hidden)
+    artifacts, roots, total_count = _list_artifacts(
+        paths, limit=limit, include_hidden=include_hidden
+    )
     details = "\n".join(
         f"- {item['modified_at']} {item['kind']} {item['relative_path']}"
         for item in artifacts[:25]
     )
     if total_count > len(artifacts):
-        details = "\n".join(part for part in (details, f"... {total_count - len(artifacts)} more omitted") if part)
+        details = "\n".join(
+            part
+            for part in (details, f"... {total_count - len(artifacts)} more omitted")
+            if part
+        )
     return _tool_result(
         success=True,
         message=f"Artifacts: {len(artifacts)}/{total_count}",
@@ -949,7 +1295,9 @@ def _handle_set_dns(state: Any, args: dict[str, Any]) -> ToolResult:
     service = _required_service(state, "network_interface_service")
     interface_name = _interface_arg(args)
     if "dns_servers" not in args:
-        raise NetOpsToolValidationError("dns_servers is required. Use an empty list only to reset DNS to automatic.")
+        raise NetOpsToolValidationError(
+            "dns_servers is required. Use an empty list only to reset DNS to automatic."
+        )
     dns_servers = _dns_servers_arg(args)
     return _operation_tool_result(service.set_dns(interface_name, dns_servers))
 
@@ -967,7 +1315,9 @@ def _handle_set_static_ip(state: Any, args: dict[str, Any]) -> ToolResult:
     prefix = _prefix_arg(args)
     gateway = _ipv4_arg(args, "gateway", required=False)
     dns_servers = _dns_servers_arg(args)
-    return _operation_tool_result(service.set_static(interface_name, ip_address, prefix, gateway, dns_servers))
+    return _operation_tool_result(
+        service.set_static(interface_name, ip_address, prefix, gateway, dns_servers)
+    )
 
 
 def _handle_wifi_status(state: Any, _args: dict[str, Any]) -> ToolResult:
@@ -980,7 +1330,9 @@ def _handle_wifi_status(state: Any, _args: dict[str, Any]) -> ToolResult:
     )
     return _tool_result(
         success=has_status,
-        message="Wi-Fi status captured." if has_status else "Wi-Fi status is not available.",
+        message="Wi-Fi status captured."
+        if has_status
+        else "Wi-Fi status is not available.",
         details=details,
         data=_plain_data(info),
         status="ok" if has_status else "error",
@@ -989,8 +1341,12 @@ def _handle_wifi_status(state: Any, _args: dict[str, Any]) -> ToolResult:
 
 def _handle_wifi_scan_nearby(state: Any, args: dict[str, Any]) -> ToolResult:
     service = _required_service(state, "wireless_service")
-    duration_seconds = _int_arg(args, "duration_seconds", default=20, minimum=5, maximum=120)
-    interval_seconds = _int_arg(args, "interval_seconds", default=5, minimum=2, maximum=30)
+    duration_seconds = _int_arg(
+        args, "duration_seconds", default=20, minimum=5, maximum=120
+    )
+    interval_seconds = _int_arg(
+        args, "interval_seconds", default=5, minimum=2, maximum=30
+    )
     # Injected only after public tool arguments pass policy/schema validation.
     cancel_event = args.get("_cancel_event")
 
@@ -1004,21 +1360,36 @@ def _handle_wifi_scan_nearby(state: Any, args: dict[str, Any]) -> ToolResult:
         if cancel_event is not None:
             report_kwargs["cancel_event"] = cancel_event
         report = report_method(**report_kwargs)
-        return _wireless_scan_result(report, duration_seconds=duration_seconds, interval_seconds=interval_seconds)
+        return _wireless_scan_result(
+            report, duration_seconds=duration_seconds, interval_seconds=interval_seconds
+        )
 
     report_method = getattr(service, "scan_nearby_report", None)
     if callable(report_method):
-        report_kwargs = {"duration_seconds": duration_seconds, "interval_seconds": interval_seconds}
+        report_kwargs = {
+            "duration_seconds": duration_seconds,
+            "interval_seconds": interval_seconds,
+        }
         if cancel_event is not None:
             report_kwargs["cancel_event"] = cancel_event
         report = report_method(**report_kwargs)
-        return _wireless_scan_result(report, duration_seconds=duration_seconds, interval_seconds=interval_seconds)
+        return _wireless_scan_result(
+            report, duration_seconds=duration_seconds, interval_seconds=interval_seconds
+        )
 
     scan_method = getattr(service, "scan_nearby_access_points", None)
     if not callable(scan_method):
-        raise RuntimeError("AppState service is not available: wireless_service.scan_nearby_access_points")
+        raise RuntimeError(
+            "AppState service is not available: wireless_service.scan_nearby_access_points"
+        )
 
-    access_points, sample_count, actual_duration_seconds, cancelled, sample_limit_reached = _run_wireless_scans(
+    (
+        access_points,
+        sample_count,
+        actual_duration_seconds,
+        cancelled,
+        sample_limit_reached,
+    ) = _run_wireless_scans(
         scan_method,
         duration_seconds=duration_seconds,
         interval_seconds=interval_seconds,
@@ -1040,7 +1411,9 @@ def _handle_oui_lookup(state: Any, args: dict[str, Any]) -> ToolResult:
     mac_address = _text_arg(args, "mac_address", field_label="mac_address")
     normalized = "".join(ch for ch in mac_address.upper() if ch in "0123456789ABCDEF")
     if len(normalized) < 6:
-        raise NetOpsToolValidationError("mac_address must contain at least an OUI prefix.")
+        raise NetOpsToolValidationError(
+            "mac_address must contain at least an OUI prefix."
+        )
     record = service.lookup(mac_address)
     if record is None:
         return _tool_result(
@@ -1084,7 +1457,9 @@ def _handle_oui_cache_summary(state: Any, _args: dict[str, Any]) -> ToolResult:
                 )
     cache_path = getattr(getattr(state, "paths", None), "oui_cache", None)
     cache = _path_metadata("oui_cache", cache_path) if cache_path is not None else None
-    message = f"OUI cache: {summary}" if summary else "OUI cache summary is not available."
+    message = (
+        f"OUI cache: {summary}" if summary else "OUI cache summary is not available."
+    )
     return _tool_result(
         success=True,
         message=message,
@@ -1103,7 +1478,9 @@ def _handle_inspector_profiles_list(state: Any, args: dict[str, Any]) -> ToolRes
     limit = _int_arg(args, "limit", default=100, minimum=1, maximum=1000)
     try:
         service = _read_only_inspector_service(state)
-        profiles = [_plain_data(profile) for profile in service.supported_profile_definitions()]
+        profiles = [
+            _plain_data(profile) for profile in service.supported_profile_definitions()
+        ]
     except Exception as exc:
         return _tool_result(
             success=False,
@@ -1121,16 +1498,26 @@ def _handle_inspector_profiles_list(state: Any, args: dict[str, Any]) -> ToolRes
         if isinstance(item, Mapping)
     )
     if total_count > len(rows):
-        details = "\n".join(part for part in (details, f"... {total_count - len(rows)} more omitted") if part)
+        details = "\n".join(
+            part
+            for part in (details, f"... {total_count - len(rows)} more omitted")
+            if part
+        )
     return _tool_result(
         success=True,
         message=f"Inspector profiles: {len(rows)}/{total_count}",
         details=details,
-        data={"profiles": rows, "total_count": total_count, "truncated": total_count > len(rows)},
+        data={
+            "profiles": rows,
+            "total_count": total_count,
+            "truncated": total_count > len(rows),
+        },
     )
 
 
-def _handle_config_builder_profiles_list(state: Any, args: dict[str, Any]) -> ToolResult:
+def _handle_config_builder_profiles_list(
+    state: Any, args: dict[str, Any]
+) -> ToolResult:
     limit = _int_arg(args, "limit", default=100, minimum=1, maximum=1000)
     try:
         service = _read_only_config_builder_service(state)
@@ -1152,7 +1539,11 @@ def _handle_config_builder_profiles_list(state: Any, args: dict[str, Any]) -> To
         if isinstance(item, Mapping)
     )
     if total_count > len(rows):
-        details = "\n".join(part for part in (details, f"... {total_count - len(rows)} more omitted") if part)
+        details = "\n".join(
+            part
+            for part in (details, f"... {total_count - len(rows)} more omitted")
+            if part
+        )
     return _tool_result(
         success=True,
         message=f"Config builder profiles: {len(rows)}/{total_count}",
@@ -1168,26 +1559,40 @@ def _handle_config_builder_profiles_list(state: Any, args: dict[str, Any]) -> To
 
 def _handle_ip_profiles(state: Any, _args: dict[str, Any]) -> ToolResult:
     profiles = [_plain_data(profile) for profile in getattr(state, "ip_profiles", [])]
-    return _tool_result(success=True, message=f"IP profiles: {len(profiles)}", data=profiles)
+    return _tool_result(
+        success=True, message=f"IP profiles: {len(profiles)}", data=profiles
+    )
 
 
 def _handle_ftp_profiles(state: Any, _args: dict[str, Any]) -> ToolResult:
     profiles = [_plain_data(profile) for profile in getattr(state, "ftp_profiles", [])]
-    return _tool_result(success=True, message=f"FTP/SFTP profiles: {len(profiles)}", data=profiles)
+    return _tool_result(
+        success=True, message=f"FTP/SFTP profiles: {len(profiles)}", data=profiles
+    )
 
 
 def _handle_scp_profiles(state: Any, _args: dict[str, Any]) -> ToolResult:
     profiles = [_plain_data(profile) for profile in getattr(state, "scp_profiles", [])]
-    return _tool_result(success=True, message=f"SCP profiles: {len(profiles)}", data=profiles)
+    return _tool_result(
+        success=True, message=f"SCP profiles: {len(profiles)}", data=profiles
+    )
 
 
 def _handle_arp_scan_candidates(state: Any, _args: dict[str, Any]) -> ToolResult:
     interface_service = _required_service(state, "network_interface_service")
     arp_service = _required_service(state, "arp_scan_service")
     adapters = list(interface_service.list_adapters())
-    candidates = [{"label": label, "cidr": cidr} for label, cidr in arp_service.list_candidate_subnets(adapters)]
+    candidates = [
+        {"label": label, "cidr": cidr}
+        for label, cidr in arp_service.list_candidate_subnets(adapters)
+    ]
     details = "\n".join(f"- {item['label']}: {item['cidr']}" for item in candidates)
-    return _tool_result(success=True, message=f"ARP scan candidates: {len(candidates)}", details=details, data=candidates)
+    return _tool_result(
+        success=True,
+        message=f"ARP scan candidates: {len(candidates)}",
+        details=details,
+        data=candidates,
+    )
 
 
 def _handle_arp_scan(state: Any, args: dict[str, Any]) -> ToolResult:
@@ -1195,7 +1600,9 @@ def _handle_arp_scan(state: Any, args: dict[str, Any]) -> ToolResult:
     subnet = _text_arg(args, "subnet", field_label="subnet")
     timeout_ms = _int_arg(args, "timeout_ms", default=800, minimum=100, maximum=5000)
     max_workers = _int_arg(args, "max_workers", default=64, minimum=1, maximum=128)
-    return _operation_tool_result(service.run_scan(subnet, timeout_ms=timeout_ms, max_workers=max_workers))
+    return _operation_tool_result(
+        service.run_scan(subnet, timeout_ms=timeout_ms, max_workers=max_workers)
+    )
 
 
 def _handle_iperf_status(state: Any, _args: dict[str, Any]) -> ToolResult:
@@ -1217,7 +1624,12 @@ def _handle_iperf_status(state: Any, _args: dict[str, Any]) -> ToolResult:
         True,
         "iperf3 is available." if executable else "iperf3 is not available.",
         details=details,
-        data={"executable": executable, "source": source, "version": version, "managed": managed_state},
+        data={
+            "executable": executable,
+            "source": source,
+            "version": version,
+            "managed": managed_state,
+        },
         status="ok" if executable else "warning",
     )
 
@@ -1253,7 +1665,9 @@ def _handle_public_iperf_cached(state: Any, _args: dict[str, Any]) -> ToolResult
 def _handle_public_iperf_refresh(state: Any, args: dict[str, Any]) -> ToolResult:
     service = _required_service(state, "public_iperf_service")
     force_refresh = _bool_arg(args, "force_refresh", default=False)
-    return _operation_tool_result(service.fetch_public_servers(force_refresh=force_refresh))
+    return _operation_tool_result(
+        service.fetch_public_servers(force_refresh=force_refresh)
+    )
 
 
 def _handle_ftp_client_runtime(state: Any, args: dict[str, Any]) -> ToolResult:
@@ -1276,7 +1690,9 @@ def _handle_ftp_connect(state: Any, args: dict[str, Any]) -> ToolResult:
             _text_arg(args, "username", field_label="username"),
             str(args.get("password", "") or ""),
             passive_mode=_bool_arg(args, "passive_mode", default=True),
-            timeout_seconds=_int_arg(args, "timeout_seconds", default=15, minimum=1, maximum=300),
+            timeout_seconds=_int_arg(
+                args, "timeout_seconds", default=15, minimum=1, maximum=300
+            ),
             remote_path=_remote_path_arg(args, "remote_path", required=False) or "/",
         )
     )
@@ -1284,7 +1700,9 @@ def _handle_ftp_connect(state: Any, args: dict[str, Any]) -> ToolResult:
 
 def _handle_ftp_disconnect(state: Any, args: dict[str, Any]) -> ToolResult:
     service = _required_service(state, "ftp_client_service")
-    return _operation_tool_result(service.disconnect(_text_arg(args, "session_id", field_label="session_id")))
+    return _operation_tool_result(
+        service.disconnect(_text_arg(args, "session_id", field_label="session_id"))
+    )
 
 
 def _handle_ftp_list(state: Any, args: dict[str, Any]) -> ToolResult:
@@ -1366,7 +1784,9 @@ def _handle_scp_upload(state: Any, args: dict[str, Any]) -> ToolResult:
             str(args.get("password", "") or ""),
             _text_list_arg(args, "local_paths", required=True, maximum=64),
             _remote_path_arg(args, "remote_path"),
-            timeout_seconds=_int_arg(args, "timeout_seconds", default=15, minimum=1, maximum=300),
+            timeout_seconds=_int_arg(
+                args, "timeout_seconds", default=15, minimum=1, maximum=300
+            ),
         )
     )
 
@@ -1381,7 +1801,9 @@ def _handle_scp_download(state: Any, args: dict[str, Any]) -> ToolResult:
             str(args.get("password", "") or ""),
             _text_list_arg(args, "remote_sources", required=True, maximum=64),
             _text_arg(args, "local_dir", field_label="local_dir"),
-            timeout_seconds=_int_arg(args, "timeout_seconds", default=15, minimum=1, maximum=300),
+            timeout_seconds=_int_arg(
+                args, "timeout_seconds", default=15, minimum=1, maximum=300
+            ),
         )
     )
 
@@ -1399,7 +1821,9 @@ def _handle_tftp_upload(state: Any, args: dict[str, Any]) -> ToolResult:
             args.get("port", 69),
             _text_arg(args, "local_path", field_label="local_path"),
             _remote_path_arg(args, "remote_path"),
-            timeout_seconds=_int_arg(args, "timeout_seconds", default=5, minimum=1, maximum=120),
+            timeout_seconds=_int_arg(
+                args, "timeout_seconds", default=5, minimum=1, maximum=120
+            ),
             retries=_int_arg(args, "retries", default=3, minimum=0, maximum=20),
         )
     )
@@ -1413,7 +1837,9 @@ def _handle_tftp_download(state: Any, args: dict[str, Any]) -> ToolResult:
             args.get("port", 69),
             _remote_path_arg(args, "remote_path"),
             _text_arg(args, "local_folder", field_label="local_folder"),
-            timeout_seconds=_int_arg(args, "timeout_seconds", default=5, minimum=1, maximum=120),
+            timeout_seconds=_int_arg(
+                args, "timeout_seconds", default=5, minimum=1, maximum=120
+            ),
             retries=_int_arg(args, "retries", default=3, minimum=0, maximum=20),
         )
     )
@@ -1421,10 +1847,18 @@ def _handle_tftp_download(state: Any, args: dict[str, Any]) -> ToolResult:
 
 def _handle_update_check(state: Any, args: dict[str, Any]) -> ToolResult:
     service = _required_service(state, "update_service")
-    config = getattr(state, "app_config", {}).get("update", {}) if isinstance(getattr(state, "app_config", {}), dict) else {}
-    current_version = str(args.get("current_version", config.get("current_version", "")) or "")
+    config = (
+        getattr(state, "app_config", {}).get("update", {})
+        if isinstance(getattr(state, "app_config", {}), dict)
+        else {}
+    )
+    current_version = str(
+        args.get("current_version", config.get("current_version", "")) or ""
+    )
     repo = str(args.get("repo", config.get("repo", "")) or "")
-    asset_pattern = str(args.get("asset_pattern", config.get("asset_pattern", "")) or "")
+    asset_pattern = str(
+        args.get("asset_pattern", config.get("asset_pattern", "")) or ""
+    )
     if not current_version:
         raise NetOpsToolValidationError("current_version is required.")
     if not repo:
@@ -1504,7 +1938,9 @@ def _run_wireless_scans(
     interval_seconds: int,
     cancel_event: Any = None,
 ) -> tuple[list[Any], int, float, bool, bool]:
-    requested_scan_count = max(1, 1 + max(0, duration_seconds - 1) // max(1, interval_seconds))
+    requested_scan_count = max(
+        1, 1 + max(0, duration_seconds - 1) // max(1, interval_seconds)
+    )
     scan_count = min(25, requested_scan_count)
     found: dict[str, Any] = {}
     completed_scans = 0
@@ -1536,13 +1972,25 @@ def _run_wireless_scans(
         completed_scans += 1
         for access_point in _extract_wireless_access_points(access_points):
             key = _wireless_access_point_key(access_point)
-            if key not in found or _wireless_signal(access_point) > _wireless_signal(found[key]):
+            if key not in found or _wireless_signal(access_point) > _wireless_signal(
+                found[key]
+            ):
                 found[key] = access_point
         if cancel_event is not None and cancel_event.is_set():
             cancelled = True
             break
-    sample_limit_reached = not cancelled and requested_scan_count > scan_count and completed_scans == scan_count
-    return list(found.values()), completed_scans, time.monotonic() - started_at, cancelled, sample_limit_reached
+    sample_limit_reached = (
+        not cancelled
+        and requested_scan_count > scan_count
+        and completed_scans == scan_count
+    )
+    return (
+        list(found.values()),
+        completed_scans,
+        time.monotonic() - started_at,
+        cancelled,
+        sample_limit_reached,
+    )
 
 
 def _wireless_scan_result(
@@ -1557,7 +2005,9 @@ def _wireless_scan_result(
 ) -> ToolResult:
     access_points = _extract_wireless_access_points(report_or_access_points)
     channel_summaries = _extract_wireless_channel_summaries(report_or_access_points)
-    unstable_access_points = _extract_wireless_unstable_access_points(report_or_access_points)
+    unstable_access_points = _extract_wireless_unstable_access_points(
+        report_or_access_points
+    )
     errors = list(getattr(report_or_access_points, "errors", []) or [])
     access_points = sorted(
         access_points,
@@ -1567,16 +2017,26 @@ def _wireless_scan_result(
             str(getattr(item, "bssid", "") or "").casefold(),
         ),
     )
-    requested_duration = int(getattr(report_or_access_points, "duration_seconds", duration_seconds) or duration_seconds)
-    reported_interval = int(getattr(report_or_access_points, "interval_seconds", interval_seconds) or interval_seconds)
+    requested_duration = int(
+        getattr(report_or_access_points, "duration_seconds", duration_seconds)
+        or duration_seconds
+    )
+    reported_interval = int(
+        getattr(report_or_access_points, "interval_seconds", interval_seconds)
+        or interval_seconds
+    )
     if sample_count is None:
         sample_count = getattr(report_or_access_points, "sample_count", None)
     if actual_duration_seconds is None:
-        actual_duration_seconds = getattr(report_or_access_points, "actual_duration_seconds", None)
+        actual_duration_seconds = getattr(
+            report_or_access_points, "actual_duration_seconds", None
+        )
     if cancelled is None:
         cancelled = bool(getattr(report_or_access_points, "cancelled", False))
     if sample_limit_reached is None:
-        sample_limit_reached = bool(getattr(report_or_access_points, "sample_limit_reached", False))
+        sample_limit_reached = bool(
+            getattr(report_or_access_points, "sample_limit_reached", False)
+        )
 
     data = {
         "duration_seconds": requested_duration,
@@ -1594,9 +2054,13 @@ def _wireless_scan_result(
     if hasattr(report_or_access_points, "observed_access_points"):
         data["report"] = _plain_data(report_or_access_points)
     if channel_summaries:
-        data["channel_summaries"] = [_plain_data(summary) for summary in channel_summaries]
+        data["channel_summaries"] = [
+            _plain_data(summary) for summary in channel_summaries
+        ]
     if unstable_access_points:
-        data["unstable_access_points"] = [_plain_data(access_point) for access_point in unstable_access_points]
+        data["unstable_access_points"] = [
+            _plain_data(access_point) for access_point in unstable_access_points
+        ]
     if errors:
         data["errors"] = [str(error) for error in errors]
     measured_text = (
@@ -1617,24 +2081,41 @@ def _wireless_scan_result(
         )
     ]
     if access_points:
-        detail_sections.append("\n".join(_format_wireless_access_point(access_point) for access_point in access_points))
+        detail_sections.append(
+            "\n".join(
+                _format_wireless_access_point(access_point)
+                for access_point in access_points
+            )
+        )
     if channel_summaries:
         detail_sections.append(
-            "Channel summary\n" + "\n".join(_format_wireless_channel_summary(summary) for summary in channel_summaries)
+            "Channel summary\n"
+            + "\n".join(
+                _format_wireless_channel_summary(summary)
+                for summary in channel_summaries
+            )
         )
     if unstable_access_points:
         detail_sections.append(
-            "Unstable APs\n" + "\n".join(_format_wireless_access_point(access_point) for access_point in unstable_access_points)
+            "Unstable APs\n"
+            + "\n".join(
+                _format_wireless_access_point(access_point)
+                for access_point in unstable_access_points
+            )
         )
     if errors:
         detail_sections.append("Errors\n" + "\n".join(f"- {error}" for error in errors))
     details = "\n\n".join(section for section in detail_sections if section.strip())
     success = not cancelled and not (errors and not access_points)
-    status = "ok" if success and not errors else ("warning" if access_points else "error")
+    status = (
+        "ok" if success and not errors else ("warning" if access_points else "error")
+    )
     if cancelled:
         message = f"Nearby Wi-Fi scan cancelled: {len(access_points)} access point(s) observed."
     else:
-        message = f"Nearby Wi-Fi scan completed: {len(access_points)} access point(s) found."
+        message = (
+            f"Nearby Wi-Fi scan completed: {len(access_points)} access point(s) found."
+        )
     return _tool_result(
         success=success,
         message=message,
@@ -1683,9 +2164,19 @@ def _extract_wireless_channel_summaries(value: Any) -> list[Any]:
         return []
     if isinstance(value, Mapping):
         raw_value = value.get("channel_summaries", [])
-        return list(raw_value) if isinstance(raw_value, Sequence) and not isinstance(raw_value, (str, bytes, bytearray)) else []
+        return (
+            list(raw_value)
+            if isinstance(raw_value, Sequence)
+            and not isinstance(raw_value, (str, bytes, bytearray))
+            else []
+        )
     raw_value = getattr(value, "channel_summaries", [])
-    return list(raw_value) if isinstance(raw_value, Sequence) and not isinstance(raw_value, (str, bytes, bytearray)) else []
+    return (
+        list(raw_value)
+        if isinstance(raw_value, Sequence)
+        and not isinstance(raw_value, (str, bytes, bytearray))
+        else []
+    )
 
 
 def _extract_wireless_unstable_access_points(value: Any) -> list[Any]:
@@ -1693,16 +2184,28 @@ def _extract_wireless_unstable_access_points(value: Any) -> list[Any]:
         return []
     if isinstance(value, Mapping):
         raw_value = value.get("unstable_access_points", [])
-        return list(raw_value) if isinstance(raw_value, Sequence) and not isinstance(raw_value, (str, bytes, bytearray)) else []
+        return (
+            list(raw_value)
+            if isinstance(raw_value, Sequence)
+            and not isinstance(raw_value, (str, bytes, bytearray))
+            else []
+        )
     raw_value = getattr(value, "unstable_access_points", [])
-    return list(raw_value) if isinstance(raw_value, Sequence) and not isinstance(raw_value, (str, bytes, bytearray)) else []
+    return (
+        list(raw_value)
+        if isinstance(raw_value, Sequence)
+        and not isinstance(raw_value, (str, bytes, bytearray))
+        else []
+    )
 
 
 def _wireless_access_point_key(access_point: Any) -> str:
     bssid = str(getattr(access_point, "bssid", "") or "").strip().casefold()
     ssid = str(getattr(access_point, "ssid", "") or "").strip().casefold()
     channel = str(getattr(access_point, "channel", "") or "").strip().casefold()
-    return "|".join(part for part in (bssid, ssid, channel) if part) or repr(access_point)
+    return "|".join(part for part in (bssid, ssid, channel) if part) or repr(
+        access_point
+    )
 
 
 def _wireless_signal(access_point: Any) -> int:
@@ -1763,9 +2266,23 @@ NETOPS_TOOL_SPECS = (
             permission=PermissionClass.PROBE_NETWORK,
             input_schema=_object_schema(
                 {
-                    "target": {"type": "string", "description": "Hostname or IP address to ping."},
-                    "count": {"type": "integer", "minimum": 1, "maximum": 10, "default": 4},
-                    "timeout_ms": {"type": "integer", "minimum": 500, "maximum": 15000, "default": 4000},
+                    "target": {
+                        "type": "string",
+                        "description": "Hostname or IP address to ping.",
+                    },
+                    "count": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10,
+                        "default": 4,
+                    },
+                    "timeout_ms": {
+                        "type": "integer",
+                        "minimum": 500,
+                        "maximum": 15000,
+                        "default": 4000,
+                    },
+                    "continuous": {"type": "boolean", "default": False},
                 },
                 required=("target",),
             ),
@@ -1783,10 +2300,31 @@ NETOPS_TOOL_SPECS = (
             permission=PermissionClass.PROBE_NETWORK,
             input_schema=_object_schema(
                 {
-                    "targets": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 16},
-                    "count": {"type": "integer", "minimum": 1, "maximum": 5, "default": 2},
-                    "timeout_ms": {"type": "integer", "minimum": 500, "maximum": 10000, "default": 4000},
-                    "max_workers": {"type": "integer", "minimum": 1, "maximum": 16, "default": 8},
+                    "targets": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "maxItems": 16,
+                    },
+                    "count": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10,
+                        "default": 2,
+                    },
+                    "timeout_ms": {
+                        "type": "integer",
+                        "minimum": 500,
+                        "maximum": 10000,
+                        "default": 4000,
+                    },
+                    "max_workers": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 16,
+                        "default": 8,
+                    },
+                    "continuous": {"type": "boolean", "default": False},
                 },
                 required=("targets",),
             ),
@@ -1809,8 +2347,19 @@ NETOPS_TOOL_SPECS = (
                         "maxItems": 6,
                         "default": list(DEFAULT_EXTERNAL_PING_TARGETS),
                     },
-                    "count": {"type": "integer", "minimum": 1, "maximum": 5, "default": 2},
-                    "timeout_ms": {"type": "integer", "minimum": 500, "maximum": 15000, "default": 4000},
+                    "count": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10,
+                        "default": 2,
+                    },
+                    "timeout_ms": {
+                        "type": "integer",
+                        "minimum": 500,
+                        "maximum": 15000,
+                        "default": 4000,
+                    },
+                    "continuous": {"type": "boolean", "default": False},
                 }
             ),
             timeout_seconds=60,
@@ -1829,8 +2378,19 @@ NETOPS_TOOL_SPECS = (
                 {
                     "target": {"type": "string"},
                     "port": {"type": "integer", "minimum": 1, "maximum": 65535},
-                    "count": {"type": "integer", "minimum": 1, "maximum": 10, "default": 2},
-                    "timeout_ms": {"type": "integer", "minimum": 500, "maximum": 15000, "default": 4000},
+                    "count": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10,
+                        "default": 2,
+                    },
+                    "timeout_ms": {
+                        "type": "integer",
+                        "minimum": 500,
+                        "maximum": 15000,
+                        "default": 4000,
+                    },
+                    "continuous": {"type": "boolean", "default": False},
                 },
                 required=("target", "port"),
             ),
@@ -1848,11 +2408,37 @@ NETOPS_TOOL_SPECS = (
             permission=PermissionClass.PROBE_NETWORK,
             input_schema=_object_schema(
                 {
-                    "targets": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 16},
-                    "ports": {"type": "array", "items": {"type": "integer", "minimum": 1, "maximum": 65535}, "minItems": 1, "maxItems": 16},
-                    "count": {"type": "integer", "minimum": 1, "maximum": 5, "default": 2},
-                    "timeout_ms": {"type": "integer", "minimum": 500, "maximum": 10000, "default": 4000},
-                    "max_workers": {"type": "integer", "minimum": 1, "maximum": 32, "default": 16},
+                    "targets": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "maxItems": 16,
+                    },
+                    "ports": {
+                        "type": "array",
+                        "items": {"type": "integer", "minimum": 1, "maximum": 65535},
+                        "minItems": 1,
+                        "maxItems": 16,
+                    },
+                    "count": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10,
+                        "default": 2,
+                    },
+                    "timeout_ms": {
+                        "type": "integer",
+                        "minimum": 500,
+                        "maximum": 10000,
+                        "default": 4000,
+                    },
+                    "max_workers": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 32,
+                        "default": 16,
+                    },
+                    "continuous": {"type": "boolean", "default": False},
                 },
                 required=("targets", "ports"),
             ),
@@ -1869,11 +2455,29 @@ NETOPS_TOOL_SPECS = (
             permission=PermissionClass.READ_LOCAL,
             input_schema=_object_schema(
                 {
-                    "cidr": {"type": "string", "description": "CIDR such as 192.168.1.0/24.", "default": ""},
-                    "ip_address": {"type": "string", "description": "IP address when cidr is not supplied.", "default": ""},
-                    "prefix": {"type": "integer", "minimum": 0, "maximum": 128, "default": 24},
+                    "cidr": {
+                        "type": "string",
+                        "description": "CIDR such as 192.168.1.0/24.",
+                        "default": "",
+                    },
+                    "ip_address": {
+                        "type": "string",
+                        "description": "IP address when cidr is not supplied.",
+                        "default": "",
+                    },
+                    "prefix": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 128,
+                        "default": 24,
+                    },
                     "include_hosts": {"type": "boolean", "default": False},
-                    "max_hosts": {"type": "integer", "minimum": 1, "maximum": 256, "default": 64},
+                    "max_hosts": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 256,
+                        "default": 64,
+                    },
                 }
             ),
             timeout_seconds=10,
@@ -1890,8 +2494,16 @@ NETOPS_TOOL_SPECS = (
             input_schema=_object_schema(
                 {
                     "query": {"type": "string"},
-                    "record_type": {"type": "string", "enum": list(DNS_RECORD_TYPES), "default": "A"},
-                    "server": {"type": "string", "description": "Optional DNS server.", "default": ""},
+                    "record_type": {
+                        "type": "string",
+                        "enum": list(DNS_RECORD_TYPES),
+                        "default": "A",
+                    },
+                    "server": {
+                        "type": "string",
+                        "description": "Optional DNS server.",
+                        "default": "",
+                    },
                 },
                 required=("query",),
             ),
@@ -1926,7 +2538,12 @@ NETOPS_TOOL_SPECS = (
             permission=PermissionClass.PROBE_NETWORK,
             input_schema=_object_schema(
                 {
-                    "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 30, "default": 5},
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 30,
+                        "default": 5,
+                    },
                 }
             ),
             timeout_seconds=35,
@@ -2018,7 +2635,11 @@ NETOPS_TOOL_SPECS = (
             permission=PermissionClass.READ_LOCAL,
             input_schema=_object_schema(
                 {
-                    "interface_name": {"type": "string", "description": "Optional exact adapter name.", "default": ""},
+                    "interface_name": {
+                        "type": "string",
+                        "description": "Optional exact adapter name.",
+                        "default": "",
+                    },
                 }
             ),
             timeout_seconds=30,
@@ -2047,7 +2668,12 @@ NETOPS_TOOL_SPECS = (
             permission=PermissionClass.READ_LOCAL,
             input_schema=_object_schema(
                 {
-                    "limit": {"type": "integer", "minimum": 1, "maximum": 300, "default": 100},
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 300,
+                        "default": 100,
+                    },
                     "include_hidden": {"type": "boolean", "default": False},
                 }
             ),
@@ -2120,7 +2746,12 @@ NETOPS_TOOL_SPECS = (
                     "ip_address": {"type": "string"},
                     "prefix": {"type": "integer", "minimum": 1, "maximum": 32},
                     "gateway": {"type": "string", "default": ""},
-                    "dns_servers": {"type": "array", "items": {"type": "string"}, "maxItems": 4, "default": []},
+                    "dns_servers": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "maxItems": 4,
+                        "default": [],
+                    },
                 },
                 required=("interface_name", "ip_address", "prefix"),
             ),
@@ -2156,8 +2787,18 @@ NETOPS_TOOL_SPECS = (
             permission=PermissionClass.PROBE_NETWORK,
             input_schema=_object_schema(
                 {
-                    "duration_seconds": {"type": "integer", "minimum": 5, "maximum": 120, "default": 20},
-                    "interval_seconds": {"type": "integer", "minimum": 2, "maximum": 30, "default": 5},
+                    "duration_seconds": {
+                        "type": "integer",
+                        "minimum": 5,
+                        "maximum": 120,
+                        "default": 20,
+                    },
+                    "interval_seconds": {
+                        "type": "integer",
+                        "minimum": 2,
+                        "maximum": 30,
+                        "default": 5,
+                    },
                 }
             ),
             risk_level="low",
@@ -2223,7 +2864,12 @@ NETOPS_TOOL_SPECS = (
             permission=PermissionClass.READ_LOCAL,
             input_schema=_object_schema(
                 {
-                    "limit": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 100},
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1000,
+                        "default": 100,
+                    },
                 }
             ),
             timeout_seconds=30,
@@ -2239,7 +2885,12 @@ NETOPS_TOOL_SPECS = (
             permission=PermissionClass.READ_LOCAL,
             input_schema=_object_schema(
                 {
-                    "limit": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 100},
+                    "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1000,
+                        "default": 100,
+                    },
                 }
             ),
             timeout_seconds=30,
@@ -2303,8 +2954,18 @@ NETOPS_TOOL_SPECS += (
             input_schema=_object_schema(
                 {
                     "subnet": {"type": "string"},
-                    "timeout_ms": {"type": "integer", "minimum": 100, "maximum": 5000, "default": 800},
-                    "max_workers": {"type": "integer", "minimum": 1, "maximum": 128, "default": 64},
+                    "timeout_ms": {
+                        "type": "integer",
+                        "minimum": 100,
+                        "maximum": 5000,
+                        "default": 800,
+                    },
+                    "max_workers": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 128,
+                        "default": 64,
+                    },
                 },
                 required=("subnet",),
             ),
@@ -2335,9 +2996,24 @@ NETOPS_TOOL_SPECS += (
             input_schema=_object_schema(
                 {
                     "server": {"type": "string"},
-                    "port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 5201},
-                    "streams": {"type": "integer", "minimum": 1, "maximum": 64, "default": 1},
-                    "duration": {"type": "integer", "minimum": 1, "maximum": 3600, "default": 10},
+                    "port": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 65535,
+                        "default": 5201,
+                    },
+                    "streams": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 64,
+                        "default": 1,
+                    },
+                    "duration": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 3600,
+                        "default": 10,
+                    },
                     "reverse": {"type": "boolean", "default": False},
                     "udp": {"type": "boolean", "default": False},
                     "ipv6": {"type": "boolean", "default": False},
@@ -2368,7 +3044,9 @@ NETOPS_TOOL_SPECS += (
             display_name="Refresh Public iperf Servers",
             description="Refresh and cache the public iperf3 server list.",
             permission=PermissionClass.WRITE_LOCAL,
-            input_schema=_object_schema({"force_refresh": {"type": "boolean", "default": False}}),
+            input_schema=_object_schema(
+                {"force_refresh": {"type": "boolean", "default": False}}
+            ),
             risk_level="low",
             approval_required=True,
             impact="Downloads the public iperf3 server list and updates the local cache file.",
@@ -2384,7 +3062,15 @@ NETOPS_TOOL_SPECS += (
             display_name="FTP Client Runtime",
             description="Check FTP/FTPS/SFTP client runtime support.",
             permission=PermissionClass.READ_LOCAL,
-            input_schema=_object_schema({"protocol": {"type": "string", "enum": ["ftp", "ftps", "sftp"], "default": "ftp"}}),
+            input_schema=_object_schema(
+                {
+                    "protocol": {
+                        "type": "string",
+                        "enum": ["ftp", "ftps", "sftp"],
+                        "default": "ftp",
+                    }
+                }
+            ),
             tags=("file-transfer", "runtime", "read"),
         ),
         _handle_ftp_client_runtime,
@@ -2395,7 +3081,15 @@ NETOPS_TOOL_SPECS += (
             display_name="FTP Server Runtime",
             description="Check FTP/FTPS/SFTP server runtime support.",
             permission=PermissionClass.READ_LOCAL,
-            input_schema=_object_schema({"protocol": {"type": "string", "enum": ["ftp", "ftps", "sftp"], "default": "ftp"}}),
+            input_schema=_object_schema(
+                {
+                    "protocol": {
+                        "type": "string",
+                        "enum": ["ftp", "ftps", "sftp"],
+                        "default": "ftp",
+                    }
+                }
+            ),
             tags=("file-transfer", "runtime", "read"),
         ),
         _handle_ftp_server_runtime,
@@ -2408,13 +3102,22 @@ NETOPS_TOOL_SPECS += (
             permission=PermissionClass.CONNECT_REMOTE,
             input_schema=_object_schema(
                 {
-                    "protocol": {"type": "string", "enum": ["ftp", "ftps", "sftp"], "default": "ftp"},
+                    "protocol": {
+                        "type": "string",
+                        "enum": ["ftp", "ftps", "sftp"],
+                        "default": "ftp",
+                    },
                     "host": {"type": "string"},
                     "port": {"type": "integer", "minimum": 1, "maximum": 65535},
                     "username": {"type": "string"},
                     "password": {"type": "string"},
                     "passive_mode": {"type": "boolean", "default": True},
-                    "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 300, "default": 15},
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 300,
+                        "default": 15,
+                    },
                     "remote_path": {"type": "string", "default": "/"},
                 },
                 required=("protocol", "host", "username", "password"),
@@ -2434,7 +3137,9 @@ NETOPS_TOOL_SPECS += (
             display_name="FTP Disconnect",
             description="Close an existing FTP/FTPS/SFTP client session.",
             permission=PermissionClass.READ_LOCAL,
-            input_schema=_object_schema({"session_id": {"type": "string"}}, required=("session_id",)),
+            input_schema=_object_schema(
+                {"session_id": {"type": "string"}}, required=("session_id",)
+            ),
             tags=("file-transfer", "session"),
         ),
         _handle_ftp_disconnect,
@@ -2446,7 +3151,10 @@ NETOPS_TOOL_SPECS += (
             description="List a directory in an existing FTP/FTPS/SFTP session.",
             permission=PermissionClass.CONNECT_REMOTE,
             input_schema=_object_schema(
-                {"session_id": {"type": "string"}, "remote_path": {"type": "string", "default": ""}},
+                {
+                    "session_id": {"type": "string"},
+                    "remote_path": {"type": "string", "default": ""},
+                },
                 required=("session_id",),
             ),
             risk_level="low",
@@ -2584,12 +3292,22 @@ NETOPS_TOOL_SPECS += (
             input_schema=_object_schema(
                 {
                     "host": {"type": "string"},
-                    "port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 22},
+                    "port": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 65535,
+                        "default": 22,
+                    },
                     "username": {"type": "string"},
                     "password": {"type": "string"},
                     "local_paths": {"type": "array", "items": {"type": "string"}},
                     "remote_path": {"type": "string"},
-                    "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 300, "default": 15},
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 300,
+                        "default": 15,
+                    },
                 },
                 required=("host", "username", "password", "local_paths", "remote_path"),
             ),
@@ -2609,14 +3327,30 @@ NETOPS_TOOL_SPECS += (
             input_schema=_object_schema(
                 {
                     "host": {"type": "string"},
-                    "port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 22},
+                    "port": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 65535,
+                        "default": 22,
+                    },
                     "username": {"type": "string"},
                     "password": {"type": "string"},
                     "remote_sources": {"type": "array", "items": {"type": "string"}},
                     "local_dir": {"type": "string"},
-                    "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 300, "default": 15},
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 300,
+                        "default": 15,
+                    },
                 },
-                required=("host", "username", "password", "remote_sources", "local_dir"),
+                required=(
+                    "host",
+                    "username",
+                    "password",
+                    "remote_sources",
+                    "local_dir",
+                ),
             ),
             risk_level="high",
             approval_required=True,
@@ -2645,11 +3379,26 @@ NETOPS_TOOL_SPECS += (
             input_schema=_object_schema(
                 {
                     "host": {"type": "string"},
-                    "port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 69},
+                    "port": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 65535,
+                        "default": 69,
+                    },
                     "local_path": {"type": "string"},
                     "remote_path": {"type": "string"},
-                    "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 120, "default": 5},
-                    "retries": {"type": "integer", "minimum": 0, "maximum": 20, "default": 3},
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 120,
+                        "default": 5,
+                    },
+                    "retries": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 20,
+                        "default": 3,
+                    },
                 },
                 required=("host", "local_path", "remote_path"),
             ),
@@ -2669,11 +3418,26 @@ NETOPS_TOOL_SPECS += (
             input_schema=_object_schema(
                 {
                     "host": {"type": "string"},
-                    "port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 69},
+                    "port": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 65535,
+                        "default": 69,
+                    },
                     "remote_path": {"type": "string"},
                     "local_folder": {"type": "string"},
-                    "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 120, "default": 5},
-                    "retries": {"type": "integer", "minimum": 0, "maximum": 20, "default": 3},
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 120,
+                        "default": 5,
+                    },
+                    "retries": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 20,
+                        "default": 3,
+                    },
                 },
                 required=("host", "remote_path", "local_folder"),
             ),
@@ -2704,4 +3468,6 @@ NETOPS_TOOL_SPECS += (
     ),
 )
 
-NETOPS_TOOL_DESCRIPTORS = tuple(descriptor for descriptor, _handler in NETOPS_TOOL_SPECS)
+NETOPS_TOOL_DESCRIPTORS = tuple(
+    descriptor for descriptor, _handler in NETOPS_TOOL_SPECS
+)

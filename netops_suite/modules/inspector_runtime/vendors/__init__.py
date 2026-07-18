@@ -8,24 +8,13 @@ import importlib.util
 import pkgutil
 import logging
 from collections import defaultdict
-from pathlib import Path
 
 import yaml
 
 from core.path_utils import get_app_dir
+from .base import get_custom_handler
 
 logger = logging.getLogger(__name__)
-
-# 각 벤더 모듈에서 필요한 딕셔너리들을 임포트
-from .axgate import AXGATE_INSPECTION_COMMANDS, AXGATE_BACKUP_COMMANDS, AXGATE_PARSING_RULES
-from .cisco import CISCO_INSPECTION_COMMANDS, CISCO_BACKUP_COMMANDS, CISCO_PARSING_RULES
-from .aruba import ARUBA_INSPECTION_COMMANDS, ARUBA_BACKUP_COMMANDS, ARUBA_PARSING_RULES
-from .alcatel_lucent import ALCATEL_LUCENT_INSPECTION_COMMANDS, ALCATEL_LUCENT_BACKUP_COMMANDS, ALCATEL_LUCENT_PARSING_RULES
-from .juniper import JUNIPER_INSPECTION_COMMANDS, JUNIPER_BACKUP_COMMANDS, JUNIPER_PARSING_RULES
-from .nexg import NEXG_INSPECTION_COMMANDS, NEXG_BACKUP_COMMANDS, NEXG_PARSING_RULES
-from .ubiquoss import UBIQUOSS_INSPECTION_COMMANDS, UBIQUOSS_BACKUP_COMMANDS, UBIQUOSS_PARSING_RULES
-from .piolink import PIOLINK_INSPECTION_COMMANDS, PIOLINK_BACKUP_COMMANDS, PIOLINK_PARSING_RULES
-from .handreamnet import HANDREAMNET_INSPECTION_COMMANDS, HANDREAMNET_BACKUP_COMMANDS, HANDREAMNET_PARSING_RULES
 
 # 메인 딕셔너리 초기화 (defaultdict 사용으로 키 존재 여부 확인 불필요)
 INSPECTION_COMMANDS = defaultdict(dict)
@@ -328,9 +317,6 @@ def is_custom_rule_pair(vendor: str, os_name: str) -> bool:
 _load_vendor_modules()
 _load_user_custom_parsers()
 _load_custom_rules()
-
-# get_custom_handler 함수는 base에서 직접 임포트하여 사용하도록 변경
-from .base import get_custom_handler
 
 __all__ = [
     'INSPECTION_COMMANDS',

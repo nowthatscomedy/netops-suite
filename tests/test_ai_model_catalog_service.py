@@ -3,15 +3,18 @@ from __future__ import annotations
 import json
 import subprocess
 import time
-from threading import Event
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier, Event, Lock
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any
 
 import pytest
 
 from app.models.ai_models import AiModelCatalog, AiModelDescriptor, AiProviderConfig
-from app.services.ai_model_catalog_service import AiModelCatalogError, AiModelCatalogService
+from app.services.ai_model_catalog_service import (
+    AiModelCatalogError,
+    AiModelCatalogService,
+)
 
 
 class _FakeStdin:
@@ -31,7 +34,9 @@ class _FakeStdin:
 
 
 class _FakeProcess:
-    def __init__(self, stdout_lines: list[str], stderr_lines: list[str] | None = None) -> None:
+    def __init__(
+        self, stdout_lines: list[str], stderr_lines: list[str] | None = None
+    ) -> None:
         self.stdin = _FakeStdin()
         self.stdout = iter(stdout_lines)
         self.stderr = iter(stderr_lines or [])
@@ -102,7 +107,10 @@ def _response(request_id: int, result: dict[str, Any]) -> str:
 
 
 def _error_response(request_id: int, message: str) -> str:
-    return json.dumps({"id": request_id, "error": {"code": -32603, "message": message}}) + "\n"
+    return (
+        json.dumps({"id": request_id, "error": {"code": -32603, "message": message}})
+        + "\n"
+    )
 
 
 def _raw_model(
@@ -135,7 +143,9 @@ def _raw_model(
     }
 
 
-def test_codex_app_server_protocol_parses_paginated_model_catalog(tmp_path, monkeypatch):
+def test_codex_app_server_protocol_parses_paginated_model_catalog(
+    tmp_path, monkeypatch
+):
     process = _FakeProcess(
         [
             _response(1, {}),
@@ -143,7 +153,12 @@ def test_codex_app_server_protocol_parses_paginated_model_catalog(tmp_path, monk
                 2,
                 {
                     "data": [
-                        _raw_model("gpt-default", display_name="GPT 기본", is_default=True, fast=True),
+                        _raw_model(
+                            "gpt-default",
+                            display_name="GPT 기본",
+                            is_default=True,
+                            fast=True,
+                        ),
                         _raw_model("hidden-model", hidden=True),
                     ],
                     "nextCursor": "page-2",
@@ -164,7 +179,9 @@ def test_codex_app_server_protocol_parses_paginated_model_catalog(tmp_path, monk
         popen_calls.append((argv, kwargs))
         return process
 
-    monkeypatch.setattr("app.services.ai_model_catalog_service.subprocess.Popen", fake_popen)
+    monkeypatch.setattr(
+        "app.services.ai_model_catalog_service.subprocess.Popen", fake_popen
+    )
     service = AiModelCatalogService(tmp_path / "catalog.json")
     monkeypatch.setattr(
         service,
@@ -174,10 +191,20 @@ def test_codex_app_server_protocol_parses_paginated_model_catalog(tmp_path, monk
 
     catalog = service.discover(AiProviderConfig(key="codex"))
 
-    assert popen_calls[0][0] == ["C:/Codex/codex.exe", "app-server", "--listen", "stdio://"]
+    assert popen_calls[0][0] == [
+        "C:/Codex/codex.exe",
+        "app-server",
+        "--listen",
+        "stdio://",
+    ]
     assert popen_calls[0][1].get("shell") is None
     requests = [json.loads(line) for line in process.stdin.lines]
-    assert [request["method"] for request in requests] == ["initialize", "initialized", "model/list", "model/list"]
+    assert [request["method"] for request in requests] == [
+        "initialize",
+        "initialized",
+        "model/list",
+        "model/list",
+    ]
     assert requests[2]["params"] == {"limit": 100, "includeHidden": False}
     assert requests[3]["params"]["cursor"] == "page-2"
     assert [model.model for model in catalog.models] == ["gpt-default", "gpt-text"]
@@ -191,8 +218,12 @@ def test_codex_app_server_protocol_parses_paginated_model_catalog(tmp_path, monk
     assert service.load_catalog("codex").source == "cache"
 
 
-def test_codex_catalog_accepts_gpt56_max_and_ultra_reasoning_and_caches_them(tmp_path, monkeypatch):
-    sol = _raw_model("gpt-5.6-sol", display_name="GPT-5.6-Sol", is_default=True, fast=True)
+def test_codex_catalog_accepts_gpt56_max_and_ultra_reasoning_and_caches_them(
+    tmp_path, monkeypatch
+):
+    sol = _raw_model(
+        "gpt-5.6-sol", display_name="GPT-5.6-Sol", is_default=True, fast=True
+    )
     sol["supportedReasoningEfforts"] = [
         {"reasoningEffort": value}
         for value in ("low", "medium", "high", "xhigh", "max", "ultra")
@@ -232,7 +263,13 @@ def test_codex_catalog_accepts_gpt56_max_and_ultra_reasoning_and_caches_them(tmp
         "max",
         "ultra",
     ]
-    assert catalog.models[1].supported_reasoning_efforts == ["low", "medium", "high", "xhigh", "max"]
+    assert catalog.models[1].supported_reasoning_efforts == [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+    ]
     cached = service.load_catalog("codex")
     assert cached.models[0].supported_reasoning_efforts[-2:] == ["max", "ultra"]
     assert cached.models[1].supported_reasoning_efforts[-1] == "max"
@@ -242,11 +279,20 @@ def test_codex_catalog_accepts_gpt56_max_and_ultra_reasoning_and_caches_them(tmp
     "stdout_lines, expected_message",
     [
         (["not-json\n"], "잘못된 JSON"),
-        ([_response(1, {}), _response(2, {"data": [], "nextCursor": None})], "찾지 못했습니다"),
+        (
+            [_response(1, {}), _response(2, {"data": [], "nextCursor": None})],
+            "찾지 못했습니다",
+        ),
         (
             [
                 _response(1, {}),
-                _response(2, {"data": [_raw_model("same"), _raw_model("same")], "nextCursor": None}),
+                _response(
+                    2,
+                    {
+                        "data": [_raw_model("same"), _raw_model("same")],
+                        "nextCursor": None,
+                    },
+                ),
             ],
             "중복 항목",
         ),
@@ -267,9 +313,14 @@ def test_codex_discovery_rejects_invalid_responses_and_stops_process(
     expected_message,
 ):
     process = _FakeProcess(stdout_lines)
-    monkeypatch.setattr("app.services.ai_model_catalog_service.subprocess.Popen", lambda *_args, **_kwargs: process)
+    monkeypatch.setattr(
+        "app.services.ai_model_catalog_service.subprocess.Popen",
+        lambda *_args, **_kwargs: process,
+    )
     service = AiModelCatalogService(tmp_path / "catalog.json")
-    monkeypatch.setattr(service, "cli_identity", lambda _config, *_args, **_kwargs: ("codex", "v1"))
+    monkeypatch.setattr(
+        service, "cli_identity", lambda _config, *_args, **_kwargs: ("codex", "v1")
+    )
 
     with pytest.raises(AiModelCatalogError, match=expected_message):
         service.discover(AiProviderConfig(key="codex"))
@@ -298,7 +349,9 @@ def test_codex_discovery_rejects_rpc_and_catalog_identity_errors(
     if case == "rpc_error":
         stdout_lines.append(_error_response(2, "account model lookup failed"))
     elif case == "cursor_type":
-        stdout_lines.append(_response(2, {"data": [_raw_model("one")], "nextCursor": 123}))
+        stdout_lines.append(
+            _response(2, {"data": [_raw_model("one")], "nextCursor": 123})
+        )
     elif case == "duplicate_id":
         first = _raw_model("one")
         second = _raw_model("two")
@@ -319,9 +372,14 @@ def test_codex_discovery_rejects_rpc_and_catalog_identity_errors(
         )
 
     process = _FakeProcess(stdout_lines)
-    monkeypatch.setattr("app.services.ai_model_catalog_service.subprocess.Popen", lambda *_args, **_kwargs: process)
+    monkeypatch.setattr(
+        "app.services.ai_model_catalog_service.subprocess.Popen",
+        lambda *_args, **_kwargs: process,
+    )
     service = AiModelCatalogService(tmp_path / "catalog.json")
-    monkeypatch.setattr(service, "cli_identity", lambda _config, *_args, **_kwargs: ("codex", "v1"))
+    monkeypatch.setattr(
+        service, "cli_identity", lambda _config, *_args, **_kwargs: ("codex", "v1")
+    )
 
     with pytest.raises(AiModelCatalogError, match=expected_message):
         service.discover(AiProviderConfig(key="codex"))
@@ -351,7 +409,9 @@ def test_codex_discovery_enforces_page_and_model_count_limits(tmp_path, monkeypa
         lambda *_args, **_kwargs: next(processes),
     )
     service = AiModelCatalogService(tmp_path / "catalog.json")
-    monkeypatch.setattr(service, "cli_identity", lambda _config, *_args, **_kwargs: ("codex", "v1"))
+    monkeypatch.setattr(
+        service, "cli_identity", lambda _config, *_args, **_kwargs: ("codex", "v1")
+    )
 
     with pytest.raises(AiModelCatalogError, match="페이지 한도"):
         service.discover(AiProviderConfig(key="codex"))
@@ -392,10 +452,17 @@ def test_codex_discovery_preserves_server_reasoning_order(tmp_path, monkeypatch)
         {"reasoningEffort": "medium"},
     ]
     raw_model["defaultReasoningEffort"] = "medium"
-    process = _FakeProcess([_response(1, {}), _response(2, {"data": [raw_model], "nextCursor": None})])
-    monkeypatch.setattr("app.services.ai_model_catalog_service.subprocess.Popen", lambda *_args, **_kwargs: process)
+    process = _FakeProcess(
+        [_response(1, {}), _response(2, {"data": [raw_model], "nextCursor": None})]
+    )
+    monkeypatch.setattr(
+        "app.services.ai_model_catalog_service.subprocess.Popen",
+        lambda *_args, **_kwargs: process,
+    )
     service = AiModelCatalogService(tmp_path / "catalog.json")
-    monkeypatch.setattr(service, "cli_identity", lambda _config, *_args, **_kwargs: ("codex", "v1"))
+    monkeypatch.setattr(
+        service, "cli_identity", lambda _config, *_args, **_kwargs: ("codex", "v1")
+    )
 
     catalog = service.discover(AiProviderConfig(key="codex"))
 
@@ -404,10 +471,15 @@ def test_codex_discovery_preserves_server_reasoning_order(tmp_path, monkeypatch)
 
 def test_codex_discovery_timeout_stops_process(tmp_path, monkeypatch):
     process = _FakeProcess([])
-    monkeypatch.setattr("app.services.ai_model_catalog_service.subprocess.Popen", lambda *_args, **_kwargs: process)
+    monkeypatch.setattr(
+        "app.services.ai_model_catalog_service.subprocess.Popen",
+        lambda *_args, **_kwargs: process,
+    )
     service = AiModelCatalogService(tmp_path / "catalog.json")
     service.DISCOVERY_TIMEOUT_SECONDS = 0.03
-    monkeypatch.setattr(service, "cli_identity", lambda _config, *_args, **_kwargs: ("codex", "v1"))
+    monkeypatch.setattr(
+        service, "cli_identity", lambda _config, *_args, **_kwargs: ("codex", "v1")
+    )
 
     with pytest.raises(AiModelCatalogError, match="시간이 초과"):
         service.discover(AiProviderConfig(key="codex"))
@@ -415,16 +487,23 @@ def test_codex_discovery_timeout_stops_process(tmp_path, monkeypatch):
     assert process.terminated is True
 
 
-def test_codex_discovery_kills_process_when_terminate_does_not_finish(tmp_path, monkeypatch):
+def test_codex_discovery_kills_process_when_terminate_does_not_finish(
+    tmp_path, monkeypatch
+):
     process = _StubbornFakeProcess(
         [
             _response(1, {}),
             _response(2, {"data": [_raw_model("model")], "nextCursor": None}),
         ]
     )
-    monkeypatch.setattr("app.services.ai_model_catalog_service.subprocess.Popen", lambda *_args, **_kwargs: process)
+    monkeypatch.setattr(
+        "app.services.ai_model_catalog_service.subprocess.Popen",
+        lambda *_args, **_kwargs: process,
+    )
     service = AiModelCatalogService(tmp_path / "catalog.json")
-    monkeypatch.setattr(service, "cli_identity", lambda _config, *_args, **_kwargs: ("codex", "v1"))
+    monkeypatch.setattr(
+        service, "cli_identity", lambda _config, *_args, **_kwargs: ("codex", "v1")
+    )
 
     catalog = service.discover(AiProviderConfig(key="codex"))
 
@@ -436,10 +515,18 @@ def test_codex_discovery_kills_process_when_terminate_does_not_finish(tmp_path, 
 @pytest.mark.parametrize(
     "mutation, expected_message",
     [
-        (lambda model: model.update(supportedReasoningEfforts=[{"reasoningEffort": "mystery"}]), "지원하지 않는"),
+        (
+            lambda model: model.update(
+                supportedReasoningEfforts=[{"reasoningEffort": "mystery"}]
+            ),
+            "지원하지 않는",
+        ),
         (lambda model: model.update(model="invalid model"), "모델 ID 형식"),
         (lambda model: model.update(inputModalities=[]), "입력 형식"),
-        (lambda model: model.update(defaultReasoningEffort="minimal"), "기본 추론 단계"),
+        (
+            lambda model: model.update(defaultReasoningEffort="minimal"),
+            "기본 추론 단계",
+        ),
     ],
 )
 def test_codex_discovery_rejects_inconsistent_model_metadata(
@@ -450,10 +537,17 @@ def test_codex_discovery_rejects_inconsistent_model_metadata(
 ):
     raw_model = _raw_model("valid-model")
     mutation(raw_model)
-    process = _FakeProcess([_response(1, {}), _response(2, {"data": [raw_model], "nextCursor": None})])
-    monkeypatch.setattr("app.services.ai_model_catalog_service.subprocess.Popen", lambda *_args, **_kwargs: process)
+    process = _FakeProcess(
+        [_response(1, {}), _response(2, {"data": [raw_model], "nextCursor": None})]
+    )
+    monkeypatch.setattr(
+        "app.services.ai_model_catalog_service.subprocess.Popen",
+        lambda *_args, **_kwargs: process,
+    )
     service = AiModelCatalogService(tmp_path / "catalog.json")
-    monkeypatch.setattr(service, "cli_identity", lambda _config, *_args, **_kwargs: ("codex", "v1"))
+    monkeypatch.setattr(
+        service, "cli_identity", lambda _config, *_args, **_kwargs: ("codex", "v1")
+    )
 
     with pytest.raises(AiModelCatalogError, match=expected_message):
         service.discover(AiProviderConfig(key="codex"))
@@ -461,11 +555,18 @@ def test_codex_discovery_rejects_inconsistent_model_metadata(
     assert process.terminated is True
 
 
-def test_codex_discovery_cancellation_and_start_failure_leave_no_cache(tmp_path, monkeypatch):
+def test_codex_discovery_cancellation_and_start_failure_leave_no_cache(
+    tmp_path, monkeypatch
+):
     process = _FakeProcess([_response(1, {})])
-    monkeypatch.setattr("app.services.ai_model_catalog_service.subprocess.Popen", lambda *_args, **_kwargs: process)
+    monkeypatch.setattr(
+        "app.services.ai_model_catalog_service.subprocess.Popen",
+        lambda *_args, **_kwargs: process,
+    )
     service = AiModelCatalogService(tmp_path / "catalog.json")
-    monkeypatch.setattr(service, "cli_identity", lambda _config, *_args, **_kwargs: ("codex", "v1"))
+    monkeypatch.setattr(
+        service, "cli_identity", lambda _config, *_args, **_kwargs: ("codex", "v1")
+    )
     cancel_event = Event()
     cancel_event.set()
 
@@ -488,7 +589,10 @@ def test_version_probe_honors_cancellation_and_full_deadline(tmp_path, monkeypat
     service = AiModelCatalogService(tmp_path / "catalog.json")
     cancel_event = Event()
     process = _BlockingVersionProcess(cancel_event.set)
-    monkeypatch.setattr("app.services.ai_model_catalog_service.subprocess.Popen", lambda *_args, **_kwargs: process)
+    monkeypatch.setattr(
+        "app.services.ai_model_catalog_service.subprocess.Popen",
+        lambda *_args, **_kwargs: process,
+    )
 
     started = time.monotonic()
     with pytest.raises(AiModelCatalogError, match="취소"):
@@ -503,9 +607,13 @@ def test_version_probe_honors_cancellation_and_full_deadline(tmp_path, monkeypat
     def fail_if_started(*_args, **_kwargs):
         nonlocal popen_called
         popen_called = True
-        raise AssertionError("expired overall deadline must stop before starting a version process")
+        raise AssertionError(
+            "expired overall deadline must stop before starting a version process"
+        )
 
-    monkeypatch.setattr("app.services.ai_model_catalog_service.subprocess.Popen", fail_if_started)
+    monkeypatch.setattr(
+        "app.services.ai_model_catalog_service.subprocess.Popen", fail_if_started
+    )
     with pytest.raises(AiModelCatalogError, match="시간이 초과"):
         service._read_cli_version("codex", time.monotonic() - 0.01, Event())
     assert popen_called is False
@@ -526,7 +634,9 @@ def test_refresh_uses_one_deadline_for_version_identity_and_discovery(tmp_path):
             self.cancel_event = cancel_event
             return "codex", "v1"
 
-        def discover(self, service, config, cli_path, cli_version, cancel_event, deadline):
+        def discover(
+            self, service, config, cli_path, cli_version, cancel_event, deadline
+        ):
             self.discovery_deadline = deadline
             assert cancel_event is self.cancel_event
             return AiModelCatalog(
@@ -539,15 +649,23 @@ def test_refresh_uses_one_deadline_for_version_identity_and_discovery(tmp_path):
             )
 
     adapter = DeadlineAdapter()
-    service = AiModelCatalogService(tmp_path / "catalog.json", adapters={"codex": adapter})
+    service = AiModelCatalogService(
+        tmp_path / "catalog.json", adapters={"codex": adapter}
+    )
     cancel_event = Event()
     started = time.monotonic()
 
-    service.refresh(AiProviderConfig(key="codex"), force=True, cancel_event=cancel_event)
+    service.refresh(
+        AiProviderConfig(key="codex"), force=True, cancel_event=cancel_event
+    )
 
     assert adapter.identity_deadline is not None
     assert adapter.discovery_deadline == adapter.identity_deadline
-    assert started < adapter.identity_deadline <= started + service.DISCOVERY_TIMEOUT_SECONDS + 0.1
+    assert (
+        started
+        < adapter.identity_deadline
+        <= started + service.DISCOVERY_TIMEOUT_SECONDS + 0.1
+    )
     assert adapter.cancel_event is cancel_event
 
 
@@ -576,10 +694,26 @@ def test_catalog_cache_ttl_path_version_and_last_good_preservation(tmp_path):
     cached = service.load_catalog("codex", "saved-but-missing")
 
     assert cached.source == "cache"
-    assert [model.model for model in cached.models] == ["current-model", "saved-but-missing"]
+    assert [model.model for model in cached.models] == [
+        "current-model",
+        "saved-but-missing",
+    ]
     assert cached.models[-1].source == "custom"
-    assert service.needs_refresh(cached, "C:/Codex/codex.exe", "v1", fetched_at + timedelta(hours=5, minutes=59)) is False
-    assert service.needs_refresh(cached, "C:/Codex/codex.exe", "v1", fetched_at + timedelta(hours=6)) is True
+    assert (
+        service.needs_refresh(
+            cached,
+            "C:/Codex/codex.exe",
+            "v1",
+            fetched_at + timedelta(hours=5, minutes=59),
+        )
+        is False
+    )
+    assert (
+        service.needs_refresh(
+            cached, "C:/Codex/codex.exe", "v1", fetched_at + timedelta(hours=6)
+        )
+        is True
+    )
     assert service.needs_refresh(cached, "C:/Other/codex.exe", "v1", fetched_at) is True
     assert service.needs_refresh(cached, "C:/Codex/codex.exe", "v2", fetched_at) is True
 
@@ -587,6 +721,64 @@ def test_catalog_cache_ttl_path_version_and_last_good_preservation(tmp_path):
         service.save_catalog(AiModelCatalog(provider_key="codex", source="live"))
     assert service.load_catalog("codex").default_model == "current-model"
     assert list(cache_path.parent.glob(".*.tmp")) == []
+
+
+def test_concurrent_catalog_saves_preserve_each_provider(
+    tmp_path,
+    monkeypatch,
+):
+    from app.services import ai_model_catalog_service as catalog_module
+
+    cache_path = tmp_path / "config" / "ai_model_catalog_cache.json"
+    service = AiModelCatalogService(cache_path)
+    real_save_json = catalog_module.save_json
+    start_barrier = Barrier(2)
+    save_guard = Lock()
+    active_saves = 0
+    max_active_saves = 0
+
+    def delayed_save_json(path, payload):
+        nonlocal active_saves, max_active_saves
+        with save_guard:
+            active_saves += 1
+            max_active_saves = max(max_active_saves, active_saves)
+        try:
+            time.sleep(0.05)
+            real_save_json(path, payload)
+        finally:
+            with save_guard:
+                active_saves -= 1
+
+    monkeypatch.setattr(catalog_module, "save_json", delayed_save_json)
+
+    def catalog(provider_key: str) -> AiModelCatalog:
+        return AiModelCatalog(
+            provider_key=provider_key,
+            models=[
+                AiModelDescriptor(
+                    id=f"id-{provider_key}",
+                    model=f"model-{provider_key}",
+                    display_name=provider_key,
+                    is_default=True,
+                    source="live",
+                )
+            ],
+            fetched_at="2026-07-10T00:00:00Z",
+            source="live",
+        )
+
+    def save(provider_key: str) -> None:
+        start_barrier.wait(timeout=5)
+        service.save_catalog(catalog(provider_key))
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(save, provider) for provider in ("codex", "claude")]
+        for future in futures:
+            future.result(timeout=5)
+
+    payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    assert set(payload["providers"]) == {"codex", "claude"}
+    assert max_active_saves == 1
 
 
 @pytest.mark.parametrize(
@@ -640,7 +832,9 @@ def test_semantically_invalid_catalog_cache_falls_back(tmp_path, case):
 
     cache_path = tmp_path / "ai_model_catalog_cache.json"
     cache_path.write_text(
-        json.dumps({"version": 1, "providers": {"codex": raw_catalog}}, ensure_ascii=False),
+        json.dumps(
+            {"version": 1, "providers": {"codex": raw_catalog}}, ensure_ascii=False
+        ),
         encoding="utf-8",
     )
     service = AiModelCatalogService(cache_path)
@@ -652,7 +846,9 @@ def test_semantically_invalid_catalog_cache_falls_back(tmp_path, case):
     assert catalog.models == []
 
 
-def test_invalid_refresh_and_invalid_save_preserve_last_good_cache(tmp_path, monkeypatch):
+def test_invalid_refresh_and_invalid_save_preserve_last_good_cache(
+    tmp_path, monkeypatch
+):
     cache_path = tmp_path / "ai_model_catalog_cache.json"
     service = AiModelCatalogService(cache_path)
     last_good = AiModelCatalog(
@@ -677,7 +873,9 @@ def test_invalid_refresh_and_invalid_save_preserve_last_good_cache(tmp_path, mon
     invalid_catalog = AiModelCatalog(
         provider_key="codex",
         models=[
-            AiModelDescriptor(id="duplicate-id", model="one", is_default=True, source="live"),
+            AiModelDescriptor(
+                id="duplicate-id", model="one", is_default=True, source="live"
+            ),
             AiModelDescriptor(id="duplicate-id", model="two", source="live"),
         ],
         fetched_at="2026-07-10T01:00:00Z",
@@ -687,27 +885,48 @@ def test_invalid_refresh_and_invalid_save_preserve_last_good_cache(tmp_path, mon
         service.save_catalog(invalid_catalog)
     assert cache_path.read_text(encoding="utf-8") == saved_payload
 
-    process = _FakeProcess([_response(1, {}), _error_response(2, "model/list unavailable")])
-    monkeypatch.setattr("app.services.ai_model_catalog_service.subprocess.Popen", lambda *_args, **_kwargs: process)
-    monkeypatch.setattr(service, "cli_identity", lambda _config, *_args, **_kwargs: ("codex", "v2"))
+    process = _FakeProcess(
+        [_response(1, {}), _error_response(2, "model/list unavailable")]
+    )
+    monkeypatch.setattr(
+        "app.services.ai_model_catalog_service.subprocess.Popen",
+        lambda *_args, **_kwargs: process,
+    )
+    monkeypatch.setattr(
+        service, "cli_identity", lambda _config, *_args, **_kwargs: ("codex", "v2")
+    )
 
     with pytest.raises(AiModelCatalogError, match="요청이 실패"):
-        service.refresh(AiProviderConfig(key="codex"), service.load_catalog("codex"), force=True)
+        service.refresh(
+            AiProviderConfig(key="codex"), service.load_catalog("codex"), force=True
+        )
 
     assert cache_path.read_text(encoding="utf-8") == saved_payload
     assert service.load_catalog("codex").default_model == "last-good"
 
 
-def test_cache_uses_normalized_allowlist_and_roundtrips_upgrade_and_default_modalities(tmp_path, monkeypatch):
+def test_cache_uses_normalized_allowlist_and_roundtrips_upgrade_and_default_modalities(
+    tmp_path, monkeypatch
+):
     raw_model = _raw_model("normalized-model", is_default=True)
     raw_model.pop("inputModalities")
     raw_model["upgrade"] = None
-    raw_model["upgradeInfo"] = {"model": "next-model", "message": "raw upgrade guidance"}
+    raw_model["upgradeInfo"] = {
+        "model": "next-model",
+        "message": "raw upgrade guidance",
+    }
     raw_model["description"] = "RAW PROVIDER DESCRIPTION MUST NOT BE CACHED"
-    process = _FakeProcess([_response(1, {}), _response(2, {"data": [raw_model], "nextCursor": None})])
-    monkeypatch.setattr("app.services.ai_model_catalog_service.subprocess.Popen", lambda *_args, **_kwargs: process)
+    process = _FakeProcess(
+        [_response(1, {}), _response(2, {"data": [raw_model], "nextCursor": None})]
+    )
+    monkeypatch.setattr(
+        "app.services.ai_model_catalog_service.subprocess.Popen",
+        lambda *_args, **_kwargs: process,
+    )
     service = AiModelCatalogService(tmp_path / "ai_model_catalog_cache.json")
-    monkeypatch.setattr(service, "cli_identity", lambda _config, *_args, **_kwargs: ("codex", "v1"))
+    monkeypatch.setattr(
+        service, "cli_identity", lambda _config, *_args, **_kwargs: ("codex", "v1")
+    )
 
     live = service.discover(AiProviderConfig(key="codex"))
 
@@ -731,9 +950,13 @@ def test_cache_uses_normalized_allowlist_and_roundtrips_upgrade_and_default_moda
         "availability_message",
         "source",
     }
-    assert {"description", "upgradeInfo", "inputModalities", "availabilityNux", "serviceTiers"}.isdisjoint(
-        stored_model
-    )
+    assert {
+        "description",
+        "upgradeInfo",
+        "inputModalities",
+        "availabilityNux",
+        "serviceTiers",
+    }.isdisjoint(stored_model)
 
     cached = service.load_catalog("codex")
     assert cached.models[0].input_modalities == ["text", "image"]
@@ -752,7 +975,9 @@ def test_refresh_uses_adapter_identity_and_does_not_replace_fresh_selection(tmp_
         def cli_identity(self, service, config, deadline, cancel_event):
             return "C:/Codex/codex.exe", self.version
 
-        def discover(self, service, config, cli_path, cli_version, cancel_event, deadline):
+        def discover(
+            self, service, config, cli_path, cli_version, cancel_event, deadline
+        ):
             self.discovery_calls += 1
             return AiModelCatalog(
                 provider_key="codex",
@@ -764,7 +989,9 @@ def test_refresh_uses_adapter_identity_and_does_not_replace_fresh_selection(tmp_
             )
 
     adapter = FakeAdapter()
-    service = AiModelCatalogService(tmp_path / "catalog.json", adapters={"codex": adapter})
+    service = AiModelCatalogService(
+        tmp_path / "catalog.json", adapters={"codex": adapter}
+    )
     current = AiModelCatalog(
         provider_key="codex",
         models=[AiModelDescriptor(id="selected", model="selected", source="live")],
@@ -774,9 +1001,13 @@ def test_refresh_uses_adapter_identity_and_does_not_replace_fresh_selection(tmp_
         source="cache",
     )
 
-    unchanged = service.refresh(AiProviderConfig(key="codex", model="selected"), current)
+    unchanged = service.refresh(
+        AiProviderConfig(key="codex", model="selected"), current
+    )
     adapter.version = "v2"
-    refreshed = service.refresh(AiProviderConfig(key="codex", model="selected"), current)
+    refreshed = service.refresh(
+        AiProviderConfig(key="codex", model="selected"), current
+    )
 
     assert unchanged is not current
     assert unchanged.to_dict() == current.to_dict()

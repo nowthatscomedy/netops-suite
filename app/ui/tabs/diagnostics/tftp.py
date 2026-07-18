@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -14,7 +13,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
-    QPushButton,
     QSizePolicy,
     QSplitter,
     QTableWidget,
@@ -31,7 +29,7 @@ from app.ui.common import (
     make_visible_checkbox,
     set_table_minimums,
 )
-from app.utils.file_utils import open_in_explorer, timestamped_export_path
+from app.utils.file_utils import open_in_explorer
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
@@ -467,28 +465,27 @@ class TftpDiagnosticsMixin:
         self._update_tftp_client_activity_state()
 
     def _export_tftp_transfer_results(self) -> None:
-        if self.tftp_transfer_table.rowCount() == 0:
-            QMessageBox.warning(self, "내보내기 불가", "저장할 TFTP 전송 결과가 없습니다.")
-            return
-        path = timestamped_export_path(self.state.paths.exports_dir, "tftp_transfers", "csv")
-        with path.open("w", encoding="utf-8-sig", newline="") as handle:
-            writer = csv.writer(handle)
-            writer.writerow(
-                [self.tftp_transfer_table.horizontalHeaderItem(column).text() for column in range(self.tftp_transfer_table.columnCount())]
-            )
-            for row in range(self.tftp_transfer_table.rowCount()):
-                writer.writerow(
-                    [self._cell(self.tftp_transfer_table, row, column) for column in range(self.tftp_transfer_table.columnCount())]
-                )
-        QMessageBox.information(self, "CSV 저장 완료", f"TFTP 전송 결과를 저장했습니다.\n{path}")
+        self._export_table_to_csv(
+            self.tftp_transfer_table,
+            "tftp_transfers",
+            empty_message="저장할 TFTP 전송 결과가 없습니다.",
+            success_message="TFTP 전송 결과를 저장했습니다.",
+        )
 
     def _export_tftp_client_logs(self) -> None:
         if not self._tftp_client_logs:
             QMessageBox.warning(self, "내보내기 불가", "저장할 TFTP 클라이언트 로그가 없습니다.")
             return
-        path = timestamped_export_path(self.state.paths.exports_dir, "tftp_client_log", "txt")
-        path.write_text("\n".join(self._tftp_client_logs) + "\n", encoding="utf-8")
-        QMessageBox.information(self, "TXT 저장 완료", f"TFTP 클라이언트 로그를 저장했습니다.\n{path}")
+        self._export_text_to_file(
+            "\n".join(self._tftp_client_logs) + "\n",
+            prefix="tftp_client_log",
+            extension="txt",
+            dialog_title="TFTP 클라이언트 로그 저장",
+            file_filter="텍스트 파일 (*.txt)",
+            success_title="TXT 저장 완료",
+            success_message="TFTP 클라이언트 로그를 저장했습니다.\n{path}",
+            failure_title="TXT 저장 실패",
+        )
 
     def _start_tftp_server(self) -> None:
         if self._tftp_server_running:
@@ -581,9 +578,16 @@ class TftpDiagnosticsMixin:
         if not self._tftp_server_logs:
             QMessageBox.warning(self, "내보내기 불가", "저장할 TFTP 서버 로그가 없습니다.")
             return
-        path = timestamped_export_path(self.state.paths.exports_dir, "tftp_server_log", "txt")
-        path.write_text("\n".join(self._tftp_server_logs) + "\n", encoding="utf-8")
-        QMessageBox.information(self, "TXT 저장 완료", f"TFTP 서버 로그를 저장했습니다.\n{path}")
+        self._export_text_to_file(
+            "\n".join(self._tftp_server_logs) + "\n",
+            prefix="tftp_server_log",
+            extension="txt",
+            dialog_title="TFTP 서버 로그 저장",
+            file_filter="텍스트 파일 (*.txt)",
+            success_title="TXT 저장 완료",
+            success_message="TFTP 서버 로그를 저장했습니다.\n{path}",
+            failure_title="TXT 저장 실패",
+        )
 
     def _set_tftp_client_busy(self, busy: bool) -> None:
         self._tftp_client_busy = busy

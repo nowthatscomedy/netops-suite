@@ -32,7 +32,9 @@ EXPECTED_PERMISSION_VALUES = {
 
 
 def test_permission_class_exposes_expected_wire_values():
-    assert {member.name for member in PermissionClass}.issuperset(EXPECTED_PERMISSION_VALUES)
+    assert {member.name for member in PermissionClass}.issuperset(
+        EXPECTED_PERMISSION_VALUES
+    )
 
     for member_name, wire_value in EXPECTED_PERMISSION_VALUES.items():
         assert _wire_value(getattr(PermissionClass, member_name)) == wire_value
@@ -43,10 +45,19 @@ def test_tool_registry_returns_descriptors_by_name():
     probe_descriptor = _descriptor("netops.ping", PermissionClass.PROBE_NETWORK)
     registry = _registry_with(read_descriptor, probe_descriptor)
 
-    assert _descriptor_name(_lookup(registry, "netops.adapters.list")) == "netops.adapters.list"
-    assert _wire_value(_descriptor_permission(_lookup(registry, "netops.adapters.list"))) == "read_local"
+    assert (
+        _descriptor_name(_lookup(registry, "netops.adapters.list"))
+        == "netops.adapters.list"
+    )
+    assert (
+        _wire_value(_descriptor_permission(_lookup(registry, "netops.adapters.list")))
+        == "read_local"
+    )
     assert _descriptor_name(_lookup(registry, "netops.ping")) == "netops.ping"
-    assert _wire_value(_descriptor_permission(_lookup(registry, "netops.ping"))) == "probe_network"
+    assert (
+        _wire_value(_descriptor_permission(_lookup(registry, "netops.ping")))
+        == "probe_network"
+    )
 
     with pytest.raises((KeyError, LookupError)):
         _lookup(registry, "netops.missing")
@@ -59,10 +70,14 @@ def test_tool_registry_returns_descriptors_by_name():
         (PermissionClass.PROBE_NETWORK, "netops.ping"),
     ],
 )
-def test_policy_auto_allows_read_local_and_probe_network_without_approval(permission, tool_name):
+def test_policy_auto_allows_read_local_and_probe_network_without_approval(
+    permission, tool_name
+):
     registry = _registry_with(_descriptor(tool_name, permission))
 
-    decision = _evaluate(registry, _request(tool_name, target="127.0.0.1"), is_admin=False)
+    decision = _evaluate(
+        registry, _request(tool_name, target="127.0.0.1"), is_admin=False
+    )
 
     _assert_decision(decision, allowed=True, requires_approval=False, blocked=False)
 
@@ -75,17 +90,23 @@ def test_policy_auto_allows_read_local_and_probe_network_without_approval(permis
         (PermissionClass.CONNECT_REMOTE, "netops.ssh.connect"),
     ],
 )
-def test_policy_requires_approval_for_write_and_remote_permissions(permission, tool_name):
+def test_policy_requires_approval_for_write_and_remote_permissions(
+    permission, tool_name
+):
     registry = _registry_with(_descriptor(tool_name, permission, admin_required=False))
 
-    decision = _evaluate(registry, _request(tool_name, target="192.0.2.10"), is_admin=True)
+    decision = _evaluate(
+        registry, _request(tool_name, target="192.0.2.10"), is_admin=True
+    )
 
     _assert_decision(decision, allowed=False, requires_approval=True, blocked=False)
 
 
 def test_policy_blocks_admin_required_tool_when_context_is_not_admin():
     tool_name = "netops.adapter.set_static_ip"
-    registry = _registry_with(_descriptor(tool_name, PermissionClass.WRITE_SYSTEM, admin_required=True))
+    registry = _registry_with(
+        _descriptor(tool_name, PermissionClass.WRITE_SYSTEM, admin_required=True)
+    )
 
     decision = _evaluate(
         registry,
@@ -106,7 +127,9 @@ def test_policy_blocks_admin_required_tool_when_context_is_not_admin():
         ("ssh", {"command": "show running-config", "host": "192.0.2.1"}, "ssh"),
     ],
 )
-def test_policy_blocks_raw_shell_powershell_and_ssh_tools(tool_name, arguments, expected_reason_fragment):
+def test_policy_blocks_raw_shell_powershell_and_ssh_tools(
+    tool_name, arguments, expected_reason_fragment
+):
     registry = _registry_with(_descriptor(tool_name, PermissionClass.READ_LOCAL))
 
     decision = _evaluate(
@@ -200,20 +223,37 @@ def test_netops_tool_registry_exposes_current_suite_capability_groups():
     assert _descriptor_name(_lookup(registry, "net.interface.set_dns")) == "set_dns"
     assert _descriptor_name(_lookup(registry, "net.ping.batch")) == "ping_batch"
     assert _descriptor_name(_lookup(registry, "net.tcp.batch")) == "tcp_batch"
-    assert _descriptor_name(_lookup(registry, "net.subnet.calculate")) == "subnet_calculate"
-    assert _descriptor_name(_lookup(registry, "net.dns.flush_cache")) == "dns_flush_cache"
+    assert (
+        _descriptor_name(_lookup(registry, "net.subnet.calculate"))
+        == "subnet_calculate"
+    )
+    assert (
+        _descriptor_name(_lookup(registry, "net.dns.flush_cache")) == "dns_flush_cache"
+    )
     assert _descriptor_name(_lookup(registry, "wifi.scan_nearby")) == "wifi_scan_nearby"
     assert _descriptor_name(_lookup(registry, "wifi.scan")) == "wifi_scan_nearby"
     assert _descriptor_name(_lookup(registry, "net.wifi.scan")) == "wifi_scan_nearby"
     assert _descriptor_name(_lookup(registry, "netops.wifi.scan")) == "wifi_scan_nearby"
     assert _descriptor_name(_lookup(registry, "wireless_scan")) == "wifi_scan_nearby"
-    assert _descriptor_name(_lookup(registry, "file_transfer.scp.upload")) == "scp_upload"
+    assert (
+        _descriptor_name(_lookup(registry, "file_transfer.scp.upload")) == "scp_upload"
+    )
     assert _descriptor_name(_lookup(registry, "app.paths")) == "app_paths"
     assert _descriptor_name(_lookup(registry, "artifacts.list")) == "artifacts_list"
-    assert _descriptor_name(_lookup(registry, "oui.cache_summary")) == "oui_cache_summary"
-    assert _descriptor_name(_lookup(registry, "oui.cache.refresh")) == "oui_cache_refresh"
-    assert _descriptor_name(_lookup(registry, "inspector.profiles.list")) == "inspector_profiles_list"
-    assert _descriptor_name(_lookup(registry, "config_builder.profiles.list")) == "config_builder_profiles_list"
+    assert (
+        _descriptor_name(_lookup(registry, "oui.cache_summary")) == "oui_cache_summary"
+    )
+    assert (
+        _descriptor_name(_lookup(registry, "oui.cache.refresh")) == "oui_cache_refresh"
+    )
+    assert (
+        _descriptor_name(_lookup(registry, "inspector.profiles.list"))
+        == "inspector_profiles_list"
+    )
+    assert (
+        _descriptor_name(_lookup(registry, "config_builder.profiles.list"))
+        == "config_builder_profiles_list"
+    )
 
 
 @pytest.mark.parametrize(
@@ -261,11 +301,15 @@ def test_p2_read_and_probe_netops_tools_do_not_require_approval(tool_name, permi
 def test_dns_flush_cache_blocks_without_admin_and_requires_approval_with_admin():
     registry = build_netops_tool_registry()
 
-    blocked = _evaluate(registry, _request("net.dns.flush_cache"), is_admin=False, approval_granted=True)
+    blocked = _evaluate(
+        registry, _request("net.dns.flush_cache"), is_admin=False, approval_granted=True
+    )
     needs_approval = _evaluate(registry, _request("net.dns.flush_cache"), is_admin=True)
 
     _assert_decision(blocked, allowed=False, requires_approval=False, blocked=True)
-    _assert_decision(needs_approval, allowed=False, requires_approval=True, blocked=False)
+    _assert_decision(
+        needs_approval, allowed=False, requires_approval=True, blocked=False
+    )
 
 
 def test_descriptor_helper_propagates_risk_and_timeout_fields():
@@ -290,7 +334,11 @@ def test_wifi_scan_nearby_descriptor_aliases_policy_and_fake_handler(monkeypatch
     assert descriptor.risk_level == "low"
     assert descriptor.approval_required is None
     assert "scan" in descriptor.impact.lower()
-    decision = _evaluate(registry, _request("wifi.scan_nearby", duration_seconds=5, interval_seconds=2), is_admin=False)
+    decision = _evaluate(
+        registry,
+        _request("wifi.scan_nearby", duration_seconds=5, interval_seconds=2),
+        is_admin=False,
+    )
     _assert_decision(decision, allowed=True, requires_approval=False, blocked=False)
 
     class FakeWirelessService:
@@ -336,10 +384,14 @@ def test_wifi_scan_nearby_descriptor_aliases_policy_and_fake_handler(monkeypatch
     wireless_service = FakeWirelessService()
     state = SimpleNamespace(wireless_service=wireless_service)
 
-    result = run_netops_tool(state, "wireless.scan", {"duration_seconds": 20, "interval_seconds": 5})
+    result = run_netops_tool(
+        state, "wireless.scan", {"duration_seconds": 20, "interval_seconds": 5}
+    )
 
     assert result.success is True
-    assert wireless_service.calls == [{"duration_seconds": 20, "interval_seconds": 5, "include_oui": True}]
+    assert wireless_service.calls == [
+        {"duration_seconds": 20, "interval_seconds": 5, "include_oui": True}
+    ]
     assert "Nearby Wi-Fi scan completed: 1" in result.message
     assert getattr(result.payload["access_points"][0], "ssid") == "Lab"
     assert result.payload["duration_seconds"] == 20
@@ -482,7 +534,12 @@ def test_new_read_local_netops_tools_use_fake_state_and_are_read_only(tmp_path):
     config_profiles = run_netops_tool(state, "config_builder.profiles.list")
 
     assert app_paths.success is True
-    assert {item["name"] for item in app_paths.payload} >= {"root", "data_root", "exports_dir", "oui_cache"}
+    assert {item["name"] for item in app_paths.payload} >= {
+        "root",
+        "data_root",
+        "exports_dir",
+        "oui_cache",
+    }
     assert artifacts.success is True
     artifact_names = [item["name"] for item in artifacts.payload["artifacts"]]
     assert "ping_result.txt" in artifact_names
@@ -503,7 +560,9 @@ def test_p2_netops_tools_use_existing_services_through_fake_state():
         def __init__(self):
             self.calls = []
 
-        def run_multi_ping(self, raw_targets, count, timeout_ms, max_workers, continuous=False):
+        def run_multi_ping(
+            self, raw_targets, count, timeout_ms, max_workers, continuous=False
+        ):
             self.calls.append((raw_targets, count, timeout_ms, max_workers, continuous))
             return [
                 SimpleNamespace(
@@ -533,8 +592,18 @@ def test_p2_netops_tools_use_existing_services_through_fake_state():
         def __init__(self):
             self.calls = []
 
-        def run_multi_check(self, raw_targets, raw_ports, count, timeout_ms, max_workers, continuous=False):
-            self.calls.append((raw_targets, raw_ports, count, timeout_ms, max_workers, continuous))
+        def run_multi_check(
+            self,
+            raw_targets,
+            raw_ports,
+            count,
+            timeout_ms,
+            max_workers,
+            continuous=False,
+        ):
+            self.calls.append(
+                (raw_targets, raw_ports, count, timeout_ms, max_workers, continuous)
+            )
             return [
                 SimpleNamespace(
                     target="example.com",
@@ -554,7 +623,12 @@ def test_p2_netops_tools_use_existing_services_through_fake_state():
 
     class FakeOuiService:
         def refresh_cache(self):
-            return SimpleNamespace(success=True, message="OUI refreshed", details="42 records", payload={"count": 42})
+            return SimpleNamespace(
+                success=True,
+                message="OUI refreshed",
+                details="42 records",
+                payload={"count": 42},
+            )
 
     ping_service = FakePingService()
     tcp_check_service = FakeTcpCheckService()
@@ -565,8 +639,12 @@ def test_p2_netops_tools_use_existing_services_through_fake_state():
         oui_service=FakeOuiService(),
     )
 
-    ping = run_netops_tool(state, "net.ping.batch", {"targets": ["8.8.8.8", "1.1.1.1"], "count": 2})
-    tcp = run_netops_tool(state, "net.tcp.batch", {"targets": ["example.com"], "ports": [443], "count": 2})
+    ping = run_netops_tool(
+        state, "net.ping.batch", {"targets": ["8.8.8.8", "1.1.1.1"], "count": 2}
+    )
+    tcp = run_netops_tool(
+        state, "net.tcp.batch", {"targets": ["example.com"], "ports": [443], "count": 2}
+    )
     subnet = run_netops_tool(
         state,
         "net.subnet.calculate",
@@ -590,8 +668,103 @@ def test_p2_netops_tools_use_existing_services_through_fake_state():
     assert oui.payload == {"count": 42}
 
 
+def test_batch_tools_mark_every_missing_requested_result_as_omitted():
+    class IncompletePingService:
+        def run_multi_ping(
+            self,
+            raw_targets,
+            count,
+            timeout_ms,
+            max_workers,
+            continuous=False,
+        ):
+            return [
+                SimpleNamespace(
+                    target="8.8.8.8",
+                    success=True,
+                    status="ok",
+                    sent=count,
+                    received=count,
+                    packet_loss=0,
+                    min_rtt=1.0,
+                    avg_rtt=1.5,
+                    max_rtt=2.0,
+                    error="",
+                )
+            ]
+
+    class IncompleteTcpCheckService:
+        def run_multi_check(
+            self,
+            raw_targets,
+            raw_ports,
+            count,
+            timeout_ms,
+            max_workers,
+            continuous=False,
+        ):
+            return [
+                SimpleNamespace(
+                    target="example.com",
+                    port=80,
+                    status="open",
+                    sent=count,
+                    successful=count,
+                    packet_loss=0,
+                    response_ms=4.2,
+                    error="",
+                )
+            ]
+
+    state = SimpleNamespace(
+        ping_service=IncompletePingService(),
+        tcp_check_service=IncompleteTcpCheckService(),
+    )
+
+    ping = run_netops_tool(
+        state,
+        "net.ping.batch",
+        {"targets": ["8.8.8.8", "1.1.1.1"]},
+    )
+    tcp = run_netops_tool(
+        state,
+        "net.tcp.batch",
+        {
+            "targets": ["example.com", "192.0.2.10"],
+            "ports": [80, 443],
+        },
+    )
+
+    assert ping.success is True
+    assert ping.status == "partial"
+    assert ping.message.endswith("1/2 result(s) returned.")
+    assert [row["target"] for row in ping.payload] == ["8.8.8.8", "1.1.1.1"]
+    assert ping.payload[1]["status"] == "omitted"
+    assert "Target: 1.1.1.1" in ping.details
+    assert "Status: omitted" in ping.details
+
+    assert tcp.success is True
+    assert tcp.status == "partial"
+    assert tcp.message.endswith("1/4 result(s) returned.")
+    assert [(row["target"], row["port"]) for row in tcp.payload] == [
+        ("example.com", 80),
+        ("example.com", 443),
+        ("192.0.2.10", 80),
+        ("192.0.2.10", 443),
+    ]
+    assert [row["status"] for row in tcp.payload[1:]] == [
+        "omitted",
+        "omitted",
+        "omitted",
+    ]
+    assert "Target: 192.0.2.10:443" in tcp.details
+    assert "Status: omitted" in tcp.details
+
+
 def test_wireless_scan_action_maps_to_tool_call_arguments():
-    action = SimpleNamespace(kind="wireless_scan", duration_seconds=45, interval_seconds=15)
+    action = SimpleNamespace(
+        kind="wireless_scan", duration_seconds=45, interval_seconds=15
+    )
 
     call = tool_call_from_netops_action(action, user_intent="nearby wifi")
 
@@ -600,9 +773,13 @@ def test_wireless_scan_action_maps_to_tool_call_arguments():
 
 
 def test_p2_netops_actions_map_to_tool_call_arguments():
-    subnet = tool_call_from_netops_action(SimpleNamespace(kind="subnet_calculate", target="192.168.1.0/24"))
+    subnet = tool_call_from_netops_action(
+        SimpleNamespace(kind="subnet_calculate", target="192.168.1.0/24")
+    )
     dns_flush = tool_call_from_netops_action(SimpleNamespace(kind="dns_flush_cache"))
-    oui_refresh = tool_call_from_netops_action(SimpleNamespace(kind="oui_cache_refresh"))
+    oui_refresh = tool_call_from_netops_action(
+        SimpleNamespace(kind="oui_cache_refresh")
+    )
 
     assert subnet.tool_name == "net.subnet.calculate"
     assert subnet.arguments == {"cidr": "192.168.1.0/24"}
@@ -614,7 +791,15 @@ def test_p2_netops_actions_map_to_tool_call_arguments():
 
 @pytest.mark.parametrize(
     "tool_name",
-    ["set_dns", "dns_flush_cache", "oui_cache_refresh", "ftp_upload", "scp_download", "tftp_upload", "public_iperf_refresh"],
+    [
+        "set_dns",
+        "dns_flush_cache",
+        "oui_cache_refresh",
+        "ftp_upload",
+        "scp_download",
+        "tftp_upload",
+        "public_iperf_refresh",
+    ],
 )
 def test_risky_netops_suite_tools_require_policy_approval(tool_name):
     registry = build_netops_tool_registry()
@@ -656,7 +841,9 @@ def _registry_with(*descriptors):
                 method(descriptor)
                 break
         else:
-            raise AssertionError("ToolRegistry must accept descriptors or expose register/add")
+            raise AssertionError(
+                "ToolRegistry must accept descriptors or expose register/add"
+            )
     return registry
 
 
@@ -713,7 +900,9 @@ def _context(*, is_admin: bool, approval_granted: bool = False):
 
 def _evaluate(registry, request, *, is_admin: bool, approval_granted: bool = False):
     evaluator = PolicyEvaluator(registry)
-    return evaluator.evaluate(request, _context(is_admin=is_admin, approval_granted=approval_granted))
+    return evaluator.evaluate(
+        request, _context(is_admin=is_admin, approval_granted=approval_granted)
+    )
 
 
 def _redact_payload(payload):
@@ -727,7 +916,9 @@ def _redact_payload(payload):
                 return method(payload)
             except TypeError:
                 continue
-    raise AssertionError("AuditLogger must expose a payload redaction/sanitization method")
+    raise AssertionError(
+        "AuditLogger must expose a payload redaction/sanitization method"
+    )
 
 
 def _wire_value(value) -> str:
@@ -741,10 +932,14 @@ def _descriptor_name(descriptor) -> str:
 
 
 def _descriptor_permission(descriptor):
-    return getattr(descriptor, "permission", getattr(descriptor, "permission_class", None))
+    return getattr(
+        descriptor, "permission", getattr(descriptor, "permission_class", None)
+    )
 
 
-def _assert_decision(decision, *, allowed: bool, requires_approval: bool, blocked: bool):
+def _assert_decision(
+    decision, *, allowed: bool, requires_approval: bool, blocked: bool
+):
     assert _decision_flag(decision, "allowed") is allowed
     assert _decision_flag(decision, "requires_approval") is requires_approval
     assert _decision_flag(decision, "blocked") is blocked

@@ -36,7 +36,7 @@ class TcpCheckService:
         raw_ports: str,
         count: int,
         timeout_ms: int,
-        max_workers: int,
+        max_workers: int | None = None,
         continuous: bool = False,
         progress_callback=None,
         cancel_event=None,
@@ -46,7 +46,8 @@ class TcpCheckService:
         if not targets:
             raise ValueError("최소 1개 이상의 TCP 대상을 입력해 주세요.")
 
-        worker_count = max(1, min(max_workers, len(targets) * len(ports)))
+        endpoint_count = len(targets) * len(ports)
+        worker_count = endpoint_count if max_workers is None else max(1, min(max_workers, endpoint_count))
         results: list[TcpCheckResult] = []
         with ThreadPoolExecutor(max_workers=worker_count) as executor:
             future_map = {

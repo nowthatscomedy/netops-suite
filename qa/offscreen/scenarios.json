@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "application": "NetOps Suite",
+  "capture_delay_ms": 30,
+  "layout_sweep_viewports": [
+    [1024, 680],
+    [1280, 800],
+    [1600, 900]
+  ],
+  "scenarios": [
+    {
+      "id": "main_navigation",
+      "title": "주요 화면 내비게이션",
+      "viewport": [1280, 800]
+    },
+    {
+      "id": "interface_refresh",
+      "title": "네트워크 인터페이스 조회와 관리자 제한",
+      "viewport": [1280, 800]
+    },
+    {
+      "id": "quick_subnet",
+      "title": "빠른 진단에서 서브넷 계산",
+      "viewport": [1280, 800]
+    },
+    {
+      "id": "multi_ping",
+      "title": "다중 대상 Ping 작업 상태와 결과",
+      "viewport": [1280, 800]
+    },
+    {
+      "id": "multi_tcp",
+      "title": "다중 대상·다중 포트 TCPing",
+      "viewport": [1280, 800]
+    },
+    {
+      "id": "dns_and_commands",
+      "title": "DNS 및 명령 출력",
+      "viewport": [1280, 800]
+    },
+    {
+      "id": "oui_lookup",
+      "title": "여러 MAC 주소 OUI 조회",
+      "viewport": [1280, 800]
+    },
+    {
+      "id": "file_transfer_routing",
+      "title": "FTP·SCP·TFTP 클라이언트/서버 전환",
+      "viewport": [1280, 800]
+    },
+    {
+      "id": "wireless_scan_filter",
+      "title": "Wi-Fi 스캔과 필터",
+      "viewport": [1280, 800]
+    },
+    {
+      "id": "settings_save",
+      "title": "저장 위치 변경과 폴더 열기",
+      "viewport": [1280, 800]
+    },
+    {
+      "id": "settings_oui_updates",
+      "title": "OUI 데이터 최신 확인과 업데이트",
+      "viewport": [1280, 800]
+    },
+    {
+      "id": "settings_management",
+      "title": "설정 관리와 모든 설정 초기화 안내",
+      "viewport": [1280, 800]
+    },
+    {
+      "id": "ai_tool_ordering",
+      "title": "AI 채팅 다중 대상 도구 실행 순서",
+      "viewport": [1280, 800]
+    },
+    {
+      "id": "ai_image_paste",
+      "title": "AI 채팅 이미지 붙여넣기와 첨부 제거",
+      "viewport": [1280, 800]
+    },
+    {
+      "id": "inspector_profile",
+      "title": "장비 점검 프로파일 작성과 미리보기",
+      "viewport": [1120, 780]
+    }
+  ]
+}

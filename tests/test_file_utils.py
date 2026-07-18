@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import os
+import time
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from threading import Barrier, Lock
+
 import pytest
 
 from app.utils.file_utils import (
@@ -13,20 +19,27 @@ from app.utils.file_utils import (
     normalize_path_settings,
     resolve_app_paths_with_settings,
     save_json,
+    timestamped_export_path,
     validate_path_settings,
 )
 
 
-def test_config_builder_desktop_data_dir_follows_runtime_data_root(monkeypatch, tmp_path):
+def test_config_builder_desktop_data_dir_follows_runtime_data_root(
+    monkeypatch, tmp_path
+):
     from netops_suite.modules.config_builder.switch_configurator import desktop_impl
 
     data_root = tmp_path / "runtime"
     monkeypatch.setenv("NETOPS_SUITE_DATA_ROOT", str(data_root))
 
-    assert desktop_impl._default_config_builder_data_dir() == data_root / "config_builder"
+    assert (
+        desktop_impl._default_config_builder_data_dir() == data_root / "config_builder"
+    )
 
 
-def test_config_builder_state_read_paths_include_legacy_only_for_default(monkeypatch, tmp_path):
+def test_config_builder_state_read_paths_include_legacy_only_for_default(
+    monkeypatch, tmp_path
+):
     from netops_suite.modules.config_builder.switch_configurator import desktop_impl
 
     default_state = tmp_path / "data" / ".desktop_state.json"
@@ -79,6 +92,74 @@ def test_save_json_writes_valid_json_and_removes_temp_file(tmp_path):
     assert not list(path.parent.glob(".app_config.json.*.tmp"))
 
 
+def test_save_json_concurrent_writes_use_distinct_temp_files(
+    monkeypatch,
+    tmp_path,
+):
+    path = tmp_path / "config" / "app_config.json"
+    real_replace = os.replace
+    start_barrier = Barrier(2)
+    observed_sources: list[Path] = []
+    replace_lock = Lock()
+    active_replaces = 0
+    max_active_replaces = 0
+
+    def delayed_replace(source, target):
+        nonlocal active_replaces, max_active_replaces
+        source_path = Path(source)
+        with replace_lock:
+            observed_sources.append(source_path)
+            active_replaces += 1
+            max_active_replaces = max(max_active_replaces, active_replaces)
+        try:
+            time.sleep(0.05)
+            return real_replace(source, target)
+        finally:
+            with replace_lock:
+                active_replaces -= 1
+
+    monkeypatch.setattr(os, "replace", delayed_replace)
+    payloads = ({"writer": "first"}, {"writer": "second"})
+
+    def write_payload(payload):
+        start_barrier.wait(timeout=5)
+        save_json(path, payload)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(write_payload, payload) for payload in payloads]
+        for future in futures:
+            future.result(timeout=5)
+
+    assert len(set(observed_sources)) == 2
+    assert max_active_replaces == 1
+    assert load_json(path, {}) in payloads
+    assert not list(path.parent.glob(f".{path.name}.*.tmp"))
+
+
+def test_timestamped_export_path_does_not_reuse_existing_file(
+    monkeypatch,
+    tmp_path,
+):
+    from app.utils import file_utils
+
+    class FrozenDatetime:
+        @classmethod
+        def now(cls):
+            return type(
+                "FrozenValue", (), {"strftime": lambda self, _fmt: "20260717_120000"}
+            )()
+
+    monkeypatch.setattr(file_utils, "datetime", FrozenDatetime)
+    first = timestamped_export_path(tmp_path, "diagnostic", "csv")
+    first.write_text("first", encoding="utf-8")
+
+    second = timestamped_export_path(tmp_path, "diagnostic", ".csv")
+
+    assert second != first
+    assert second.name == "diagnostic_20260717_120000_01.csv"
+    assert first.read_text(encoding="utf-8") == "first"
+
+
 def test_default_and_normalized_path_settings_have_stable_schema(tmp_path):
     assert default_path_settings() == {
         "version": 1,
@@ -87,7 +168,10 @@ def test_default_and_normalized_path_settings_have_stable_schema(tmp_path):
         "exports_dir": "",
     }
     assert normalize_path_settings(None) == default_path_settings()
-    assert normalize_path_settings({"version": 99, "config_dir": "ignored"}) == default_path_settings()
+    assert (
+        normalize_path_settings({"version": 99, "config_dir": "ignored"})
+        == default_path_settings()
+    )
     assert normalize_path_settings(
         {
             "config_dir": tmp_path / "config",
@@ -148,7 +232,9 @@ def test_validate_path_settings_rejects_relative_control_file_and_unwritable_pat
     with pytest.raises(ValueError, match="config_dir"):
         validate_path_settings({"config_dir": str(file_path)})
 
-    monkeypatch.setattr("app.utils.file_utils._is_writable_directory", lambda _path: False)
+    monkeypatch.setattr(
+        "app.utils.file_utils._is_writable_directory", lambda _path: False
+    )
     with pytest.raises(ValueError, match="config_dir"):
         validate_path_settings({"config_dir": str(tmp_path / "unwritable")})
 
@@ -171,7 +257,10 @@ def test_resolve_app_paths_applies_overrides_and_rebuilds_dependent_paths(tmp_pa
     assert resolved.logs_dir == custom_logs.resolve()
     assert resolved.exports_dir == custom_logs.resolve() / "exports"
     assert resolved.app_config == custom_config.resolve() / "app_config.json"
-    assert resolved.ai_model_catalog_cache == custom_config.resolve() / "ai_model_catalog_cache.json"
+    assert (
+        resolved.ai_model_catalog_cache
+        == custom_config.resolve() / "ai_model_catalog_cache.json"
+    )
     assert resolved.ftp_keys_dir == custom_config.resolve() / "ftp_keys"
     assert resolved.app_log == custom_logs.resolve() / "app.log"
     assert resolved.path_settings == base_paths.data_root / "path_settings.json"
@@ -216,7 +305,9 @@ def test_build_app_paths_loads_fixed_bootstrap_overrides(monkeypatch, tmp_path):
     assert paths.app_log.parent == custom_logs.resolve()
 
 
-def test_build_app_paths_keeps_defaults_when_bootstrap_is_invalid(monkeypatch, tmp_path):
+def test_build_app_paths_keeps_defaults_when_bootstrap_is_invalid(
+    monkeypatch, tmp_path
+):
     data_root = tmp_path / "data"
     monkeypatch.setenv("NETOPS_SUITE_DATA_ROOT", str(data_root))
     save_json(

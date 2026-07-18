@@ -22,6 +22,11 @@ class ConfigBuilderTab(QWidget):
         self.service = ConfigBuilderService(user_data_dir=user_data)
         self._builder_window: DesktopWindow | None = None
         self._build_ui()
+        paths_changed = getattr(self.state, "paths_changed", None)
+        if paths_changed is not None and callable(
+            getattr(paths_changed, "connect", None)
+        ):
+            paths_changed.connect(self._sync_exports_dir)
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -48,13 +53,17 @@ class ConfigBuilderTab(QWidget):
             profiles_dir=self.service.profiles_dir,
             parent=self,
             embedded=True,
+            exports_dir=self._current_exports_dir(),
         )
         self.builder_widget.setObjectName("configBuilderEmbeddedBuilder")
         layout.addWidget(self.builder_widget, 1)
 
     def _open_full_editor(self) -> None:
         try:
-            window = DesktopWindow(profiles_dir=self.service.profiles_dir)
+            window = DesktopWindow(
+                profiles_dir=self.service.profiles_dir,
+                exports_dir=self._current_exports_dir(),
+            )
         except Exception as exc:
             QMessageBox.warning(self, "전체 편집기", str(exc))
             return
@@ -71,6 +80,19 @@ class ConfigBuilderTab(QWidget):
         self._builder_window.show()
         self._builder_window.raise_()
         self._builder_window.activateWindow()
+
+    def _current_exports_dir(self) -> Path | None:
+        paths = getattr(self.state, "paths", None)
+        value = getattr(paths, "exports_dir", None)
+        return Path(value) if value else None
+
+    def _sync_exports_dir(self) -> None:
+        exports_dir = self._current_exports_dir()
+        if exports_dir is None:
+            return
+        self.builder_widget.exports_dir = exports_dir
+        if self._builder_window is not None:
+            self._builder_window.builder.exports_dir = exports_dir
 
     def _current_profile_id(self) -> str:
         combo = getattr(self.builder_widget, "add_profile_combo", None)

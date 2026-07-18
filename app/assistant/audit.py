@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from app.assistant.models import PolicyContext, PolicyDecision, ToolCallRequest, ToolDescriptor, ToolResult
+from app.services.logging_service import redact_log_text
 
 
 REDACTED = "[redacted]"
@@ -176,6 +177,9 @@ class AuditLogger:
             return REDACTED
         redacted = BEARER_RE.sub(f"Bearer {REDACTED}", value)
         redacted = ASSIGNMENT_RE.sub(lambda match: f"{match.group(1)}{match.group(2)}{REDACTED}", redacted)
+        # Audit JSONL bypasses the application's logging formatter, so apply
+        # the same standalone token and credential-URL masking explicitly.
+        redacted = redact_log_text(redacted)
         if len(redacted) > self.max_string_length:
             return redacted[: self.max_string_length] + "...[truncated]"
         return redacted

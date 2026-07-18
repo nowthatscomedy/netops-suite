@@ -397,12 +397,12 @@ class CiscoLegacyTelnetHandler(CustomDeviceHandler):
             try:
                 self.tn.write(b"exit\n")
                 time.sleep(1)
-            except:
+            except Exception:
                 pass
             
             try:
                 self.tn.close()
-            except:
+            except Exception:
                 pass
             
             self.tn = None
@@ -410,5 +410,5 @@ class CiscoLegacyTelnetHandler(CustomDeviceHandler):
             if self.session_log_file:
                 with open(self.session_log_file, 'a', encoding='utf-8') as log:
                     log.write(f"\n{'='*50}\n")
-                    log.write(f"세션 종료\n")
+                    log.write("세션 종료\n")
                     log.write(f"{'='*50}\n") 

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from app.assistant.audit import AuditLogger
 from app.assistant.models import PolicyContext, PolicyDecision, ToolCallRequest, ToolResult
 from app.assistant.policy import PolicyEvaluator
 from app.assistant.registry import ToolRegistry
+
+
+logger = logging.getLogger("netops_suite.assistant.executor")
 
 
 class ToolExecutor:
@@ -58,8 +62,14 @@ class ToolExecutor:
                 # tool contract or the audited user request.
                 arguments["_cancel_event"] = cancel_event
             result = handler(self.state, arguments)
-        except Exception as exc:  # noqa: BLE001
-            result = ToolResult.failed(f"Tool execution failed: {exc}")
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Assistant tool execution failed. tool=%s",
+                call.tool_name,
+            )
+            result = ToolResult.failed(
+                "Tool execution failed. See the application log for diagnostic details."
+            )
 
         self._audit(decision, result)
         return decision, result

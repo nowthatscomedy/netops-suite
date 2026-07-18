@@ -5,7 +5,7 @@ import logging
 import posixpath
 import shlex
 import time
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 try:
     import paramiko

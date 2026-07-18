@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtGui import QAction, QFont, QFontDatabase
 from PySide6.QtWidgets import (
     QApplication,
@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPlainTextEdit,
+    QScrollArea,
     QStatusBar,
     QTabWidget,
     QToolButton,
@@ -27,7 +28,6 @@ from app.app_state import AppState
 from app.models.update_models import DownloadedUpdate, UpdateCheckResult
 from app.ui.common import JobRunner, confirm_risky_action, make_menu_button
 from app.ui.tabs.ai_chat_tab import AiChatTab
-from app.ui.tabs.artifacts_tab import ArtifactsTab
 from app.ui.tabs.config_builder_tab import ConfigBuilderTab
 from app.ui.tabs.diagnostics_tab import DiagnosticsTab
 from app.ui.tabs.inspector_tab import InspectorTab
@@ -40,6 +40,16 @@ from app.version import __version__
 
 
 class MainWindow(QMainWindow):
+    _MAIN_PAGE_KEYS = (
+        "interface",
+        "diagnostics",
+        "wireless",
+        "inspector",
+        "config_builder",
+        "assistant",
+        "settings",
+    )
+
     def __init__(
         self,
         state: AppState,
@@ -72,7 +82,12 @@ class MainWindow(QMainWindow):
         self._connect_signals()
         self._report_startup("이전 화면 상태 복원", "마지막으로 열었던 탭과 도킹 패널 상태를 불러옵니다.")
         self._restore_ui_state()
-        QTimer.singleShot(1200, self._maybe_check_updates_on_startup)
+        self._startup_update_timer = QTimer(self)
+        self._startup_update_timer.setSingleShot(True)
+        self._startup_update_timer.timeout.connect(
+            self._maybe_check_updates_on_startup
+        )
+        self._startup_update_timer.start(1200)
 
     def _report_startup(self, message: str, detail: str = "") -> None:
         self._startup_callback(message, detail)
@@ -116,9 +131,7 @@ class MainWindow(QMainWindow):
         self.config_builder_tab = ConfigBuilderTab(self.state)
         self._report_startup("NetOps 어시스턴트 화면 구성", "승인 기반 NetOps 도구 채팅 화면을 준비합니다.")
         self.ai_chat_tab = AiChatTab(self.state)
-        self._report_startup("결과 파일 화면 구성", "로그와 내보내기 결과 탐색 화면을 준비합니다.")
-        self.artifacts_tab = ArtifactsTab(self.state)
-        self._report_startup("설정 화면 구성", "업데이트와 저장 위치 설정 화면을 준비합니다.")
+        self._report_startup("설정 화면 구성", "프로그램, 저장 위치, 외부 도구와 설정 관리 화면을 준비합니다.")
         self.settings_tab = SettingsTab(self.state)
 
         self.tab_widget.addTab(self.interface_tab, "네트워크 설정")
@@ -127,7 +140,6 @@ class MainWindow(QMainWindow):
         self.tab_widget.addTab(self.inspector_tab, "장비 점검/백업")
         self.tab_widget.addTab(self.config_builder_tab, "CLI 설정 생성")
         self.tab_widget.addTab(self.ai_chat_tab, "NetOps 어시스턴트")
-        self.tab_widget.addTab(self.artifacts_tab, "결과 파일")
         self.tab_widget.addTab(self.settings_tab, "설정")
 
         self.view_menu = QMenu("보기", self)
@@ -144,9 +156,10 @@ class MainWindow(QMainWindow):
 
         self.nav_list = QListWidget()
         self.nav_list.setObjectName("mainNavigation")
+        self.nav_list.setAccessibleName("주요 화면")
         self.nav_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
         self.nav_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.nav_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.nav_list.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         for index in range(self.tab_widget.count()):
             item = QListWidgetItem(self.tab_widget.tabText(index))
             item.setData(Qt.ItemDataRole.UserRole, index)
@@ -178,6 +191,7 @@ class MainWindow(QMainWindow):
         self.view_button.setObjectName("sideUtilityButton")
         self.view_button.setMinimumHeight(28)
         self.view_button.setMaximumHeight(32)
+        self.view_button.installEventFilter(self)
         utility_row.addWidget(self.admin_button)
         utility_row.addWidget(self.view_button)
         utility_row.addStretch(1)
@@ -233,12 +247,14 @@ class MainWindow(QMainWindow):
             lambda checked: self.diagnostics_tab.set_result_dock_visible("tcp", checked)
         )
         self.settings_tab.check_updates_requested.connect(lambda config: self._check_for_updates(config, manual=True))
+        self.settings_tab.integration_changed.connect(self._handle_integration_changed)
+        self.diagnostics_tab.tool_settings_requested.connect(self._show_tool_settings)
+        self.ai_chat_tab.tool_settings_requested.connect(self._show_tool_settings)
 
         self.state.log_message.connect(self.log_view.appendPlainText)
         self.interface_tab.status_message.connect(self.statusBar().showMessage)
         self.state.config_reloaded.connect(self._update_admin_status)
         self.state.admin_status_changed.connect(lambda _is_admin: self._update_admin_status())
-        self.state.paths_changed.connect(self.artifacts_tab.refresh)
         self.diagnostics_tab.result_dock_visibility_changed.connect(self._sync_result_dock_action)
         self.log_dock.topLevelChanged.connect(self._sync_log_dock_state)
         self.log_dock.visibilityChanged.connect(self._sync_log_dock_state)
@@ -251,6 +267,76 @@ class MainWindow(QMainWindow):
     def _handle_nav_changed(self, row: int) -> None:
         if 0 <= row < self.tab_widget.count() and self.tab_widget.currentIndex() != row:
             self.tab_widget.setCurrentIndex(row)
+
+    def eventFilter(self, watched, event) -> bool:
+        if (
+            watched is getattr(self, "view_button", None)
+            and event.type() == QEvent.Type.KeyPress
+            and event.key() == Qt.Key.Key_Tab
+            and not event.modifiers()
+            & (
+                Qt.KeyboardModifier.ShiftModifier
+                | Qt.KeyboardModifier.ControlModifier
+                | Qt.KeyboardModifier.AltModifier
+                | Qt.KeyboardModifier.MetaModifier
+            )
+            and self._focus_current_page_first_control()
+        ):
+            return True
+        return super().eventFilter(watched, event)
+
+    def _focus_current_page_first_control(self) -> bool:
+        page = self.tab_widget.currentWidget()
+        if page is None:
+            return False
+
+        preferred = {
+            self.interface_tab: self.interface_tab.refresh_button,
+            self.diagnostics_tab: self.diagnostics_tab.quick_target_edit,
+            self.wireless_tab: self.wireless_tab.refresh_button,
+            self.inspector_tab: self.inspector_tab.profile_editor_button,
+            self.config_builder_tab: self.config_builder_tab.full_editor_button,
+            self.ai_chat_tab: self.ai_chat_tab.prompt_edit,
+            self.settings_tab: self.settings_tab.section_tabs.tabBar(),
+        }.get(page)
+        if self._is_valid_page_focus_target(page, preferred):
+            preferred.setFocus(Qt.FocusReason.TabFocusReason)
+            return True
+
+        candidate = page
+        visited: set[int] = set()
+        while candidate is not None:
+            candidate = candidate.nextInFocusChain()
+            if candidate is None or candidate is page or id(candidate) in visited:
+                return False
+            visited.add(id(candidate))
+            if self._is_valid_page_focus_target(page, candidate):
+                candidate.setFocus(Qt.FocusReason.TabFocusReason)
+                return True
+        return False
+
+    @staticmethod
+    def _is_valid_page_focus_target(page: QWidget, candidate: QWidget | None) -> bool:
+        if candidate is None or isinstance(candidate, (QScrollArea, QTabWidget)):
+            return False
+        if candidate is not page and not page.isAncestorOf(candidate):
+            return False
+        return (
+            candidate.isEnabled()
+            and candidate.isVisibleTo(page)
+            and bool(candidate.focusPolicy() & Qt.FocusPolicy.TabFocus)
+        )
+
+    def _show_tool_settings(self, tool_key: str = "") -> None:
+        self.tab_widget.setCurrentWidget(self.settings_tab)
+        self.settings_tab.show_section("tools", tool_key)
+
+    def _handle_integration_changed(self, integration: str) -> None:
+        if integration == "iperf3":
+            self.diagnostics_tab.refresh_iperf_availability(deep_check=False)
+            return
+        if integration == "ai":
+            self.ai_chat_tab.reload_integration_settings()
 
     def _sync_nav_to_tab(self, index: int) -> None:
         if not hasattr(self, "nav_list"):
@@ -312,8 +398,23 @@ class MainWindow(QMainWindow):
         self.diagnostics_tab.restore_ui_state(ui_state.get("diagnostics_tab", {}))
         self.wireless_tab.restore_ui_state(ui_state.get("wireless_tab", {}))
         self.ai_chat_tab.restore_ui_state(ui_state.get("ai_chat_tab", {}))
+        self.settings_tab.restore_ui_state(ui_state.get("settings_tab", {}))
 
-        main_tab_index = int(window_state.get("current_tab", 0) or 0)
+        page_key = str(window_state.get("current_page_key", "") or "")
+        if page_key in self._MAIN_PAGE_KEYS:
+            main_tab_index = self._MAIN_PAGE_KEYS.index(page_key)
+        else:
+            try:
+                legacy_index = int(window_state.get("current_tab", 0) or 0)
+            except (TypeError, ValueError):
+                legacy_index = 0
+            # Before the Results page was removed, Results and Settings used indices 6 and 7.
+            if legacy_index in {6, 7}:
+                main_tab_index = 6
+            elif 0 <= legacy_index < 6:
+                main_tab_index = legacy_index
+            else:
+                main_tab_index = 0
         if 0 <= main_tab_index < self.tab_widget.count():
             self.tab_widget.setCurrentIndex(main_tab_index)
 
@@ -354,10 +455,19 @@ class MainWindow(QMainWindow):
             return
 
     def _save_ui_state(self) -> None:
+        if bool(getattr(self.state, "settings_reset_pending_restart", False)):
+            return
         config = dict(self.state.app_config)
+        current_index = self.tab_widget.currentIndex()
+        current_page_key = (
+            self._MAIN_PAGE_KEYS[current_index]
+            if 0 <= current_index < len(self._MAIN_PAGE_KEYS)
+            else "interface"
+        )
         config["ui_state"] = {
             "main_window": {
-                "current_tab": self.tab_widget.currentIndex(),
+                "current_tab": current_index,
+                "current_page_key": current_page_key,
                 "log_dock_visible": not self.log_dock.isHidden(),
                 "ping_result_dock_visible": self.diagnostics_tab.is_result_dock_visible("ping"),
                 "tcp_result_dock_visible": self.diagnostics_tab.is_result_dock_visible("tcp"),
@@ -366,6 +476,7 @@ class MainWindow(QMainWindow):
             "diagnostics_tab": self.diagnostics_tab.save_ui_state(),
             "wireless_tab": self.wireless_tab.save_ui_state(),
             "ai_chat_tab": self.ai_chat_tab.save_ui_state(),
+            "settings_tab": self.settings_tab.save_ui_state(),
         }
         self.state.save_app_config(config)
 
@@ -556,7 +667,10 @@ class MainWindow(QMainWindow):
         if self._shutdown_started:
             return
         self._shutdown_started = True
-        for tab_name in ("diagnostics_tab", "wireless_tab", "inspector_tab", "ai_chat_tab"):
+        startup_update_timer = getattr(self, "_startup_update_timer", None)
+        if startup_update_timer is not None:
+            startup_update_timer.stop()
+        for tab_name in ("diagnostics_tab", "wireless_tab", "inspector_tab", "ai_chat_tab", "settings_tab"):
             tab = getattr(self, tab_name, None)
             shutdown = getattr(tab, "shutdown", None)
             if callable(shutdown):

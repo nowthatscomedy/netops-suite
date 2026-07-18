@@ -14,7 +14,7 @@ This repository contains the local-first unified PySide6 GUI build.
 ## Run
 
 ```powershell
-python -m pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt
 python main.py
 ```
 
@@ -23,6 +23,7 @@ The main window title is `NetOps Suite`. Runtime data uses `%LOCALAPPDATA%\NetOp
 ## Verify
 
 ```powershell
+python -m ruff check .
 python -m compileall -q main.py app netops_suite tests
 python -m pytest -q
 python -m pip check

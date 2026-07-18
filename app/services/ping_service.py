@@ -5,7 +5,6 @@ import queue
 import re
 import subprocess
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
@@ -27,7 +26,7 @@ class PingService:
         raw_targets: str,
         count: int,
         timeout_ms: int,
-        max_workers: int,
+        max_workers: int | None = None,
         continuous: bool = False,
         progress_callback=None,
         cancel_event=None,
@@ -36,8 +35,9 @@ class PingService:
         if not targets:
             raise ValueError("최소 1개 이상의 Ping 대상을 입력해 주세요.")
 
+        worker_count = len(targets) if max_workers is None else max(1, min(max_workers, len(targets)))
         results: list[PingResult] = []
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
             future_map = {
                 executor.submit(
                     self._ping_target,

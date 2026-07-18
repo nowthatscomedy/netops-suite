@@ -337,18 +337,24 @@ class AxgateSSHHandler(CustomDeviceHandler):
 
         except paramiko.AuthenticationException as auth_e:
             self.logger.error("Axgate SSH 인증 실패: %s", auth_e)
-            if self.channel: self.channel.close()
-            if self.ssh: self.ssh.close()
+            if self.channel:
+                self.channel.close()
+            if self.ssh:
+                self.ssh.close()
             raise
         except paramiko.ssh_exception.SSHException as ssh_e:
             self.logger.error("Axgate SSH 연결 실패: %s", ssh_e)
-            if self.channel: self.channel.close()
-            if self.ssh: self.ssh.close()
+            if self.channel:
+                self.channel.close()
+            if self.ssh:
+                self.ssh.close()
             raise ValueError(f"SSH 연결 실패: {self.device['ip']}")
         except Exception as e:
             self.logger.error("Axgate SSH 접속 중 예상치 못한 예외 발생: %s", e)
-            if self.channel: self.channel.close()
-            if self.ssh: self.ssh.close()
+            if self.channel:
+                self.channel.close()
+            if self.ssh:
+                self.ssh.close()
             raise
     
     def _read_channel(self):
@@ -360,7 +366,7 @@ class AxgateSSHHandler(CustomDeviceHandler):
         try:
             while self.channel.recv_ready():
                 output += self.channel.recv(65535).decode('utf-8', errors='ignore')
-        except:
+        except Exception:
             pass
         
         return output
@@ -444,14 +450,14 @@ class AxgateSSHHandler(CustomDeviceHandler):
                 self.channel.send("exit\n")
                 time.sleep(1)
                 self.channel.close()
-            except:
+            except Exception:
                 pass
             self.channel = None
         
         if self.ssh:
             try:
                 self.ssh.close()
-            except:
+            except Exception:
                 pass
             self.ssh = None
         

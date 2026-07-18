@@ -3,6 +3,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import shutil
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -32,7 +33,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QMenu,
     QPlainTextEdit,
-    QPushButton,
     QScrollArea,
     QSizePolicy,
     QSplitter,
@@ -87,6 +87,37 @@ TUTORIAL_HOSTNAME = "SW-TUTORIAL-01"
 TUTORIAL_MGMT_IP = "192.168.10.11"
 TUTORIAL_MGMT_MASK = "255.255.255.0"
 MAX_WIDGET_WIDTH = 16777215
+
+
+def normalize_user_save_path(
+    selected_path: str | Path,
+    *,
+    allowed_suffixes: tuple[str, ...],
+    default_suffix: str,
+) -> Path | None:
+    """Return a supported save path without creating any file or directory."""
+
+    path_text = str(selected_path).strip()
+    if not path_text:
+        return None
+    normalized_allowed = tuple(
+        suffix.casefold() if suffix.startswith(".") else f".{suffix.casefold()}"
+        for suffix in allowed_suffixes
+    )
+    normalized_default = (
+        default_suffix.casefold()
+        if default_suffix.startswith(".")
+        else f".{default_suffix.casefold()}"
+    )
+    if normalized_default not in normalized_allowed:
+        raise ValueError("기본 확장자는 허용된 확장자 중 하나여야 합니다.")
+
+    path = Path(path_text)
+    if path.suffix.casefold() in normalized_allowed:
+        return path
+    if path.suffix:
+        return path.with_suffix(normalized_default)
+    return Path(f"{path}{normalized_default}")
 
 
 def _app_state_read_paths() -> list[Path]:
@@ -1465,7 +1496,14 @@ class DeviceFilterProxyModel(QSortFilterProxyModel):
 
 
 class SwitchConfigBuilderWidget(QWidget):
-    def __init__(self, profiles_dir: str | Path | None = None, parent: QWidget | None = None, *, embedded: bool = False) -> None:
+    def __init__(
+        self,
+        profiles_dir: str | Path | None = None,
+        parent: QWidget | None = None,
+        *,
+        embedded: bool = False,
+        exports_dir: str | Path | None = None,
+    ) -> None:
         super().__init__(parent)
         self._embedded = embedded
         app = QApplication.instance()
@@ -1477,6 +1515,9 @@ class SwitchConfigBuilderWidget(QWidget):
         self.setFont(font)
         self.setStyleSheet(COMPACT_UI_STYLE)
         self.profile_dir = Path(profiles_dir) if profiles_dir else PROFILE_DIR
+        self.exports_dir = (
+            Path(exports_dir) if exports_dir else build_app_paths().exports_dir
+        )
         self.profiles: dict[str, Profile] = {}
         self.profile_issues: list[ValidationIssue] = []
         self.current_file_path: Path | None = None
@@ -1995,8 +2036,7 @@ class SwitchConfigBuilderWidget(QWidget):
         toolbar.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self.main_toolbar = toolbar
         for text, handler in (
-            ("저장", self.save_current_file),
-            ("다른 이름 저장", self.save_current_file_as),
+            ("장비 파일 저장", self.save_current_file),
             ("실행 취소", self.undo_last_change),
             ("다시 실행", self.redo_last_change),
         ):
@@ -2712,7 +2752,10 @@ class SwitchConfigBuilderWidget(QWidget):
             return
         self._set_empty_table()
         self.add_row()
-        self.statusBar().showMessage(f"{profile.id} 기준 빈 행을 추가했습니다. 저장하려면 다른 이름 저장을 사용하세요.", 5000)
+        self.statusBar().showMessage(
+            f"{profile.id} 기준 빈 행을 추가했습니다. 저장하려면 장비 파일 저장을 사용하세요.",
+            5000,
+        )
 
     def _load_sample_device_table(self, path: Path, profile: Profile) -> None:
         try:
@@ -2743,7 +2786,10 @@ class SwitchConfigBuilderWidget(QWidget):
         self._update_empty_state_visibility()
         self._select_first_visible_row()
         self._update_empty_state_visibility()
-        self.statusBar().showMessage(f"{profile.id} 기준 샘플을 불러왔습니다. 저장하려면 다른 이름 저장을 사용하세요.", 5000)
+        self.statusBar().showMessage(
+            f"{profile.id} 기준 샘플을 불러왔습니다. 저장하려면 장비 파일 저장을 사용하세요.",
+            5000,
+        )
 
     def prompt_start_tutorial(self) -> None:
         if self.tutorial_dialog is not None and self.tutorial_dialog.isVisible():
@@ -3026,21 +3072,67 @@ class SwitchConfigBuilderWidget(QWidget):
         self._append_activity_log(f"장비 파일 열기: {path}")
         self._refresh_tutorial_dialog()
 
-    def save_current_file(self) -> None:
-        if self.current_file_path is None:
-            self.save_current_file_as()
-            return
-        self._save_to_path(self.current_file_path, autosave=False)
-
-    def save_current_file_as(self) -> None:
-        file_path, _ = QFileDialog.getSaveFileName(
+    def _prompt_user_save_path(
+        self,
+        title: str,
+        suggested_filename: str,
+        file_filter: str,
+        *,
+        allowed_suffixes: tuple[str, ...],
+        default_suffix: str,
+    ) -> Path | None:
+        safe_filename = Path(suggested_filename).name or f"export{default_suffix}"
+        file_path, selected_filter = QFileDialog.getSaveFileName(
             self,
-            "장비 설정 정보 저장",
-            str(self.current_file_path or (ROOT_DIR / "device_values" / "site_devices.csv")),
-            "Device Data (*.csv *.xlsx)",
+            title,
+            str(self.exports_dir / safe_filename),
+            file_filter,
         )
-        if file_path:
-            self._save_to_path(Path(file_path), autosave=False)
+        selected_filter_text = str(selected_filter).casefold()
+        resolved_default = default_suffix
+        for suffix in allowed_suffixes:
+            normalized_suffix = suffix if suffix.startswith(".") else f".{suffix}"
+            if f"*{normalized_suffix.casefold()}" in selected_filter_text:
+                resolved_default = normalized_suffix
+                break
+        return normalize_user_save_path(
+            file_path,
+            allowed_suffixes=allowed_suffixes,
+            default_suffix=resolved_default,
+        )
+
+    def save_current_file(self) -> Path | None:
+        return self.save_current_file_as()
+
+    def save_current_file_as(self) -> Path | None:
+        suggested_name = (
+            self.current_file_path.name
+            if self.current_file_path is not None
+            else "site_devices.csv"
+        )
+        default_suffix = (
+            self.current_file_path.suffix.casefold()
+            if self.current_file_path is not None
+            and self.current_file_path.suffix.casefold() in {".csv", ".xlsx"}
+            else ".csv"
+        )
+        file_filter = (
+            "Excel Workbook (*.xlsx);;CSV Files (*.csv)"
+            if default_suffix == ".xlsx"
+            else "CSV Files (*.csv);;Excel Workbook (*.xlsx)"
+        )
+        target_path = self._prompt_user_save_path(
+            "장비 설정 정보 저장",
+            suggested_name,
+            file_filter,
+            allowed_suffixes=(".csv", ".xlsx"),
+            default_suffix=default_suffix,
+        )
+        if target_path is None:
+            return None
+        if self._save_to_path(target_path, autosave=False):
+            return target_path
+        return None
 
     def _save_to_path(self, path: Path, *, autosave: bool) -> bool:
         self.refresh_render_state()
@@ -4298,49 +4390,114 @@ class SwitchConfigBuilderWidget(QWidget):
         self.cli_preview.setFocus()
         self.cli_preview.selectAll()
 
-    def save_selected_cli(self) -> None:
+    def _write_text_export(self, path: Path, text: str) -> bool:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        except Exception as exc:
+            QMessageBox.critical(self, "파일 저장 실패", str(exc))
+            return False
+        return True
+
+    def save_selected_cli(self) -> Path | None:
         source_rows = self._selected_source_rows()
         if not source_rows:
-            return
+            return None
         row_index = source_rows[0]
         rendered = self.current_rendered.get(row_index)
         if not rendered:
             QMessageBox.information(self, "CLI 저장", "현재 선택 장비의 CLI를 생성할 수 없습니다.")
-            return
-        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+            return None
         target_name = self._rendered_output_filename(row_index, rendered)
-        target_path, _ = QFileDialog.getSaveFileName(self, "선택 CLI 저장", str(OUTPUT_DIR / target_name), "Text Files (*.txt)")
-        if target_path:
-            Path(target_path).write_text(rendered.text, encoding="utf-8")
-            self._append_activity_log(f"선택 CLI 저장: {target_name} -> {target_path}")
-            self.statusBar().showMessage(f"{Path(target_path).name} 저장 완료", 3000)
+        target_path = self._prompt_user_save_path(
+            "선택 CLI 저장",
+            target_name,
+            "Text Files (*.txt)",
+            allowed_suffixes=(".txt",),
+            default_suffix=".txt",
+        )
+        if target_path is None or not self._write_text_export(target_path, rendered.text):
+            return None
+        self._append_activity_log(f"선택 CLI 저장: {target_name} -> {target_path}")
+        self.statusBar().showMessage(f"{target_path.name} 저장 완료", 3000)
+        return target_path
 
-    def save_all_cli(self) -> None:
+    def save_all_cli(self) -> Path | None:
         if not self.current_rendered:
             QMessageBox.information(self, "CLI 저장", "저장할 CLI가 없습니다.")
-            return
-        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        target_path, _ = QFileDialog.getSaveFileName(self, "전체 CLI 저장", str(OUTPUT_DIR / "all_devices.txt"), "Text Files (*.txt)")
-        if target_path:
-            Path(target_path).write_text(build_bundle_text(self.current_rendered.values()), encoding="utf-8")
-            self._append_activity_log(f"전체 CLI 저장: {len(self.current_rendered)}건 -> {target_path}")
-            self.statusBar().showMessage(f"{Path(target_path).name} 저장 완료", 3000)
+            return None
+        target_path = self._prompt_user_save_path(
+            "전체 CLI 저장",
+            "all_devices.txt",
+            "Text Files (*.txt)",
+            allowed_suffixes=(".txt",),
+            default_suffix=".txt",
+        )
+        if target_path is None or not self._write_text_export(
+            target_path,
+            build_bundle_text(self.current_rendered.values()),
+        ):
+            return None
+        self._append_activity_log(f"전체 CLI 저장: {len(self.current_rendered)}건 -> {target_path}")
+        self.statusBar().showMessage(f"{target_path.name} 저장 완료", 3000)
+        return target_path
 
-    def save_each_cli(self) -> None:
+    def save_each_cli(self) -> Path | None:
         if not self.current_rendered:
             QMessageBox.information(self, "CLI 저장", "저장할 CLI가 없습니다.")
-            return
-        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        target_dir = QFileDialog.getExistingDirectory(self, "장비별 TXT 저장", str(OUTPUT_DIR))
-        if not target_dir:
-            return
-        saved_count = 0
-        for row_index, rendered in self.current_rendered.items():
-            target_path = Path(target_dir) / self._rendered_output_filename(row_index, rendered)
-            target_path.write_text(rendered.text, encoding="utf-8")
-            saved_count += 1
-        self._append_activity_log(f"장비별 CLI 저장: {saved_count}건 -> {target_dir}")
-        self.statusBar().showMessage(f"장비별 TXT {saved_count}건 저장 완료", 3000)
+            return None
+        target_path = self._prompt_user_save_path(
+            "장비별 CLI ZIP 저장",
+            "device_clis.zip",
+            "ZIP Archives (*.zip)",
+            allowed_suffixes=(".zip",),
+            default_suffix=".zip",
+        )
+        if target_path is None:
+            return None
+
+        temporary_path = target_path.with_name(
+            f".{target_path.name}.{uuid4().hex}.tmp"
+        )
+        used_names: set[str] = set()
+        try:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(
+                temporary_path,
+                mode="w",
+                compression=zipfile.ZIP_DEFLATED,
+            ) as archive:
+                for row_index, rendered in sorted(self.current_rendered.items()):
+                    output_name = self._unique_archive_name(
+                        self._rendered_output_filename(row_index, rendered),
+                        used_names,
+                    )
+                    archive.writestr(output_name, rendered.text)
+            temporary_path.replace(target_path)
+        except Exception as exc:
+            temporary_path.unlink(missing_ok=True)
+            QMessageBox.critical(self, "파일 저장 실패", str(exc))
+            return None
+
+        saved_count = len(self.current_rendered)
+        self._append_activity_log(f"장비별 CLI ZIP 저장: {saved_count}건 -> {target_path}")
+        self.statusBar().showMessage(
+            f"장비별 CLI {saved_count}건 ZIP 저장 완료",
+            3000,
+        )
+        return target_path
+
+    @staticmethod
+    def _unique_archive_name(filename: str, used_names: set[str]) -> str:
+        candidate = filename
+        suffix = Path(filename).suffix
+        stem = Path(filename).stem
+        sequence = 2
+        while candidate.casefold() in used_names:
+            candidate = f"{stem}_{sequence}{suffix}"
+            sequence += 1
+        used_names.add(candidate.casefold())
+        return candidate
 
     def _rendered_output_filename(self, row_index: int, rendered: RenderedConfig) -> str:
         row_number = row_index + 2
@@ -4790,13 +4947,23 @@ class SwitchConfigBuilderWidget(QWidget):
 
 
 class DesktopWindow(QMainWindow):
-    def __init__(self, profiles_dir: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        profiles_dir: str | Path | None = None,
+        *,
+        exports_dir: str | Path | None = None,
+    ) -> None:
         super().__init__()
         app = QApplication.instance()
         self.setWindowIcon(app.windowIcon() if app and not app.windowIcon().isNull() else build_app_icon())
         self.setWindowTitle("CLI 설정 생성 - 전체 편집기")
         self.resize(1520, 840)
-        self.builder = SwitchConfigBuilderWidget(profiles_dir=profiles_dir, parent=self, embedded=False)
+        self.builder = SwitchConfigBuilderWidget(
+            profiles_dir=profiles_dir,
+            parent=self,
+            embedded=False,
+            exports_dir=exports_dir,
+        )
         self.setCentralWidget(self.builder)
 
     def __getattr__(self, name: str):

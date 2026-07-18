@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -18,7 +17,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QPlainTextEdit,
     QScrollArea,
     QSizePolicy,
     QSplitter,
@@ -39,12 +37,9 @@ from app.ui.common import (
     set_table_minimums,
 )
 from app.ui.dialogs.ftp_profile_dialog import FtpProfileDialog
-from app.utils.file_utils import open_in_explorer, timestamped_export_path
+from app.utils.file_utils import open_in_explorer
 from app.utils.validators import (
-    ValidationError,
     default_ftp_port,
-    normalize_remote_path,
-    parse_positive_int,
 )
 
 
@@ -308,7 +303,7 @@ class FtpDiagnosticsMixin:
                 f"덮어쓰기 가능성: {overwrite_note}"
             ),
             reversibility="전송 자체는 취소할 수 있지만, 이미 전송되거나 덮어쓴 파일은 자동으로 되돌릴 수 없습니다.",
-            output_location="전송 결과와 로그는 파일 전송 패널, CSV/TXT 저장 결과, 결과 파일 탭에 남습니다.",
+            output_location="전송 결과와 로그는 파일 전송 패널과 설정에 지정한 결과/내보내기 폴더에 남습니다.",
             question="전송 조건을 확인했습니다. 시작할까요?",
             confirm_text=f"{direction} 시작",
         )
@@ -1137,28 +1132,27 @@ class FtpDiagnosticsMixin:
         self._update_ftp_client_activity_visibility()
 
     def _export_ftp_transfer_results(self) -> None:
-        if self.ftp_transfer_table.rowCount() == 0:
-            QMessageBox.warning(self, "내보내기 불가", "저장할 전송 결과가 없습니다.")
-            return
-        path = timestamped_export_path(self.state.paths.exports_dir, "ftp_transfers", "csv")
-        with path.open("w", encoding="utf-8-sig", newline="") as handle:
-            writer = csv.writer(handle)
-            writer.writerow(
-                [self.ftp_transfer_table.horizontalHeaderItem(column).text() for column in range(self.ftp_transfer_table.columnCount())]
-            )
-            for row in range(self.ftp_transfer_table.rowCount()):
-                writer.writerow(
-                    [self._cell(self.ftp_transfer_table, row, column) for column in range(self.ftp_transfer_table.columnCount())]
-                )
-        QMessageBox.information(self, "CSV 저장 완료", f"전송 결과를 저장했습니다.\n{path}")
+        self._export_table_to_csv(
+            self.ftp_transfer_table,
+            "ftp_transfers",
+            empty_message="저장할 전송 결과가 없습니다.",
+            success_message="전송 결과를 저장했습니다.",
+        )
 
     def _export_ftp_client_logs(self) -> None:
         if not self._ftp_client_logs:
             QMessageBox.warning(self, "내보내기 불가", "저장할 클라이언트 로그가 없습니다.")
             return
-        path = timestamped_export_path(self.state.paths.exports_dir, "ftp_client_log", "txt")
-        path.write_text("\n".join(self._ftp_client_logs) + "\n", encoding="utf-8")
-        QMessageBox.information(self, "TXT 저장 완료", f"클라이언트 로그를 저장했습니다.\n{path}")
+        self._export_text_to_file(
+            "\n".join(self._ftp_client_logs) + "\n",
+            prefix="ftp_client_log",
+            extension="txt",
+            dialog_title="FTP 클라이언트 로그 저장",
+            file_filter="텍스트 파일 (*.txt)",
+            success_title="TXT 저장 완료",
+            success_message="클라이언트 로그를 저장했습니다.\n{path}",
+            failure_title="TXT 저장 실패",
+        )
 
     def _start_ftp_server(self) -> None:
         if self._ftp_server_running:
@@ -1256,9 +1250,16 @@ class FtpDiagnosticsMixin:
         if not self._ftp_server_logs:
             QMessageBox.warning(self, "내보내기 불가", "저장할 서버 로그가 없습니다.")
             return
-        path = timestamped_export_path(self.state.paths.exports_dir, "ftp_server_log", "txt")
-        path.write_text("\n".join(self._ftp_server_logs) + "\n", encoding="utf-8")
-        QMessageBox.information(self, "TXT 저장 완료", f"서버 로그를 저장했습니다.\n{path}")
+        self._export_text_to_file(
+            "\n".join(self._ftp_server_logs) + "\n",
+            prefix="ftp_server_log",
+            extension="txt",
+            dialog_title="FTP 서버 로그 저장",
+            file_filter="텍스트 파일 (*.txt)",
+            success_title="TXT 저장 완료",
+            success_message="서버 로그를 저장했습니다.\n{path}",
+            failure_title="TXT 저장 실패",
+        )
 
     def _set_ftp_client_connected(self, connected: bool) -> None:
         self._ftp_client_connected = connected
@@ -1301,7 +1302,6 @@ class FtpDiagnosticsMixin:
         self._update_ftp_server_log_visibility()
 
     def _update_ftp_client_activity_visibility(self) -> None:
-        has_activity = self._ftp_client_busy or bool(self._ftp_client_logs) or self.ftp_transfer_table.rowCount() > 0
         self.ftp_transfer_export_button.setEnabled(self.ftp_transfer_table.rowCount() > 0)
         self.ftp_client_log_export_button.setEnabled(bool(self._ftp_client_logs))
         if hasattr(self, "ftp_transfer_empty_label"):

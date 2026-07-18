@@ -25,6 +25,79 @@ function Format-PyInstallerBundleArg {
     return "$normalizedSource;$normalizedDestination"
 }
 
+function Assert-PathInsideRepository {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$RepositoryRoot
+    )
+
+    $resolvedRoot = [System.IO.Path]::GetFullPath($RepositoryRoot).TrimEnd(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar
+    )
+    $resolvedPath = [System.IO.Path]::GetFullPath($Path)
+    $rootPrefix = $resolvedRoot + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $resolvedPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Build path must stay inside the repository: $resolvedPath"
+    }
+}
+
+function Copy-InspectorRuntimePayload {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SourceDir,
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationDir,
+        [Parameter(Mandatory = $true)]
+        [string]$RepositoryRoot
+    )
+
+    if (-not (Test-Path -LiteralPath $SourceDir -PathType Container)) {
+        throw "Inspector runtime source directory was not found: $SourceDir"
+    }
+
+    Assert-PathInsideRepository -Path $DestinationDir -RepositoryRoot $RepositoryRoot
+    if (Test-Path -LiteralPath $DestinationDir) {
+        Remove-Item -LiteralPath $DestinationDir -Recurse -Force
+    }
+    New-Item -ItemType Directory -Force -Path $DestinationDir | Out-Null
+
+    $payloadDirectories = @(
+        [pscustomobject]@{ Name = "core"; Extensions = @(".py") },
+        [pscustomobject]@{ Name = "vendors"; Extensions = @(".py") },
+        [pscustomobject]@{ Name = "locales"; Extensions = @(".yaml", ".yml") }
+    )
+    foreach ($payloadDirectory in $payloadDirectories) {
+        $sourceSubdir = Join-Path $SourceDir $payloadDirectory.Name
+        $destinationSubdir = Join-Path $DestinationDir $payloadDirectory.Name
+        if (-not (Test-Path -LiteralPath $sourceSubdir -PathType Container)) {
+            throw "Inspector runtime payload directory was not found: $sourceSubdir"
+        }
+        New-Item -ItemType Directory -Force -Path $destinationSubdir | Out-Null
+        Get-ChildItem -LiteralPath $sourceSubdir -File |
+            Where-Object { $payloadDirectory.Extensions -contains $_.Extension.ToLowerInvariant() } |
+            Copy-Item -Destination $destinationSubdir -Force
+    }
+
+    foreach ($rootPayloadName in @("custom_parsers.example.py", "custom_rules.example.yaml")) {
+        $rootPayloadPath = Join-Path $SourceDir $rootPayloadName
+        if (-not (Test-Path -LiteralPath $rootPayloadPath -PathType Leaf)) {
+            throw "Inspector runtime payload file was not found: $rootPayloadPath"
+        }
+        Copy-Item -LiteralPath $rootPayloadPath -Destination $DestinationDir -Force
+    }
+
+    $unexpectedPayload = @(
+        Get-ChildItem -LiteralPath $DestinationDir -Recurse -File |
+            Where-Object { $_.Extension.ToLowerInvariant() -notin @(".py", ".yaml", ".yml") }
+    )
+    if ($unexpectedPayload.Count -gt 0) {
+        throw "Unexpected inspector runtime payload file: $($unexpectedPayload[0].FullName)"
+    }
+}
+
 function Resolve-IsccPath {
     $candidates = @(
         (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe"),
@@ -211,10 +284,12 @@ $stagingDir = Join-Path $buildDir "staging"
 $stagingConfigDir = Join-Path $stagingDir "config"
 $stagingLogsDir = Join-Path $stagingDir "logs"
 $stagingLogsExportsDir = Join-Path $stagingLogsDir "exports"
+$stagingInspectorRuntimeDir = Join-Path $stagingDir "inspector_runtime"
 $releaseDir = Join-Path $distDir "release"
 
 if ($Clean) {
     foreach ($path in @($buildDir, $distDir)) {
+        Assert-PathInsideRepository -Path $path -RepositoryRoot $repoRoot
         if (Test-Path $path) {
             Remove-Item -LiteralPath $path -Recurse -Force
         }
@@ -264,6 +339,10 @@ Copy-Item -LiteralPath (Join-Path $repoRoot "config\ip_profiles.json") -Destinat
 Copy-Item -LiteralPath (Join-Path $repoRoot "config\ftp_profiles.json") -Destination $stagingConfigDir -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "config\scp_profiles.json") -Destination $stagingConfigDir -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "config\vendor_presets.json") -Destination $stagingConfigDir -Force
+Copy-InspectorRuntimePayload `
+    -SourceDir (Join-Path $repoRoot "netops_suite\modules\inspector_runtime") `
+    -DestinationDir $stagingInspectorRuntimeDir `
+    -RepositoryRoot $repoRoot
 
 Set-Content -LiteralPath (Join-Path $stagingLogsDir ".gitkeep") -Value "" -Encoding UTF8
 Set-Content -LiteralPath (Join-Path $stagingLogsExportsDir ".gitkeep") -Value "" -Encoding UTF8
@@ -274,6 +353,7 @@ $pyInstallerArgs = @(
     "--clean",
     "--windowed",
     "--name", "NetOpsSuite",
+    "--specpath", $stagingDir,
     "--version-file", $versionInfoPath,
     "--icon", (Join-Path $repoRoot "assets\icons\netops_toolkit.ico"),
     "--collect-submodules=telnetlib3",
@@ -285,7 +365,7 @@ $pyInstallerArgs = @(
     "--add-data=$(Format-PyInstallerBundleArg -Source $stagingLogsDir -Destination 'logs')",
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'assets\icons') -Destination 'assets/icons')",
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'netops_suite\modules\inspector\vendor_profiles') -Destination 'netops_suite/modules/inspector/vendor_profiles')",
-    "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'netops_suite\modules\inspector_runtime') -Destination 'netops_suite/modules/inspector_runtime')",
+    "--add-data=$(Format-PyInstallerBundleArg -Source $stagingInspectorRuntimeDir -Destination 'netops_suite/modules/inspector_runtime')",
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'netops_suite\modules\config_builder\profiles') -Destination 'netops_suite/modules/config_builder/profiles')",
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'netops_suite\modules\config_builder\device_values') -Destination 'netops_suite/modules/config_builder/device_values')",
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'netops_suite\modules\config_builder\docs') -Destination 'netops_suite/modules/config_builder/docs')",
@@ -319,6 +399,18 @@ $installerScript = Join-Path $repoRoot "installer\netops-suite.iss"
 
 if (-not (Test-Path $sourceDir)) {
     throw "PyInstaller output folder was not found: $sourceDir"
+}
+
+$bundledInspectorRuntimeDir = Join-Path $sourceDir "_internal\netops_suite\modules\inspector_runtime"
+$leakedRuntimeCaches = @(
+    Get-ChildItem -LiteralPath $bundledInspectorRuntimeDir -Recurse -File -ErrorAction Stop |
+        Where-Object {
+            $_.Extension -ieq ".pyc" -or
+            $_.DirectoryName -match "(^|[\\/])__pycache__([\\/]|$)"
+        }
+)
+if ($leakedRuntimeCaches.Count -gt 0) {
+    throw "Inspector runtime cache file leaked into the packaged application: $($leakedRuntimeCaches[0].FullName)"
 }
 
 $appExePath = Join-Path $sourceDir "NetOpsSuite.exe"

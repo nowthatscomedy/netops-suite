@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPlainTextEdit,
-    QPushButton,
     QSizePolicy,
     QSplitter,
     QTableWidget,
@@ -45,37 +44,9 @@ class ToolsDiagnosticsMixin:
         page = QWidget()
         layout = QVBoxLayout(page)
 
-        button_row = QHBoxLayout()
-        self.public_ip_button = make_action_button("공인 IP", ActionKind.PRIMARY, tooltip="현재 공인 IP를 확인합니다.")
-        self.snapshot_button = make_action_button("현재 인터페이스", ActionKind.UTILITY)
-        self.ipconfig_button = make_action_button("ipconfig /all", ActionKind.UTILITY)
-        self.route_button = make_action_button("route print", ActionKind.UTILITY)
-        self.arp_button = make_action_button("arp -a", ActionKind.UTILITY)
-        self.flush_dns_button = make_action_button("DNS 캐시", ActionKind.DANGER, tooltip="Windows DNS 캐시를 비웁니다.")
-        for button in (
-            self.public_ip_button,
-            self.snapshot_button,
-            self.ipconfig_button,
-            self.route_button,
-            self.arp_button,
-            self.flush_dns_button,
-        ):
-            button_row.addWidget(button)
-        button_row.addStretch(1)
-        layout.addLayout(button_row)
-
         self.tools_output = self._output()
         self.tools_output.setPlaceholderText("명령을 선택하면 결과가 여기에 표시됩니다.")
         layout.addWidget(self.tools_output, 1)
-
-        self.snapshot_button.clicked.connect(self.load_interface_snapshot)
-        self.ipconfig_button.clicked.connect(lambda: self._run_tools_command(self.state.trace_service.run_ipconfig_all))
-        self.route_button.clicked.connect(lambda: self._run_tools_command(self.state.trace_service.run_route_print))
-        self.arp_button.clicked.connect(lambda: self._run_tools_command(self.state.trace_service.run_arp_table))
-        self.flush_dns_button.clicked.connect(
-            self._confirm_and_flush_dns_cache
-        )
-        self.public_ip_button.clicked.connect(self.check_public_ip)
         return page
 
     def _confirm_and_flush_dns_cache(self) -> None:
@@ -263,6 +234,8 @@ class ToolsDiagnosticsMixin:
         group = QGroupBox("MAC 제조사 조회 (OUI)")
         form = QFormLayout(group)
         self.oui_mac_edit = QPlainTextEdit()
+        self.oui_mac_edit.setTabChangesFocus(True)
+        self.oui_mac_edit.setAccessibleName("MAC 주소 목록")
         self.oui_mac_edit.setMaximumHeight(110)
         self.oui_mac_edit.setPlaceholderText(
             "예:\n"
@@ -311,35 +284,85 @@ class ToolsDiagnosticsMixin:
         return page
 
     def load_interface_snapshot(self) -> None:
-        self.tools_output.setPlainText("현재 인터페이스 정보를 불러오는 중입니다...")
+        generation = self._begin_tools_request(
+            "현재 인터페이스 정보를 불러오는 중입니다..."
+        )
         self._start_worker(
             self.state.network_interface_service.list_adapters,
-            on_result=lambda adapters: self.tools_output.setPlainText(
-                self.state.network_interface_service.format_adapter_snapshot(adapters)
+            on_result=lambda adapters, request_generation=generation: (
+                self._finish_tools_request(
+                    request_generation,
+                    self.state.network_interface_service.format_adapter_snapshot(
+                        adapters
+                    ),
+                )
             ),
-            error_title="인터페이스 정보 조회 실패",
+            on_error=lambda message, request_generation=generation: (
+                self._fail_tools_request(request_generation, message)
+            ),
         )
 
     def _run_tools_command(self, fn: Callable) -> None:
-        self.tools_output.setPlainText("명령 실행 중입니다...")
+        generation = self._begin_tools_request("명령 실행 중입니다...")
         self._start_worker(
             fn,
-            on_result=lambda result: self.tools_output.setPlainText(result.details or result.message),
-            error_title="도구 실행 실패",
+            on_result=lambda result, request_generation=generation: (
+                self._finish_tools_request(
+                    request_generation, result.details or result.message
+                )
+            ),
+            on_error=lambda message, request_generation=generation: (
+                self._fail_tools_request(request_generation, message)
+            ),
         )
 
     def check_public_ip(self) -> None:
-        self.tools_output.setPlainText("공인 IP를 확인하는 중입니다...")
+        generation = self._begin_tools_request("공인 IP를 확인하는 중입니다...")
         self._start_worker(
             self.state.public_ip_service.check_public_ip,
-            on_result=self._show_public_ip_result,
-            error_title="공인 IP 확인 실패",
+            on_result=lambda result, request_generation=generation: (
+                self._show_public_ip_result(result, request_generation)
+            ),
+            on_error=lambda message, request_generation=generation: (
+                self._fail_tools_request(request_generation, message)
+            ),
         )
 
-    def _show_public_ip_result(self, result: OperationResult) -> None:
-        self.tools_output.setPlainText(result.details or result.message)
+    def _show_public_ip_result(
+        self, result: OperationResult, generation: int | None = None
+    ) -> None:
+        request_generation = (
+            self._tools_request_generation if generation is None else generation
+        )
+        if request_generation != self._tools_request_generation:
+            return
+        self._finish_tools_request(
+            request_generation, result.details or result.message
+        )
         if not result.success:
-            QMessageBox.warning(self, "공인 IP 확인 실패", result.details or result.message)
+            self._set_quick_status(result.message or "공인 IP 확인 실패", "error")
+
+    def _begin_tools_request(self, loading_text: str) -> int:
+        self._tools_request_generation += 1
+        generation = self._tools_request_generation
+        self.tools_output.setPlainText(loading_text)
+        return generation
+
+    def _finish_tools_request(self, generation: int, text: str) -> None:
+        if generation != self._tools_request_generation:
+            return
+        self.tools_output.setPlainText(text)
+
+    def _fail_tools_request(self, generation: int, message: str) -> None:
+        if generation != self._tools_request_generation:
+            return
+        detail = str(message).strip() or "명령 실행 중 오류가 발생했습니다."
+        self.tools_output.setPlainText(
+            "명령을 완료하지 못했습니다.\n\n"
+            f"{detail}\n\n"
+            "입력과 네트워크 상태를 확인한 뒤 다시 실행해 주세요."
+        )
+        self._set_quick_status("명령 실행 실패", "error")
 
     def calculate_subnet_from_tools_inputs(self) -> None:
         ip_text = self.subnet_calc_ip_edit.text().strip()

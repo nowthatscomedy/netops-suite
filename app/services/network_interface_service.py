@@ -7,7 +7,11 @@ from app.models.network_models import NetworkAdapterInfo
 from app.models.profile_models import IPProfile
 from app.models.result_models import OperationResult
 from app.services.powershell_service import PowerShellService
-from app.utils.process_utils import no_window_creationflags, windows_console_encoding
+from app.utils.process_utils import (
+    decode_windows_command_output,
+    no_window_creationflags,
+    windows_console_encoding,
+)
 from app.utils.validators import prefix_to_netmask
 
 
@@ -64,17 +68,37 @@ $adapters | ConvertTo-Json -Depth 5 -Compress
     def set_dhcp(self, interface_name: str) -> OperationResult:
         interface_ref = self._netsh_interface_ref(interface_name)
         address_result = self._run_netsh(
-            ["netsh", "interface", "ipv4", "set", "address", interface_ref, "source=dhcp"]
+            [
+                "netsh",
+                "interface",
+                "ipv4",
+                "set",
+                "address",
+                interface_ref,
+                "source=dhcp",
+            ]
         )
         dns_result = self._run_netsh(
-            ["netsh", "interface", "ipv4", "set", "dnsservers", interface_ref, "source=dhcp"]
+            [
+                "netsh",
+                "interface",
+                "ipv4",
+                "set",
+                "dnsservers",
+                interface_ref,
+                "source=dhcp",
+            ]
         )
         cleanup_result = self._cleanup_after_dhcp(interface_name)
         renew_result = self._renew_dhcp_lease(interface_name)
 
         if address_result.success and dns_result.success:
-            details = "\n\n".join(filter(None, [cleanup_result.details, renew_result.details]))
-            return OperationResult(True, self._dhcp_apply_message(interface_name, renew_result), details)
+            details = "\n\n".join(
+                filter(None, [cleanup_result.details, renew_result.details])
+            )
+            return OperationResult(
+                True, self._dhcp_apply_message(interface_name, renew_result), details
+            )
 
         alias = self.powershell.quote(interface_name)
         script = f"""
@@ -88,8 +112,12 @@ Set-DnsClientServerAddress -InterfaceAlias $alias -ResetServerAddresses -ErrorAc
         fallback = self.powershell.run(script, timeout=30)
         if fallback.success:
             fallback_renew = self._renew_dhcp_lease(interface_name)
-            details = "\n\n".join(filter(None, [cleanup_result.details, fallback_renew.details]))
-            return OperationResult(True, self._dhcp_apply_message(interface_name, fallback_renew), details)
+            details = "\n\n".join(
+                filter(None, [cleanup_result.details, fallback_renew.details])
+            )
+            return OperationResult(
+                True, self._dhcp_apply_message(interface_name, fallback_renew), details
+            )
 
         return OperationResult(
             False,
@@ -117,11 +145,17 @@ Set-DnsClientServerAddress -InterfaceAlias $alias -ResetServerAddresses -ErrorAc
         dns_servers: list[str] | None = None,
     ) -> OperationResult:
         dns_servers = dns_servers or []
-        netsh_result = self._netsh_set_static(interface_name, local_ip, prefix, gateway, dns_servers)
+        netsh_result = self._netsh_set_static(
+            interface_name, local_ip, prefix, gateway, dns_servers
+        )
         if netsh_result.success:
             cleanup_result = self._cleanup_after_static(interface_name, local_ip)
             details = "\n\n".join(filter(None, [cleanup_result.details]))
-            return OperationResult(True, f"{interface_name}에 고정 IP {local_ip}/{prefix}를 적용했습니다.", details)
+            return OperationResult(
+                True,
+                f"{interface_name}에 고정 IP {local_ip}/{prefix}를 적용했습니다.",
+                details,
+            )
 
         alias = self.powershell.quote(interface_name)
         gateway_route_clause = (
@@ -168,7 +202,11 @@ Get-NetRoute -InterfaceAlias $alias -AddressFamily IPv4 -DestinationPrefix '0.0.
         if fallback.success:
             cleanup_fallback = self._cleanup_after_static(interface_name, local_ip)
             details = "\n\n".join(filter(None, [cleanup_fallback.details]))
-            return OperationResult(True, f"{interface_name}에 고정 IP {local_ip}/{prefix}를 적용했습니다.", details)
+            return OperationResult(
+                True,
+                f"{interface_name}에 고정 IP {local_ip}/{prefix}를 적용했습니다.",
+                details,
+            )
 
         return OperationResult(
             False,
@@ -190,12 +228,20 @@ Get-NetRoute -InterfaceAlias $alias -AddressFamily IPv4 -DestinationPrefix '0.0.
         result = self.powershell.run(script, timeout=20)
         if result.success:
             return OperationResult(True, success_message, result.stdout)
-        return OperationResult(False, f"{interface_name} DNS 서버 변경에 실패했습니다.", result.stderr)
+        return OperationResult(
+            False, f"{interface_name} DNS 서버 변경에 실패했습니다.", result.stderr
+        )
 
     def apply_profile(self, interface_name: str, profile: IPProfile) -> OperationResult:
         if profile.mode.lower() == "dhcp":
             return self.set_dhcp(interface_name)
-        return self.set_static(interface_name, profile.local_ip, profile.prefix, profile.gateway, profile.dns)
+        return self.set_static(
+            interface_name,
+            profile.local_ip,
+            profile.prefix,
+            profile.gateway,
+            profile.dns,
+        )
 
     def format_adapter_snapshot(self, adapters: list[NetworkAdapterInfo]) -> str:
         if not adapters:
@@ -255,7 +301,9 @@ Get-NetRoute -InterfaceAlias $alias -AddressFamily IPv4 -DestinationPrefix '0.0.
 
         address_result = self._run_netsh(address_command)
         if not address_result.success:
-            return OperationResult(False, "netsh 고정 IP 적용 실패", address_result.details)
+            return OperationResult(
+                False, "netsh 고정 IP 적용 실패", address_result.details
+            )
 
         if dns_servers:
             primary_dns = self._run_netsh(
@@ -273,7 +321,9 @@ Get-NetRoute -InterfaceAlias $alias -AddressFamily IPv4 -DestinationPrefix '0.0.
                 ]
             )
             if not primary_dns.success:
-                return OperationResult(False, "netsh DNS 적용 실패", primary_dns.details)
+                return OperationResult(
+                    False, "netsh DNS 적용 실패", primary_dns.details
+                )
 
             for index, dns_server in enumerate(dns_servers[1:], start=2):
                 self._run_netsh(
@@ -304,7 +354,9 @@ Get-NetRoute -InterfaceAlias $alias -AddressFamily IPv4 -DestinationPrefix '0.0.
                 ]
             )
             if not clear_dns.success:
-                return OperationResult(False, "netsh DNS 초기화 실패", clear_dns.details)
+                return OperationResult(
+                    False, "netsh DNS 초기화 실패", clear_dns.details
+                )
 
         return OperationResult(True, "netsh 고정 IP 적용 성공", address_result.details)
 
@@ -326,7 +378,9 @@ try {{
         result = self.powershell.run(script, timeout=20)
         if result.success:
             return OperationResult(True, "DHCP 후처리 완료")
-        return OperationResult(False, "DHCP 후처리 실패", result.stderr or result.stdout)
+        return OperationResult(
+            False, "DHCP 후처리 실패", result.stderr or result.stdout
+        )
 
     def _renew_dhcp_lease(self, interface_name: str) -> OperationResult:
         alias = self.powershell.quote(interface_name)
@@ -369,15 +423,25 @@ if ($lease) {{
             details = result.stdout.strip()
             lease_acquired = "DHCP lease 갱신 완료:" in details
             message = "DHCP lease 갱신 완료" if lease_acquired else "DHCP lease 미수신"
-            return OperationResult(True, message, details, {"lease_acquired": lease_acquired})
-        return OperationResult(False, "DHCP lease 갱신 실패", result.stderr or result.stdout)
+            return OperationResult(
+                True, message, details, {"lease_acquired": lease_acquired}
+            )
+        return OperationResult(
+            False, "DHCP lease 갱신 실패", result.stderr or result.stdout
+        )
 
-    def _dhcp_apply_message(self, interface_name: str, renew_result: OperationResult) -> str:
-        if isinstance(renew_result.payload, dict) and not renew_result.payload.get("lease_acquired", True):
+    def _dhcp_apply_message(
+        self, interface_name: str, renew_result: OperationResult
+    ) -> str:
+        if isinstance(renew_result.payload, dict) and not renew_result.payload.get(
+            "lease_acquired", True
+        ):
             return f"{interface_name}에 DHCP를 적용했지만 정상 IPv4 lease를 아직 받지 못했습니다."
         return f"{interface_name}에 DHCP를 적용했습니다."
 
-    def _cleanup_after_static(self, interface_name: str, target_ip: str) -> OperationResult:
+    def _cleanup_after_static(
+        self, interface_name: str, target_ip: str
+    ) -> OperationResult:
         alias = self.powershell.quote(interface_name)
         target_ip_quoted = self.powershell.quote(target_ip)
         script = f"""
@@ -394,7 +458,9 @@ try {{
         result = self.powershell.run(script, timeout=20)
         if result.success:
             return OperationResult(True, "고정 IP 후처리 완료")
-        return OperationResult(False, "고정 IP 후처리 실패", result.stderr or result.stdout)
+        return OperationResult(
+            False, "고정 IP 후처리 실패", result.stderr or result.stdout
+        )
 
     def _run_netsh(self, command: list[str]) -> OperationResult:
         try:
@@ -408,8 +474,12 @@ try {{
                 creationflags=no_window_creationflags(),
             )
         except subprocess.TimeoutExpired as exc:
-            details = (exc.stderr or exc.stdout or "netsh 명령이 30초 안에 완료되지 않았습니다.")
-            return OperationResult(False, "netsh 명령 시간이 초과되었습니다.", str(details))
+            details = decode_windows_command_output(exc.stderr or exc.stdout)
+            return OperationResult(
+                False,
+                "netsh 명령 시간이 초과되었습니다.",
+                details or "netsh 명령이 30초 안에 완료되지 않았습니다.",
+            )
         details = completed.stderr or completed.stdout
         if completed.returncode == 0:
             return OperationResult(True, "netsh 명령이 완료되었습니다.", details)

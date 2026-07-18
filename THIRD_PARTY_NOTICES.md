@@ -25,6 +25,7 @@ publishing source archives or Windows installer builds.
 | xlrd | BSD |
 | colorama | BSD |
 | rich | MIT |
+| Pygments | BSD-2-Clause |
 | InquirerPy | MIT |
 
 ## Binary Release Notes

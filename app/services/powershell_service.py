@@ -5,6 +5,7 @@ import logging
 import subprocess
 
 from app.models.result_models import CommandResult
+from app.utils.process_utils import decode_windows_command_output
 
 
 class PowerShellService:
@@ -23,7 +24,10 @@ class PowerShellService:
 
     def run(self, script: str, timeout: int = 20) -> CommandResult:
         effective_script = f"{self.ENCODING_PREAMBLE}\n{script}"
-        self.logger.info("PowerShell start: %s", script.splitlines()[0][:120] if script else "<empty>")
+        self.logger.info(
+            "PowerShell start: %s",
+            script.splitlines()[0][:120] if script else "<empty>",
+        )
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         try:
             completed = subprocess.run(
@@ -44,10 +48,12 @@ class PowerShellService:
             )
         except subprocess.TimeoutExpired as exc:
             self.logger.error("PowerShell timeout after %ss", timeout)
+            stdout = decode_windows_command_output(exc.stdout)
+            stderr = decode_windows_command_output(exc.stderr)
             return CommandResult(
                 command=effective_script,
-                stdout=exc.stdout or "",
-                stderr=exc.stderr or f"PowerShell timed out after {timeout} seconds.",
+                stdout=stdout,
+                stderr=stderr or f"PowerShell timed out after {timeout} seconds.",
                 returncode=-1,
                 timed_out=True,
             )
@@ -62,13 +68,21 @@ class PowerShellService:
         if result.success:
             self.logger.info("PowerShell success")
         else:
-            self.logger.error("PowerShell failed: rc=%s stderr=%s", result.returncode, result.stderr.strip())
+            self.logger.error(
+                "PowerShell failed: rc=%s stderr=%s",
+                result.returncode,
+                result.stderr.strip(),
+            )
         return result
 
     def run_json(self, script: str, timeout: int = 20) -> list | dict | None:
         result = self.run(script, timeout=timeout)
         if not result.success:
-            raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "PowerShell command failed.")
+            raise RuntimeError(
+                result.stderr.strip()
+                or result.stdout.strip()
+                or "PowerShell command failed."
+            )
         if not result.stdout.strip():
             return None
         try:

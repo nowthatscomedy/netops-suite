@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable
 
 from PySide6.QtWidgets import QMessageBox
 
 from app.utils.threading_utils import FunctionWorker
+
+LOGGER = logging.getLogger("netops_suite.ui.jobs")
 
 
 class JobRunner:
@@ -47,10 +50,29 @@ class JobRunner:
             worker.signals.error.connect(on_error)
         else:
             title = error_title or self.default_error_title
-            worker.signals.error.connect(lambda text, title=title: QMessageBox.warning(self.parent, title, text))
+            worker.signals.error.connect(
+                lambda text, title=title: QMessageBox.warning(self.parent, title, text)
+            )
 
-        worker.signals.finished.connect(lambda worker=worker: self._discard_worker(worker))
-        self.thread_pool.start(worker)
+        worker.signals.finished.connect(
+            lambda worker=worker: self._discard_worker(worker)
+        )
+        try:
+            self.thread_pool.start(worker)
+        except Exception as exc:  # noqa: BLE001 - surface thread-pool startup failures
+            LOGGER.exception(
+                "Failed to submit background job %s",
+                getattr(fn, "__qualname__", repr(fn)),
+            )
+            try:
+                worker.signals.error.emit(str(exc) or exc.__class__.__name__)
+            except RuntimeError:
+                pass
+            try:
+                worker.signals.finished.emit()
+            except RuntimeError:
+                pass
+            self._discard_worker(worker)
 
     def _discard_worker(self, worker: FunctionWorker) -> None:
         if worker in self._active_workers:

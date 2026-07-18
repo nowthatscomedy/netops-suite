@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ctypes
+import logging
 import os
 import sys
 import tempfile
@@ -50,6 +51,8 @@ def _run_release_smoke_test() -> int:
             app.processEvents()
         return 0
     except Exception as exc:
+        logger = getattr(state, "logger", logging.getLogger("netops_suite"))
+        logger.critical("Release smoke test failed during startup.", exc_info=True)
         if sys.stderr is not None:
             print(f"Release smoke test failed: {exc}", file=sys.stderr)
         return 1
@@ -132,6 +135,8 @@ def main() -> int:
                 "Configuration directory could not be initialized. Some features may be unavailable.",
             )
     except Exception as exc:
+        logger = getattr(state, "logger", logging.getLogger("netops_suite"))
+        logger.critical("Application startup failed.", exc_info=True)
         if window is not None:
             window.shutdown()
         elif state is not None:

@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGridLayout,
     QGroupBox,
+    QHeaderView,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -18,7 +19,6 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QScrollArea,
     QSizePolicy,
-    QPushButton,
     QSplitter,
     QTableWidget,
     QVBoxLayout,
@@ -114,6 +114,7 @@ class InterfaceTab(QWidget):
         self.adapter_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.adapter_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.adapter_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.adapter_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.adapter_table.verticalHeader().setVisible(False)
         self.adapter_table.horizontalHeader().setStretchLastSection(True)
         self.adapter_empty_label = make_empty_state("어댑터 목록 새로고침을 눌러 어댑터를 불러오세요.")
@@ -180,16 +181,6 @@ class InterfaceTab(QWidget):
         profile_group = QGroupBox("저장된 IP 프로파일")
         profile_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         profile_layout = QVBoxLayout(profile_group)
-        self.profile_list = QListWidget()
-        profile_layout.addWidget(self.profile_list)
-
-        detail_form = QFormLayout()
-        self.profile_mode_label = QLabel("-")
-        self.profile_summary_label = QLabel("-")
-        self.profile_summary_label.setWordWrap(True)
-        detail_form.addRow("모드", self.profile_mode_label)
-        detail_form.addRow("설정", self.profile_summary_label)
-        profile_layout.addLayout(detail_form)
 
         button_row = QGridLayout()
         self.profile_apply_button = make_action_button(
@@ -207,6 +198,17 @@ class InterfaceTab(QWidget):
         button_row.addWidget(self.profile_edit_button, 1, 0)
         button_row.addWidget(self.profile_delete_button, 1, 1)
         profile_layout.addLayout(button_row)
+
+        self.profile_list = QListWidget()
+        profile_layout.addWidget(self.profile_list)
+
+        detail_form = QFormLayout()
+        self.profile_mode_label = QLabel("-")
+        self.profile_summary_label = QLabel("-")
+        self.profile_summary_label.setWordWrap(True)
+        detail_form.addRow("모드", self.profile_mode_label)
+        detail_form.addRow("설정", self.profile_summary_label)
+        profile_layout.addLayout(detail_form)
 
         right_layout.addWidget(profile_group)
         right_layout.addStretch(1)
@@ -233,6 +235,34 @@ class InterfaceTab(QWidget):
         self._update_admin_banner()
         self._update_mode_state()
         self._update_action_states()
+        self._update_adapter_column_visibility()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "adapter_table"):
+            self._update_adapter_column_visibility()
+
+    def _update_adapter_column_visibility(self) -> None:
+        compact = self.width() < 1250
+        auxiliary_columns = {1, 5, 6, 7}
+        header = self.adapter_table.horizontalHeader()
+        header.setStretchLastSection(False)
+        for column in range(self.adapter_table.columnCount()):
+            self.adapter_table.setColumnHidden(
+                column,
+                compact and column in auxiliary_columns,
+            )
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Interactive)
+
+        if compact:
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+            return
+
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
 
     def _update_admin_banner(self) -> None:
         if self.state.is_admin:
@@ -263,10 +293,12 @@ class InterfaceTab(QWidget):
         self._show_selected_profile_details()
 
     def refresh_adapters(self) -> None:
+        if not self.refresh_button.isEnabled():
+            return
         previous_name = self._selected_adapter().name if self._selected_adapter() else ""
+        self._set_loading(True)
         self._start_worker(
             self.state.network_interface_service.list_adapters,
-            on_started=lambda: self._set_loading(True),
             on_result=lambda adapters: self._populate_adapter_table(adapters, previous_name),
             on_finished=lambda: self._set_loading(False),
             error_title="인터페이스 조회 실패",
@@ -739,7 +771,13 @@ class InterfaceTab(QWidget):
             worker.signals.finished.connect(on_finished)
         worker.signals.error.connect(lambda text: QMessageBox.warning(self, error_title, text))
         worker.signals.finished.connect(lambda worker=worker: self._discard_worker(worker))
-        self.state.thread_pool.start(worker)
+        try:
+            self.state.thread_pool.start(worker)
+        except Exception as exc:
+            self._discard_worker(worker)
+            if on_finished:
+                on_finished()
+            QMessageBox.warning(self, error_title, str(exc))
 
     def _discard_worker(self, worker: FunctionWorker) -> None:
         if worker in self._active_workers:

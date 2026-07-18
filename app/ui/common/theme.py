@@ -62,6 +62,11 @@ QListWidget#mainNavigation::item:selected {
     color: #111827;
     font-weight: 600;
 }
+QListWidget#mainNavigation::item:selected:focus {
+    background: #eef2f6;
+    border: 2px solid #475467;
+    padding: 5px 7px;
+}
 QWidget#diagnosticToolStack,
 QWidget#configBuilderEmbeddedBuilder {
     background: #ffffff;
@@ -162,6 +167,11 @@ QTabBar::tab:selected {
     border-bottom-color: #111827;
     font-weight: 600;
 }
+QTabBar::tab:selected:focus {
+    background: #eef2f6;
+    border: 2px solid #475467;
+    padding: 6px 11px;
+}
 QTabBar::tab:hover:!selected {
     background: transparent;
     color: #111827;
@@ -261,6 +271,12 @@ QToolButton:hover:!disabled {
 QPushButton:pressed,
 QToolButton:pressed {
     background: #eef2f6;
+}
+QPushButton:focus,
+QToolButton:focus {
+    background: #ffffff;
+    border: 2px solid #475467;
+    padding: 2px 7px;
 }
 QPushButton:disabled,
 QToolButton:disabled {

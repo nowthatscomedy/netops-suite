@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import importlib.util
 import logging
 import os
 import re
+import shutil
 import sys
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from threading import Event
+from threading import Event, RLock
 from typing import Any, Literal
 
 import yaml
@@ -17,6 +20,17 @@ import yaml
 
 InspectorMode = Literal["inspection", "backup", "inspection_backup", "custom_commands"]
 LOGGER = logging.getLogger("netops_suite.inspector")
+_RUNTIME_MODULE_LOCK = RLock()
+_RUNTIME_SOURCE_SIGNATURE: tuple[object, ...] | None = None
+_MISSING_PROFILE_VALUE = object()
+_PROFILE_RULE_SECTIONS = (
+    "inspection_commands",
+    "backup_commands",
+    "parsing_rules",
+    "connection_overrides",
+    "handler_overrides",
+    "profile_metadata",
+)
 
 
 @dataclass(slots=True)
@@ -53,12 +67,16 @@ class InspectorService:
         user_data_dir: str | Path | None = None,
     ) -> None:
         package_root = Path(__file__).resolve().parents[1]
-        self.runtime_dir = Path(runtime_dir) if runtime_dir else package_root / "inspector_runtime"
+        self.runtime_dir = (
+            Path(runtime_dir) if runtime_dir else package_root / "inspector_runtime"
+        )
         self.work_dir = Path(work_dir) if work_dir else Path.cwd()
         self.user_data_dir = Path(user_data_dir) if user_data_dir else self.work_dir
         self.user_data_dir.mkdir(parents=True, exist_ok=True)
         self.custom_parsers_dir.mkdir(parents=True, exist_ok=True)
-        self.bundled_vendor_profiles_dir = package_root / "inspector" / "vendor_profiles"
+        self.bundled_vendor_profiles_dir = (
+            package_root / "inspector" / "vendor_profiles"
+        )
         self.vendor_profiles_dir = self.user_data_dir / "vendor_profiles"
 
     @property
@@ -70,12 +88,17 @@ class InspectorService:
         return self.user_data_dir / "custom_parsers"
 
     def supported_profiles(self) -> dict[str, list[str]]:
+        self._ensure_runtime_modules_current()
         with self._runtime_import_path():
             from vendors import INSPECTION_COMMANDS
 
-            return {vendor: sorted(os_map.keys()) for vendor, os_map in sorted(INSPECTION_COMMANDS.items())}
+            return {
+                vendor: sorted(os_map.keys())
+                for vendor, os_map in sorted(INSPECTION_COMMANDS.items())
+            }
 
     def supported_profile_definitions(self) -> list[dict[str, Any]]:
+        self._ensure_runtime_modules_current()
         with self._runtime_import_path():
             from vendors import (
                 BACKUP_COMMANDS,
@@ -108,11 +131,19 @@ class InspectorService:
                             "commands": command_list,
                             "backup_command": backup_command,
                             "has_backup": bool(backup_command),
-                            "parse_rule_count": len(parse_rules) if isinstance(parse_rules, dict) else 0,
-                            "parsing_rules": parse_rules if isinstance(parse_rules, dict) else {},
+                            "parse_rule_count": len(parse_rules)
+                            if isinstance(parse_rules, dict)
+                            else 0,
+                            "parsing_rules": parse_rules
+                            if isinstance(parse_rules, dict)
+                            else {},
                             "output_columns": output_columns,
-                            "connection_overrides": dict(connection) if isinstance(connection, dict) else {},
-                            "handler_overrides": dict(handler) if isinstance(handler, dict) else {},
+                            "connection_overrides": dict(connection)
+                            if isinstance(connection, dict)
+                            else {},
+                            "handler_overrides": dict(handler)
+                            if isinstance(handler, dict)
+                            else {},
                             "custom_parsers": custom_parsers,
                             "is_custom": is_custom_rule_pair(vendor, os_name),
                             "is_reference": False,
@@ -121,7 +152,9 @@ class InspectorService:
                         }
                     )
             existing_keys = {str(profile["key"]) for profile in profiles}
-            profiles.extend(self._load_reference_profile_files(existing_keys, custom_parsers))
+            profiles.extend(
+                self._load_reference_profile_files(existing_keys, custom_parsers)
+            )
             return profiles
 
     def build_vendor_profile_yaml(self, vendor: str, os_name: str) -> str:
@@ -130,15 +163,44 @@ class InspectorService:
         if not vendor_key or not os_key:
             raise ValueError("벤더와 OS 이름이 필요합니다.")
 
+        self._ensure_runtime_modules_current()
         with self._runtime_import_path():
-            from vendors import BACKUP_COMMANDS, CONNECTION_OVERRIDES, HANDLER_OVERRIDES, INSPECTION_COMMANDS, PARSING_RULES
+            from vendors import (
+                BACKUP_COMMANDS,
+                CONNECTION_OVERRIDES,
+                HANDLER_OVERRIDES,
+                INSPECTION_COMMANDS,
+                PARSING_RULES,
+            )
 
             document = {
-                "inspection_commands": {vendor_key: {os_key: list(INSPECTION_COMMANDS.get(vendor_key, {}).get(os_key, []))}},
-                "backup_commands": {vendor_key: {os_key: BACKUP_COMMANDS.get(vendor_key, {}).get(os_key, "")}},
-                "parsing_rules": {vendor_key: {os_key: PARSING_RULES.get(vendor_key, {}).get(os_key, {})}},
-                "connection_overrides": {vendor_key: {os_key: CONNECTION_OVERRIDES.get(vendor_key, {}).get(os_key, {})}},
-                "handler_overrides": {vendor_key: {os_key: HANDLER_OVERRIDES.get(vendor_key, {}).get(os_key, {})}},
+                "inspection_commands": {
+                    vendor_key: {
+                        os_key: list(
+                            INSPECTION_COMMANDS.get(vendor_key, {}).get(os_key, [])
+                        )
+                    }
+                },
+                "backup_commands": {
+                    vendor_key: {
+                        os_key: BACKUP_COMMANDS.get(vendor_key, {}).get(os_key, "")
+                    }
+                },
+                "parsing_rules": {
+                    vendor_key: {
+                        os_key: PARSING_RULES.get(vendor_key, {}).get(os_key, {})
+                    }
+                },
+                "connection_overrides": {
+                    vendor_key: {
+                        os_key: CONNECTION_OVERRIDES.get(vendor_key, {}).get(os_key, {})
+                    }
+                },
+                "handler_overrides": {
+                    vendor_key: {
+                        os_key: HANDLER_OVERRIDES.get(vendor_key, {}).get(os_key, {})
+                    }
+                },
             }
         return yaml.safe_dump(document, sort_keys=False, allow_unicode=True)
 
@@ -148,8 +210,13 @@ class InspectorService:
         for profile in self.supported_profile_definitions():
             vendor = profile["vendor"]
             os_name = profile["os"]
-            path = self.vendor_profiles_dir / f"{self._safe_file_part(vendor)}__{self._safe_file_part(os_name)}.yaml"
-            path.write_text(self.build_vendor_profile_yaml(vendor, os_name), encoding="utf-8")
+            path = (
+                self.vendor_profiles_dir
+                / f"{self._safe_file_part(vendor)}__{self._safe_file_part(os_name)}.yaml"
+            )
+            path.write_text(
+                self.build_vendor_profile_yaml(vendor, os_name), encoding="utf-8"
+            )
             count += 1
         return count
 
@@ -162,13 +229,151 @@ class InspectorService:
         return ""
 
     def save_custom_rules_text(self, text: str) -> Path:
+        data = self._load_custom_rules_document(text)
+        normalized_text = yaml.safe_dump(
+            data, sort_keys=False, allow_unicode=True
+        )
+        self.user_data_dir.mkdir(parents=True, exist_ok=True)
+        self._backup_custom_rules_file()
+        self._atomic_write_text(self.custom_rules_path, normalized_text)
+        self.reload_runtime_modules()
+        return self.custom_rules_path
+
+    def merge_custom_profile_rules_text(self, text: str) -> Path:
+        """Replace only the profiles included in *text*, preserving all others."""
+
+        incoming = self._load_custom_rules_document(text)
+        targets = self._profile_keys(incoming.get("inspection_commands"))
+        if not targets:
+            raise ValueError(
+                "저장할 inspection_commands의 벤더와 OS 프로파일이 필요합니다."
+            )
+
+        existing: dict[str, Any] = {}
+        if self.custom_rules_path.is_file():
+            existing = self._load_custom_rules_document(
+                self.custom_rules_path.read_text(encoding="utf-8")
+            )
+        merged = dict(existing)
+
+        for section_name in _PROFILE_RULE_SECTIONS:
+            current_section = self._mapping_copy(merged.get(section_name))
+            incoming_section = self._mapping_copy(incoming.get(section_name))
+            for vendor_key, os_key in targets:
+                vendor_map: dict[str, Any] = {}
+                for existing_vendor in list(current_section):
+                    if self._normalize_key(existing_vendor) != vendor_key:
+                        continue
+                    vendor_map.update(
+                        self._mapping_copy(current_section.pop(existing_vendor))
+                    )
+                for existing_os in list(vendor_map):
+                    if self._normalize_key(existing_os) == os_key:
+                        vendor_map.pop(existing_os)
+
+                incoming_value = self._profile_section_value(
+                    incoming_section, vendor_key, os_key
+                )
+                if incoming_value is not _MISSING_PROFILE_VALUE:
+                    vendor_map[os_key] = incoming_value
+                if vendor_map:
+                    current_section[vendor_key] = vendor_map
+            if current_section:
+                merged[section_name] = current_section
+            else:
+                merged.pop(section_name, None)
+
+        for key, value in incoming.items():
+            if key not in _PROFILE_RULE_SECTIONS:
+                merged[key] = value
+        return self.save_custom_rules_text(
+            yaml.safe_dump(merged, sort_keys=False, allow_unicode=True)
+        )
+
+    def custom_profile_exists(self, vendor: str, os_name: str) -> bool:
+        vendor_key = self._normalize_key(vendor)
+        os_key = self._normalize_key(os_name)
+        if not vendor_key or not os_key or not self.custom_rules_path.is_file():
+            return False
+        try:
+            data = self._load_custom_rules_document(
+                self.custom_rules_path.read_text(encoding="utf-8")
+            )
+        except (OSError, ValueError, yaml.YAMLError):
+            return False
+        return (vendor_key, os_key) in self._profile_keys(
+            data.get("inspection_commands")
+        )
+
+    @staticmethod
+    def _load_custom_rules_document(text: str) -> dict[str, Any]:
         data = yaml.safe_load(text) or {}
         if not isinstance(data, dict):
             raise ValueError("custom_rules YAML 최상위 구조는 object여야 합니다.")
-        self.user_data_dir.mkdir(parents=True, exist_ok=True)
-        self.custom_rules_path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
-        self.reload_runtime_modules()
-        return self.custom_rules_path
+        return data
+
+    @staticmethod
+    def _mapping_copy(value: object) -> dict[str, Any]:
+        return dict(value) if isinstance(value, dict) else {}
+
+    @classmethod
+    def _profile_keys(cls, section: object) -> set[tuple[str, str]]:
+        keys: set[tuple[str, str]] = set()
+        for vendor_key, os_map in cls._mapping_copy(section).items():
+            if not isinstance(os_map, dict):
+                continue
+            vendor = cls._normalize_key(vendor_key)
+            keys.update(
+                (vendor, cls._normalize_key(os_key))
+                for os_key in os_map
+                if vendor and cls._normalize_key(os_key)
+            )
+        return keys
+
+    @classmethod
+    def _profile_section_value(
+        cls, section: object, vendor: str, os_name: str
+    ) -> object:
+        for vendor_key, os_map in cls._mapping_copy(section).items():
+            if cls._normalize_key(vendor_key) != vendor or not isinstance(os_map, dict):
+                continue
+            for os_key, value in os_map.items():
+                if cls._normalize_key(os_key) == os_name:
+                    return value
+        return _MISSING_PROFILE_VALUE
+
+    def _backup_custom_rules_file(self) -> Path | None:
+        source = self.custom_rules_path
+        if not source.is_file():
+            return None
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        backup = source.with_name(f"{source.stem}.backup-{stamp}{source.suffix}")
+        suffix = 1
+        while backup.exists():
+            backup = source.with_name(
+                f"{source.stem}.backup-{stamp}-{suffix:02d}{source.suffix}"
+            )
+            suffix += 1
+        shutil.copy2(source, backup)
+        return backup
+
+    @staticmethod
+    def _atomic_write_text(path: Path, text: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+        )
+        temporary_path = Path(temporary_name)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+                stream.write(text)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary_path, path)
+        except Exception:
+            with contextlib.suppress(OSError):
+                temporary_path.unlink()
+            raise
 
     def build_simple_custom_rules_yaml(
         self,
@@ -190,11 +395,15 @@ class InspectorService:
         os_key = self._normalize_key(os_name)
         if not vendor_key or not os_key:
             raise ValueError("벤더와 OS 이름이 필요합니다.")
-        cleaned_commands = [command.strip() for command in inspection_commands if command.strip()]
+        cleaned_commands = [
+            command.strip() for command in inspection_commands if command.strip()
+        ]
         if not cleaned_commands:
             raise ValueError("점검 명령을 하나 이상 입력하세요.")
 
-        document: dict[str, Any] = {"inspection_commands": {vendor_key: {os_key: cleaned_commands}}}
+        document: dict[str, Any] = {
+            "inspection_commands": {vendor_key: {os_key: cleaned_commands}}
+        }
         if backup_command.strip():
             document["backup_commands"] = {vendor_key: {os_key: backup_command.strip()}}
 
@@ -205,18 +414,39 @@ class InspectorService:
         if telnet_device_type.strip():
             connection_override["telnet"] = telnet_device_type.strip()
         if connection_override:
-            document["connection_overrides"] = {vendor_key: {os_key: connection_override}}
+            document["connection_overrides"] = {
+                vendor_key: {os_key: connection_override}
+            }
 
-        rule_map = parsing_rules if isinstance(parsing_rules, dict) else self._build_parsing_rules_from_rows(parser_rows or [])
+        rule_map = (
+            parsing_rules
+            if isinstance(parsing_rules, dict)
+            else self._build_parsing_rules_from_rows(parser_rows or [])
+        )
         if rule_map:
             document["parsing_rules"] = {vendor_key: {os_key: rule_map}}
 
-        cleaned_handler = {key: value for key, value in (handler_overrides or {}).items() if value not in ("", None)}
+        cleaned_handler = {
+            key: value
+            for key, value in (handler_overrides or {}).items()
+            if value not in ("", None)
+        }
         if cleaned_handler:
             document["handler_overrides"] = {vendor_key: {os_key: cleaned_handler}}
 
-        metadata = {key: value for key, value in {"model": model.strip(), "os_version": os_version.strip()}.items() if value}
-        cleaned_columns = [str(column).strip() for column in (output_columns or []) if str(column).strip()]
+        metadata = {
+            key: value
+            for key, value in {
+                "model": model.strip(),
+                "os_version": os_version.strip(),
+            }.items()
+            if value
+        }
+        cleaned_columns = [
+            str(column).strip()
+            for column in (output_columns or [])
+            if str(column).strip()
+        ]
         if cleaned_columns:
             metadata["output_columns"] = cleaned_columns
         if metadata:
@@ -225,11 +455,63 @@ class InspectorService:
         return yaml.safe_dump(document, sort_keys=False, allow_unicode=True)
 
     def reload_runtime_modules(self) -> None:
+        global _RUNTIME_SOURCE_SIGNATURE
+        with _RUNTIME_MODULE_LOCK:
+            self._drop_runtime_modules()
+            _RUNTIME_SOURCE_SIGNATURE = self._runtime_source_signature()
+
+    @staticmethod
+    def _drop_runtime_modules() -> None:
         for module_name in list(sys.modules):
-            if module_name in {"core", "vendors"} or module_name.startswith(("core.", "vendors.")):
+            if module_name in {"core", "vendors"} or module_name.startswith(
+                ("core.", "vendors.")
+            ):
                 sys.modules.pop(module_name, None)
 
-    def load_inventory(self, path: str, password: str | None = None) -> list[dict[str, Any]]:
+    def _ensure_runtime_modules_current(self) -> None:
+        global _RUNTIME_SOURCE_SIGNATURE
+        signature = self._runtime_source_signature()
+        with _RUNTIME_MODULE_LOCK:
+            if signature == _RUNTIME_SOURCE_SIGNATURE:
+                return
+            self._drop_runtime_modules()
+            _RUNTIME_SOURCE_SIGNATURE = signature
+
+    def _runtime_source_signature(self) -> tuple[object, ...]:
+        source_files = [
+            self.custom_rules_path,
+            self.user_data_dir / "custom_rules.json",
+            *sorted(
+                self.custom_parsers_dir.glob("*.py"),
+                key=lambda path: path.name.casefold(),
+            ),
+        ]
+        signatures: list[tuple[str, int, str]] = []
+        for path in source_files:
+            if not path.is_file():
+                continue
+            try:
+                payload = path.read_bytes()
+            except OSError as exc:
+                signatures.append((str(path.resolve(strict=False)), -1, repr(exc)))
+                continue
+            signatures.append(
+                (
+                    str(path.resolve(strict=False)),
+                    len(payload),
+                    hashlib.sha256(payload).hexdigest(),
+                )
+            )
+        return (
+            str(self.runtime_dir.resolve(strict=False)),
+            str(self.user_data_dir.resolve(strict=False)),
+            *signatures,
+        )
+
+    def load_inventory(
+        self, path: str, password: str | None = None
+    ) -> list[dict[str, Any]]:
+        self._ensure_runtime_modules_current()
         with self._runtime_import_path():
             from core.file_handler import read_excel_file
             from core.validator import validate_dataframe
@@ -239,6 +521,7 @@ class InspectorService:
             return validated.to_dict("records")
 
     def read_command_file(self, path: str) -> list[str]:
+        self._ensure_runtime_modules_current()
         with self._runtime_import_path():
             from core.file_handler import read_command_file
 
@@ -260,6 +543,7 @@ class InspectorService:
 
         run_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self._raise_if_cancelled(cancel_event)
+        self._ensure_runtime_modules_current()
         with self._runtime_import_path(), self._working_directory():
             from core.file_handler import save_results_to_excel
             from core.inspector import NetworkInspector
@@ -267,7 +551,9 @@ class InspectorService:
 
             emit({"type": "running", "message": "대상 장비 목록을 불러오는 중입니다."})
             settings = load_settings()
-            devices = self.load_inventory(request.inventory_path, request.inventory_password)
+            devices = self.load_inventory(
+                request.inventory_path, request.inventory_password
+            )
             self._raise_if_cancelled(cancel_event)
             for device in devices:
                 device.setdefault("username", "")
@@ -291,7 +577,12 @@ class InspectorService:
                 cancel_event=cancel_event,
             )
             inspector.load_devices(devices)
-            emit({"type": "progress", "message": f"장비 {len(devices)}대를 실행 대기열에 올렸습니다."})
+            emit(
+                {
+                    "type": "progress",
+                    "message": f"장비 {len(devices)}대를 실행 대기열에 올렸습니다.",
+                }
+            )
 
             column_order: list[str] | None = None
             if request.mode in {"inspection", "inspection_backup"}:
@@ -304,34 +595,63 @@ class InspectorService:
             if request.mode == "backup":
                 inspector.inspect_devices(backup_only=True)
                 self._raise_if_cancelled(cancel_event)
-                result_excel = inspector.output_excel.replace("inspection_results", "backup_summary")
-                save_results_to_excel(inspector.results, result_excel, column_order=column_order, column_aliases=settings.column_aliases)
+                result_excel = inspector.output_excel.replace(
+                    "inspection_results", "backup_summary"
+                )
+                save_results_to_excel(
+                    inspector.results,
+                    result_excel,
+                    column_order=column_order,
+                    column_aliases=settings.column_aliases,
+                )
             elif request.mode == "inspection_backup":
                 inspector.inspect_and_backup_devices()
                 self._raise_if_cancelled(cancel_event)
                 result_excel = inspector.output_excel
-                save_results_to_excel(inspector.results, result_excel, column_order=column_order, column_aliases=settings.column_aliases)
+                save_results_to_excel(
+                    inspector.results,
+                    result_excel,
+                    column_order=column_order,
+                    column_aliases=settings.column_aliases,
+                )
             elif request.mode == "custom_commands":
                 if not commands:
                     raise ValueError("사용자 명령 파일 또는 명령 목록이 필요합니다.")
                 inspector.run_custom_commands(commands)
                 self._raise_if_cancelled(cancel_event)
-                result_excel = inspector.output_excel.replace("inspection_results", "command_results")
-                save_results_to_excel(inspector.results, result_excel, column_aliases=settings.column_aliases)
+                result_excel = inspector.output_excel.replace(
+                    "inspection_results", "command_results"
+                )
+                save_results_to_excel(
+                    inspector.results,
+                    result_excel,
+                    column_aliases=settings.column_aliases,
+                )
             else:
                 inspector.inspect_devices(backup_only=False)
                 self._raise_if_cancelled(cancel_event)
                 result_excel = inspector.output_excel
-                save_results_to_excel(inspector.results, result_excel, column_order=column_order, column_aliases=settings.column_aliases)
+                save_results_to_excel(
+                    inspector.results,
+                    result_excel,
+                    column_order=column_order,
+                    column_aliases=settings.column_aliases,
+                )
 
             emit({"type": "done", "message": "장비 점검 작업이 완료되었습니다."})
             return InspectorRunResult(
                 mode=request.mode,
                 devices_total=len(devices),
                 results_total=len(inspector.results),
-                result_excel=str(Path(result_excel).resolve()) if result_excel else None,
-                backup_dir=str(Path(inspector.backup_dir).resolve()) if Path(inspector.backup_dir).exists() else None,
-                session_log_dir=str(Path(inspector.session_log_dir).resolve()) if Path(inspector.session_log_dir).exists() else None,
+                result_excel=str(Path(result_excel).resolve())
+                if result_excel
+                else None,
+                backup_dir=str(Path(inspector.backup_dir).resolve())
+                if Path(inspector.backup_dir).exists()
+                else None,
+                session_log_dir=str(Path(inspector.session_log_dir).resolve())
+                if Path(inspector.session_log_dir).exists()
+                else None,
                 results=list(inspector.results),
             )
 
@@ -366,7 +686,13 @@ class InspectorService:
 
     @staticmethod
     def _safe_file_part(value: str) -> str:
-        return "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in value.strip().lower()) or "profile"
+        return (
+            "".join(
+                ch if ch.isalnum() or ch in {"-", "_"} else "_"
+                for ch in value.strip().lower()
+            )
+            or "profile"
+        )
 
     @staticmethod
     def _collect_output_columns(parse_rules: object) -> list[str]:
@@ -445,24 +771,72 @@ class InspectorService:
                 for os_key, commands in os_map.items():
                     os_name = self._normalize_key(os_key)
                     key = f"{vendor}|{os_name}"
-                    if not os_name or key in existing_keys or not isinstance(commands, list):
+                    if (
+                        not os_name
+                        or key in existing_keys
+                        or not isinstance(commands, list)
+                    ):
                         continue
 
-                    command_list = [str(command).strip() for command in commands if str(command).strip()]
+                    command_list = [
+                        str(command).strip()
+                        for command in commands
+                        if str(command).strip()
+                    ]
                     if not command_list:
                         continue
 
-                    vendor_backup = backup_commands.get(vendor_key, {}) if isinstance(backup_commands, dict) else {}
-                    vendor_rules = parsing_rules.get(vendor_key, {}) if isinstance(parsing_rules, dict) else {}
-                    vendor_connection = connection_overrides.get(vendor_key, {}) if isinstance(connection_overrides, dict) else {}
-                    vendor_handler = handler_overrides.get(vendor_key, {}) if isinstance(handler_overrides, dict) else {}
-                    vendor_metadata = profile_metadata.get(vendor_key, {}) if isinstance(profile_metadata, dict) else {}
+                    vendor_backup = (
+                        backup_commands.get(vendor_key, {})
+                        if isinstance(backup_commands, dict)
+                        else {}
+                    )
+                    vendor_rules = (
+                        parsing_rules.get(vendor_key, {})
+                        if isinstance(parsing_rules, dict)
+                        else {}
+                    )
+                    vendor_connection = (
+                        connection_overrides.get(vendor_key, {})
+                        if isinstance(connection_overrides, dict)
+                        else {}
+                    )
+                    vendor_handler = (
+                        handler_overrides.get(vendor_key, {})
+                        if isinstance(handler_overrides, dict)
+                        else {}
+                    )
+                    vendor_metadata = (
+                        profile_metadata.get(vendor_key, {})
+                        if isinstance(profile_metadata, dict)
+                        else {}
+                    )
 
-                    backup_command = vendor_backup.get(os_key, "") if isinstance(vendor_backup, dict) else ""
-                    parse_rules = vendor_rules.get(os_key, {}) if isinstance(vendor_rules, dict) else {}
-                    connection = vendor_connection.get(os_key, {}) if isinstance(vendor_connection, dict) else {}
-                    handler = vendor_handler.get(os_key, {}) if isinstance(vendor_handler, dict) else {}
-                    metadata = vendor_metadata.get(os_key, {}) if isinstance(vendor_metadata, dict) else {}
+                    backup_command = (
+                        vendor_backup.get(os_key, "")
+                        if isinstance(vendor_backup, dict)
+                        else ""
+                    )
+                    parse_rules = (
+                        vendor_rules.get(os_key, {})
+                        if isinstance(vendor_rules, dict)
+                        else {}
+                    )
+                    connection = (
+                        vendor_connection.get(os_key, {})
+                        if isinstance(vendor_connection, dict)
+                        else {}
+                    )
+                    handler = (
+                        vendor_handler.get(os_key, {})
+                        if isinstance(vendor_handler, dict)
+                        else {}
+                    )
+                    metadata = (
+                        vendor_metadata.get(os_key, {})
+                        if isinstance(vendor_metadata, dict)
+                        else {}
+                    )
                     if not isinstance(metadata, dict):
                         metadata = {}
                     output_columns = metadata.get("output_columns")
@@ -480,15 +854,32 @@ class InspectorService:
                             "commands": command_list,
                             "backup_command": backup_command,
                             "has_backup": bool(backup_command),
-                            "parse_rule_count": len(parse_rules) if isinstance(parse_rules, dict) else 0,
-                            "parsing_rules": parse_rules if isinstance(parse_rules, dict) else {},
-                            "output_columns": [str(column) for column in output_columns],
-                            "connection_overrides": dict(connection) if isinstance(connection, dict) else {},
-                            "handler_overrides": dict(handler) if isinstance(handler, dict) else {},
+                            "parse_rule_count": len(parse_rules)
+                            if isinstance(parse_rules, dict)
+                            else 0,
+                            "parsing_rules": parse_rules
+                            if isinstance(parse_rules, dict)
+                            else {},
+                            "output_columns": [
+                                str(column) for column in output_columns
+                            ],
+                            "connection_overrides": dict(connection)
+                            if isinstance(connection, dict)
+                            else {},
+                            "handler_overrides": dict(handler)
+                            if isinstance(handler, dict)
+                            else {},
                             "custom_parsers": custom_parsers,
                             "is_custom": False,
-                            "is_reference": bool(metadata.get("reference", path.name.startswith(("reference", "example")))),
-                            "display_name": str(metadata.get("display_name") or f"{vendor} / {os_name}"),
+                            "is_reference": bool(
+                                metadata.get(
+                                    "reference",
+                                    path.name.startswith(("reference", "example")),
+                                )
+                            ),
+                            "display_name": str(
+                                metadata.get("display_name") or f"{vendor} / {os_name}"
+                            ),
                             "source": str(path),
                         }
                     )
@@ -496,6 +887,7 @@ class InspectorService:
         return profiles
 
     def available_custom_parsers(self) -> list[str]:
+        self._ensure_runtime_modules_current()
         with self._runtime_import_path():
             from vendors import CUSTOM_PARSERS
 
@@ -504,7 +896,9 @@ class InspectorService:
     def discover_user_custom_parsers(self) -> list[str]:
         parsers: set[str] = set()
         for path in sorted(self.custom_parsers_dir.glob("*.py")):
-            spec = importlib.util.spec_from_file_location(f"netops_user_parser_{path.stem}", path)
+            spec = importlib.util.spec_from_file_location(
+                f"netops_user_parser_{path.stem}", path
+            )
             if spec is None or spec.loader is None:
                 continue
             module = importlib.util.module_from_spec(spec)
@@ -526,13 +920,17 @@ class InspectorService:
         self.reload_runtime_modules()
         return path
 
-    def test_custom_parser_code(self, function_name: str, code: str, sample_output: str) -> Any:
+    def test_custom_parser_code(
+        self, function_name: str, code: str, sample_output: str
+    ) -> Any:
         function_name = self._normalize_parser_function_name(function_name)
         parser = self._load_custom_parser_function(function_name, code)
         try:
             return parser(sample_output)
         except Exception:
-            LOGGER.exception("Python custom parser failed during test: %s", function_name)
+            LOGGER.exception(
+                "Python custom parser failed during test: %s", function_name
+            )
             raise
 
     def _load_custom_parser_function(self, function_name: str, code: str):
@@ -540,11 +938,16 @@ class InspectorService:
         try:
             exec(compile(code, f"<{function_name}>", "exec"), namespace)
         except Exception:
-            LOGGER.exception("Failed to compile or load Python custom parser: %s", function_name)
+            LOGGER.exception(
+                "Failed to compile or load Python custom parser: %s", function_name
+            )
             raise
         parser = namespace.get(function_name)
         if not callable(parser):
-            LOGGER.warning("Python custom parser function not found or not callable: %s", function_name)
+            LOGGER.warning(
+                "Python custom parser function not found or not callable: %s",
+                function_name,
+            )
             raise ValueError(f"{function_name} 함수를 찾을 수 없습니다.")
         return parser
 
@@ -556,11 +959,15 @@ class InspectorService:
         if not name.startswith("parsing_"):
             name = f"parsing_{name}"
         if not re.fullmatch(r"parsing_[A-Za-z_][A-Za-z0-9_]*", name):
-            raise ValueError("함수 이름은 parsing_으로 시작하고 영문/숫자/밑줄만 사용할 수 있습니다.")
+            raise ValueError(
+                "함수 이름은 parsing_으로 시작하고 영문/숫자/밑줄만 사용할 수 있습니다."
+            )
         return name
 
     @staticmethod
-    def _build_parsing_rules_from_rows(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    def _build_parsing_rules_from_rows(
+        rows: list[dict[str, Any]],
+    ) -> dict[str, dict[str, Any]]:
         parsing_rules: dict[str, dict[str, Any]] = {}
         for row in rows:
             command = str(row.get("command", "")).strip()
@@ -583,8 +990,14 @@ class InspectorService:
                     rule["line_number"] = int(row.get("line_number", 1) or 1)
                 if parser_type == "split_fields":
                     rule["start_field"] = int(row.get("start_field", 1) or 1)
-                    rule["end_field"] = int(row.get("end_field", row.get("start_field", 1)) or row.get("start_field", 1) or 1)
-                    rule["delimiter"] = str(row.get("delimiter", "whitespace") or "whitespace")
+                    rule["end_field"] = int(
+                        row.get("end_field", row.get("start_field", 1))
+                        or row.get("start_field", 1)
+                        or 1
+                    )
+                    rule["delimiter"] = str(
+                        row.get("delimiter", "whitespace") or "whitespace"
+                    )
                 if parser_type == "keyword_after":
                     rule["keyword"] = str(row.get("keyword", "")).strip()
                     if not rule["keyword"]:
@@ -601,7 +1014,12 @@ class InspectorService:
             elif pattern and column:
                 rule["pattern"] = pattern
                 rule["output_column"] = column
-                rule["first_match_only"] = first_match_text not in {"false", "0", "no", "n"}
+                rule["first_match_only"] = first_match_text not in {
+                    "false",
+                    "0",
+                    "no",
+                    "n",
+                }
             else:
                 continue
             if process_text:

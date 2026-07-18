@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMenu,
     QMessageBox,
-    QPushButton,
     QSizePolicy,
     QSplitter,
     QTableWidget,
@@ -31,7 +30,14 @@ from PySide6.QtWidgets import (
 
 from app.app_state import AppState
 from app.models.network_models import NearbyAccessPoint, WirelessInfo
-from app.ui.common import make_empty_state, make_step_hint, set_table_minimums, sortable_table_item
+from app.ui.common import (
+    make_empty_state,
+    make_inline_status,
+    make_step_hint,
+    set_inline_status,
+    set_table_minimums,
+    sortable_table_item,
+)
 from app.utils.parser import summarize_channels
 from app.utils.threading_utils import FunctionWorker
 
@@ -47,6 +53,7 @@ class WirelessTab(QWidget):
         self._active_workers: list[FunctionWorker] = []
         self._wireless_refresh_running = False
         self._nearby_refresh_running = False
+        self._nearby_oui_refresh_running = False
         self._startup_refresh_requested = False
         self._shutting_down = False
         self.current_info: WirelessInfo | None = None
@@ -104,6 +111,9 @@ class WirelessTab(QWidget):
         controls.addWidget(self.interval_spin)
         controls.addStretch(1)
         status_layout.addLayout(controls)
+        self.wireless_status_label = make_inline_status("info", "")
+        self.wireless_status_label.setAccessibleName("현재 Wi-Fi 조회 상태")
+        status_layout.addWidget(self.wireless_status_label)
 
         self.info_fields = [
             ("interface_name", "어댑터"),
@@ -191,6 +201,7 @@ class WirelessTab(QWidget):
         nearby_filter_row.addWidget(QLabel("검색"))
         self.nearby_search_edit = QLineEdit()
         self.nearby_search_edit.setPlaceholderText("SSID / BSSID / 제조사(vendor)")
+        self.nearby_search_edit.setAccessibleName("주변 AP 검색")
         nearby_filter_row.addWidget(self.nearby_search_edit, 2)
 
         nearby_filter_row.addWidget(QLabel("대역"))
@@ -332,37 +343,48 @@ class WirelessTab(QWidget):
     def refresh_wireless_info(self) -> None:
         if self._wireless_refresh_running:
             return
-        self._wireless_refresh_running = True
+        self._set_refresh_running("wireless", True)
+        set_inline_status(
+            self.wireless_status_label,
+            "info",
+            "현재 Wi-Fi 상태를 조회하는 중입니다...",
+        )
         self._start_worker(
             self.state.wireless_service.get_wireless_info,
             on_result=self._update_wireless_view,
             on_finished=lambda: self._set_refresh_running("wireless", False),
-            error_title="Wi-Fi 상태 조회 실패",
+            on_error=self._handle_wireless_refresh_error,
         )
 
     def refresh_nearby_access_points_quietly(self) -> None:
         self.refresh_nearby_access_points()
-        if self._nearby_refresh_running:
-            self._update_nearby_summary(self._filtered_nearby_access_points())
 
     def refresh_nearby_access_points(self) -> None:
         if self._nearby_refresh_running:
             return
         self._nearby_refresh_running = True
         self.nearby_refresh_button.setEnabled(False)
+        self.nearby_summary_label.setStyleSheet("color:#475467;")
+        self.nearby_summary_label.setText("주변 AP를 스캔하는 중입니다...")
         self._start_worker(
             self.state.wireless_service.scan_nearby_access_points,
             on_result=self._update_nearby_access_points,
             on_finished=lambda: self._set_refresh_running("nearby", False),
-            error_title="주변 AP 조회 실패",
+            on_error=self._handle_nearby_refresh_error,
         )
 
     def refresh_nearby_oui_cache(self) -> None:
+        if self._nearby_oui_refresh_running:
+            return
+        self._nearby_oui_refresh_running = True
+        self.nearby_refresh_oui_button.setEnabled(False)
+        self.nearby_summary_label.setStyleSheet("color:#475467;")
         self.nearby_summary_label.setText("OUI 캐시를 업데이트하는 중...")
         self._start_worker(
             self.state.oui_service.refresh_cache,
             on_result=self._finish_nearby_oui_refresh,
-            error_title="OUI 캐시 업데이트 실패",
+            on_finished=self._finish_nearby_oui_refresh_operation,
+            on_error=self._handle_nearby_oui_refresh_error,
         )
 
     def _update_wireless_view(self, info: WirelessInfo) -> None:
@@ -384,9 +406,15 @@ class WirelessTab(QWidget):
         self._log_wireless_changes(info)
         self.previous_info = info
         self._apply_nearby_view()
+        set_inline_status(
+            self.wireless_status_label,
+            "success",
+            f"현재 Wi-Fi 상태 갱신 완료 · {datetime.now():%H:%M:%S}",
+        )
 
     def _update_nearby_access_points(self, access_points: list[NearbyAccessPoint]) -> None:
         self.nearby_access_points = access_points
+        self.nearby_summary_label.setStyleSheet("color:#475467;")
         self._apply_nearby_view()
 
     def _apply_nearby_view(self) -> None:
@@ -433,6 +461,7 @@ class WirelessTab(QWidget):
             is_current_ap = bool(current_bssid and self._normalize_bssid(access_point.bssid) == current_bssid)
             for column, value in enumerate(values):
                 item = sortable_table_item(value, sort_values[column])
+                item.setToolTip(value)
                 if column == 3 and access_point.signal_percent is not None:
                     if access_point.signal_percent >= 70:
                         item.setForeground(QColor("#1b5e20"))
@@ -589,10 +618,13 @@ class WirelessTab(QWidget):
         cache_text = self.state.oui_service.cache_summary()
 
         if filtered_access_points:
-            summary = summarize_channels(filtered_access_points)
+            full_summary = summarize_channels(filtered_access_points)
+            summary = self._compact_channel_summary(filtered_access_points)
         elif total_count:
+            full_summary = "필터 조건에 맞는 AP가 없습니다."
             summary = "필터 조건에 맞는 AP가 없습니다."
         else:
+            full_summary = "감지된 주변 AP가 없습니다."
             summary = "감지된 주변 AP가 없습니다."
 
         parts = [f"표시 {shown_count} / 전체 {total_count}"]
@@ -603,6 +635,30 @@ class WirelessTab(QWidget):
         parts.append(summary)
         parts.append(cache_text)
         self.nearby_summary_label.setText(" | ".join(parts))
+        self.nearby_summary_label.setToolTip(full_summary)
+
+    def _compact_channel_summary(
+        self, access_points: list[NearbyAccessPoint]
+    ) -> str:
+        band_counts: dict[str, int] = {}
+        channel_counts: dict[str, int] = {}
+        for access_point in access_points:
+            band = access_point.band or "알 수 없음"
+            channel = access_point.channel or "-"
+            band_counts[band] = band_counts.get(band, 0) + 1
+            channel_counts[channel] = channel_counts.get(channel, 0) + 1
+        bands = ", ".join(
+            f"{band} {count}개"
+            for band, count in sorted(band_counts.items())
+        )
+        busiest = sorted(
+            channel_counts.items(),
+            key=lambda item: (-item[1], self._channel_sort_value(item[0])),
+        )[:3]
+        channels = ", ".join(
+            f"{channel}({count})" for channel, count in busiest
+        )
+        return f"{bands} · 주요 채널 {channels}"
 
     def _matches_band_filter(self, band_text: str, band_filter: str) -> bool:
         normalized = (band_text or "").replace(" ", "").lower()
@@ -673,7 +729,34 @@ class WirelessTab(QWidget):
         if result.success:
             self.refresh_nearby_access_points()
             return
+        self.nearby_summary_label.setStyleSheet("color:#b42318;")
         self.nearby_summary_label.setText(result.message)
+
+    def _finish_nearby_oui_refresh_operation(self) -> None:
+        self._nearby_oui_refresh_running = False
+        self.nearby_refresh_oui_button.setEnabled(True)
+
+    def _handle_wireless_refresh_error(self, message: str) -> None:
+        detail = str(message).strip() or "현재 Wi-Fi 상태 조회에 실패했습니다."
+        set_inline_status(
+            self.wireless_status_label,
+            "error",
+            f"Wi-Fi 상태 조회 실패: {detail} · 새로고침으로 다시 시도해 주세요.",
+        )
+
+    def _handle_nearby_refresh_error(self, message: str) -> None:
+        detail = str(message).strip() or "주변 AP 조회에 실패했습니다."
+        self.nearby_summary_label.setStyleSheet("color:#b42318;")
+        self.nearby_summary_label.setText(
+            f"주변 AP 조회 실패: {detail} · 스캔을 눌러 다시 시도해 주세요."
+        )
+
+    def _handle_nearby_oui_refresh_error(self, message: str) -> None:
+        detail = str(message).strip() or "OUI 캐시 업데이트에 실패했습니다."
+        self.nearby_summary_label.setStyleSheet("color:#b42318;")
+        self.nearby_summary_label.setText(
+            f"OUI 캐시 업데이트 실패: {detail} · 다시 시도해 주세요."
+        )
 
     def _log_wireless_changes(self, current: WirelessInfo) -> None:
         if not self.previous_info:
@@ -724,6 +807,8 @@ class WirelessTab(QWidget):
     def _set_refresh_running(self, refresh_type: str, running: bool) -> None:
         if refresh_type == "wireless":
             self._wireless_refresh_running = running
+            if hasattr(self, "refresh_button"):
+                self.refresh_button.setEnabled(not running)
             return
         if refresh_type == "nearby":
             self._nearby_refresh_running = running
@@ -785,6 +870,7 @@ class WirelessTab(QWidget):
         on_result: Callable | None = None,
         on_progress: Callable | None = None,
         on_finished: Callable | None = None,
+        on_error: Callable[[str], None] | None = None,
         error_title: str = "작업 실패",
         **kwargs,
     ) -> None:
@@ -798,9 +884,23 @@ class WirelessTab(QWidget):
             worker.signals.progress.connect(on_progress)
         if on_finished:
             worker.signals.finished.connect(on_finished)
-        worker.signals.error.connect(lambda text: QMessageBox.warning(self, error_title, text))
+        if on_error is not None:
+            worker.signals.error.connect(on_error)
+        else:
+            worker.signals.error.connect(
+                lambda text: QMessageBox.warning(self, error_title, text)
+            )
         worker.signals.finished.connect(lambda worker=worker: self._discard_worker(worker))
-        self.state.thread_pool.start(worker)
+        try:
+            self.state.thread_pool.start(worker)
+        except Exception as exc:
+            self._discard_worker(worker)
+            if on_error is not None:
+                on_error(str(exc))
+            else:
+                QMessageBox.warning(self, error_title, str(exc))
+            if on_finished:
+                on_finished()
 
     def _discard_worker(self, worker: FunctionWorker) -> None:
         if worker in self._active_workers:

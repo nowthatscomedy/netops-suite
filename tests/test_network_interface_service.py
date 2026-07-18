@@ -21,7 +21,9 @@ class FakePowerShell:
         return self.result
 
 
-def test_set_static_does_not_cleanup_after_failed_netsh_and_failed_fallback(monkeypatch):
+def test_set_static_does_not_cleanup_after_failed_netsh_and_failed_fallback(
+    monkeypatch,
+):
     powershell = FakePowerShell(CommandResult("", "", "fallback failed", 1))
     service = NetworkInterfaceService(powershell, logging.getLogger("test"))
     cleanup_calls: list[tuple[str, str]] = []
@@ -69,7 +71,9 @@ def test_static_fallback_reuses_existing_target_ip_and_manages_gateway(monkeypat
 
 
 def test_set_dhcp_renews_lease_after_netsh_success(monkeypatch):
-    service = NetworkInterfaceService(FakePowerShell(CommandResult("", "", "", 0)), logging.getLogger("test"))
+    service = NetworkInterfaceService(
+        FakePowerShell(CommandResult("", "", "", 0)), logging.getLogger("test")
+    )
     calls: list[str] = []
 
     monkeypatch.setattr(service, "_netsh_interface_ref", lambda name: 'name="Ethernet"')
@@ -78,8 +82,16 @@ def test_set_dhcp_renews_lease_after_netsh_success(monkeypatch):
         "_run_netsh",
         lambda command: calls.append(command[-1]) or OperationResult(True, "netsh"),
     )
-    monkeypatch.setattr(service, "_cleanup_after_dhcp", lambda name: OperationResult(True, "cleanup", "cleaned"))
-    monkeypatch.setattr(service, "_renew_dhcp_lease", lambda name: OperationResult(True, "renew", "lease renewed"))
+    monkeypatch.setattr(
+        service,
+        "_cleanup_after_dhcp",
+        lambda name: OperationResult(True, "cleanup", "cleaned"),
+    )
+    monkeypatch.setattr(
+        service,
+        "_renew_dhcp_lease",
+        lambda name: OperationResult(True, "renew", "lease renewed"),
+    )
 
     result = service.set_dhcp("Ethernet")
 
@@ -89,11 +101,17 @@ def test_set_dhcp_renews_lease_after_netsh_success(monkeypatch):
 
 
 def test_set_dhcp_reports_when_lease_is_not_available_yet(monkeypatch):
-    service = NetworkInterfaceService(FakePowerShell(CommandResult("", "", "", 0)), logging.getLogger("test"))
+    service = NetworkInterfaceService(
+        FakePowerShell(CommandResult("", "", "", 0)), logging.getLogger("test")
+    )
 
     monkeypatch.setattr(service, "_netsh_interface_ref", lambda name: 'name="Ethernet"')
-    monkeypatch.setattr(service, "_run_netsh", lambda command: OperationResult(True, "netsh"))
-    monkeypatch.setattr(service, "_cleanup_after_dhcp", lambda name: OperationResult(True, "cleanup"))
+    monkeypatch.setattr(
+        service, "_run_netsh", lambda command: OperationResult(True, "netsh")
+    )
+    monkeypatch.setattr(
+        service, "_cleanup_after_dhcp", lambda name: OperationResult(True, "cleanup")
+    )
     monkeypatch.setattr(
         service,
         "_renew_dhcp_lease",
@@ -122,14 +140,24 @@ def test_dhcp_cleanup_removes_default_route():
 
 
 def test_netsh_timeout_returns_operation_result(monkeypatch):
-    service = NetworkInterfaceService(FakePowerShell(CommandResult("", "", "", 0)), logging.getLogger("test"))
+    service = NetworkInterfaceService(
+        FakePowerShell(CommandResult("", "", "", 0)), logging.getLogger("test")
+    )
 
     def raise_timeout(*args, **kwargs):
-        raise subprocess.TimeoutExpired(cmd=args[0], timeout=30, output="", stderr="timed out")
+        raise subprocess.TimeoutExpired(
+            cmd=args[0],
+            timeout=30,
+            output=b"",
+            stderr="명령 시간 초과".encode(),
+        )
 
-    monkeypatch.setattr("app.services.network_interface_service.subprocess.run", raise_timeout)
+    monkeypatch.setattr(
+        "app.services.network_interface_service.subprocess.run", raise_timeout
+    )
 
     result = service._run_netsh(["netsh"])
 
     assert not result.success
     assert "시간" in result.message
+    assert result.details == "명령 시간 초과"

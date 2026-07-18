@@ -478,13 +478,13 @@ class AlcatelLucentHandler(CustomDeviceHandler):
         if self.channel:
             try:
                 self.channel.close()
-            except:
+            except Exception:
                 pass
         
         if self.ssh:
             try:
                 self.ssh.close()
-            except:
+            except Exception:
                 pass
             
         self.channel = None
@@ -493,5 +493,5 @@ class AlcatelLucentHandler(CustomDeviceHandler):
         if self.session_log_file:
             with open(self.session_log_file, 'a', encoding='utf-8') as log:
                 log.write(f"\n{'='*50}\n")
-                log.write(f"세션 종료\n")
-                log.write(f"{'='*50}\n") 
+                log.write("세션 종료\n")
+                log.write(f"{'='*50}\n")

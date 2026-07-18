@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -18,13 +19,13 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPlainTextEdit,
-    QPushButton,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
 from app.ui.common import make_dialog_intro, polish_dialog
+from app.utils.file_utils import timestamped_export_path
 from netops_suite.modules.inspector import InspectorService
 
 
@@ -78,16 +79,18 @@ class PythonParserDialog(QDialog):
         self.code_edit.setPlainText(
             "def parsing_custom_value(output: str):\n"
             "    for line in output.splitlines():\n"
-            "        if \"CPU Usage\" in line:\n"
+            '        if "CPU Usage" in line:\n'
             "            parts = line.split()\n"
-            "            return \" \".join(parts[-2:])\n"
-            "    return \"\"\n"
+            '            return " ".join(parts[-2:])\n'
+            '    return ""\n'
         )
         layout.addWidget(QLabel("Python 코드"))
         layout.addWidget(self.code_edit, 3)
 
         self.sample_output_edit = QPlainTextEdit()
-        self.sample_output_edit.setPlainText("CPU Usage        12 %\nMemory Usage     40 %")
+        self.sample_output_edit.setPlainText(
+            "CPU Usage        12 %\nMemory Usage     40 %"
+        )
         layout.addWidget(QLabel("테스트용 출력 예시"))
         layout.addWidget(self.sample_output_edit, 1)
 
@@ -98,7 +101,11 @@ class PythonParserDialog(QDialog):
         layout.addWidget(self.result_view)
 
         actions = QHBoxLayout()
-        test_button = make_action_button("테스트", ActionKind.START, tooltip="작성한 Python 추출 함수를 테스트합니다.")
+        test_button = make_action_button(
+            "테스트",
+            ActionKind.START,
+            tooltip="작성한 Python 추출 함수를 테스트합니다.",
+        )
         test_button.clicked.connect(self._test_code)
         save_button = make_action_button("저장", ActionKind.SAVE)
         save_button.clicked.connect(self._save_code)
@@ -132,14 +139,27 @@ class PythonParserDialog(QDialog):
             QMessageBox.warning(self, "저장 실패", str(exc))
             return
         self.saved_function_name = path.stem
-        QMessageBox.information(self, "저장 완료", f"Python 추출 함수를 저장했습니다.\n{path}")
+        QMessageBox.information(
+            self, "저장 완료", f"Python 추출 함수를 저장했습니다.\n{path}"
+        )
         self.accept()
 
 
 class InspectorProfileDialog(QDialog):
-    def __init__(self, service: InspectorService, parent=None) -> None:
+    def __init__(
+        self,
+        service: InspectorService,
+        parent=None,
+        *,
+        exports_dir: str | Path | None = None,
+    ) -> None:
         super().__init__(parent)
         self.service = service
+        self.exports_dir = (
+            Path(exports_dir)
+            if exports_dir is not None
+            else self.service.user_data_dir / "exports"
+        )
         self.profiles = service.supported_profile_definitions()
         self.state = self._empty_state()
         self.latest_yaml_text = ""
@@ -147,6 +167,9 @@ class InspectorProfileDialog(QDialog):
         self._selected_column_row = -1
         self._loading_command = False
         self._loading_column = False
+        self._loading_state = True
+        self._dirty = False
+        self._last_profile_index = 0
         self._parser_dialog: PythonParserDialog | None = None
         self.preview_timer = QTimer(self)
         self.preview_timer.setInterval(180)
@@ -159,6 +182,8 @@ class InspectorProfileDialog(QDialog):
         self._load_profile_choices()
         self._load_state()
         self.refresh_preview()
+        self._loading_state = False
+        self._dirty = False
 
     @staticmethod
     def _empty_state() -> dict[str, Any]:
@@ -219,21 +244,26 @@ class InspectorProfileDialog(QDialog):
         layout.addWidget(self.tabs, 1)
         self._build_device_tab()
         self._build_command_tab()
+        self._build_backup_tab()
         self._build_column_tab()
         self._build_review_tab()
         self._build_advanced_tab()
 
         actions = QHBoxLayout()
-        refresh_button = make_action_button("갱신", ActionKind.REFRESH, tooltip="YAML 미리보기를 갱신합니다.")
+        refresh_button = make_action_button(
+            "갱신", ActionKind.REFRESH, tooltip="YAML 미리보기를 갱신합니다."
+        )
         refresh_button.clicked.connect(self.refresh_preview)
-        self.save_button = make_action_button("저장", ActionKind.SAVE, tooltip="프로파일을 저장합니다.")
+        self.save_button = make_action_button(
+            "저장", ActionKind.SAVE, tooltip="프로파일을 저장합니다."
+        )
         self.save_button.clicked.connect(self._save_profile)
-        close_button = make_action_button("닫기", ActionKind.CANCEL)
-        close_button.clicked.connect(self.accept)
+        self.close_button = make_action_button("닫기", ActionKind.CANCEL)
+        self.close_button.clicked.connect(self._request_close)
         actions.addStretch(1)
         actions.addWidget(refresh_button)
         actions.addWidget(self.save_button)
-        actions.addWidget(close_button)
+        actions.addWidget(self.close_button)
         layout.addLayout(actions)
 
     def _build_device_tab(self) -> None:
@@ -268,28 +298,40 @@ class InspectorProfileDialog(QDialog):
         layout.addStretch(1)
         self.tabs.addTab(tab, "장비 정보")
 
-        for widget in (self.vendor_edit, self.model_edit, self.os_edit, self.os_version_edit):
+        for widget in (
+            self.vendor_edit,
+            self.model_edit,
+            self.os_edit,
+            self.os_version_edit,
+        ):
             widget.textChanged.connect(self._schedule_preview)
         self.connection_combo.currentIndexChanged.connect(self._schedule_preview)
 
     def _build_command_tab(self) -> None:
         tab = QWidget()
+        tab.setObjectName("inspectionCommandsTab")
         layout = QHBoxLayout(tab)
         left = QVBoxLayout()
-        left.addWidget(QLabel("장비에서 실행할 점검 명령어"))
+        left.addWidget(QLabel("점검 명령 목록"))
         self.command_list = QListWidget()
+        self.command_list.setAccessibleName("점검 명령 목록")
         self.command_list.currentRowChanged.connect(self._on_command_selected)
         left.addWidget(self.command_list, 1)
         buttons = QHBoxLayout()
-        add_button = make_action_button("추가", ActionKind.ADD, tooltip="점검 명령을 추가합니다.")
+        add_button = make_action_button(
+            "추가", ActionKind.ADD, tooltip="점검 명령을 추가합니다."
+        )
         add_button.clicked.connect(self._add_command)
-        remove_button = make_action_button("삭제", ActionKind.DELETE, tooltip="선택한 점검 명령을 삭제합니다.")
+        remove_button = make_action_button(
+            "삭제", ActionKind.DELETE, tooltip="선택한 점검 명령을 삭제합니다."
+        )
         remove_button.clicked.connect(self._remove_command)
         buttons.addWidget(add_button)
         buttons.addWidget(remove_button)
         left.addLayout(buttons)
 
         right = QVBoxLayout()
+        right.addWidget(QLabel("선택한 점검 명령"))
         form = QFormLayout()
         form.setVerticalSpacing(8)
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
@@ -301,13 +343,7 @@ class InspectorProfileDialog(QDialog):
         )
         form.addRow("명령어", self.command_edit)
         form.addRow("출력 예시", self.sample_output_edit)
-        right.addLayout(form)
-        self.backup_enabled_check = QCheckBox("백업 명령도 저장")
-        self.backup_command_edit = QLineEdit()
-        self.backup_command_edit.setPlaceholderText("예: show running-config, show configuration, display current-configuration")
-        right.addWidget(self.backup_enabled_check)
-        right.addWidget(self.backup_command_edit)
-        right.addStretch(1)
+        right.addLayout(form, 1)
 
         layout.addLayout(left, 2)
         layout.addLayout(right, 4)
@@ -315,8 +351,56 @@ class InspectorProfileDialog(QDialog):
 
         self.command_edit.textChanged.connect(self._on_command_changed)
         self.sample_output_edit.textChanged.connect(self._on_command_changed)
-        self.backup_enabled_check.toggled.connect(self._schedule_preview)
+
+    def _build_backup_tab(self) -> None:
+        tab = QWidget()
+        tab.setObjectName("backupCommandTab")
+        layout = QVBoxLayout(tab)
+
+        intro = make_dialog_intro(
+            "점검 결과와 별도로 장비의 전체 구성을 백업할 때 사용할 명령을 설정합니다. "
+            "백업이 필요하지 않은 프로파일은 이 기능을 끌 수 있습니다."
+        )
+        layout.addWidget(intro)
+
+        self.backup_enabled_check = QCheckBox("장비 구성 백업 사용")
+        self.backup_enabled_check.setObjectName("backupEnabledCheck")
+        self.backup_enabled_check.setToolTip(
+            "켜면 점검 작업에서 아래 명령의 전체 출력을 구성 백업 파일로 저장합니다."
+        )
+        layout.addWidget(self.backup_enabled_check)
+
+        form = QFormLayout()
+        form.setVerticalSpacing(8)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        self.backup_command_edit = QLineEdit()
+        self.backup_command_edit.setObjectName("backupCommandEdit")
+        self.backup_command_edit.setPlaceholderText(
+            "예: show running-config, show configuration, display current-configuration"
+        )
+        self.backup_command_edit.setToolTip(
+            "장비 구성을 백업할 때 한 번 실행할 명령을 입력합니다."
+        )
+        form.addRow("백업 명령", self.backup_command_edit)
+        layout.addLayout(form)
+
+        backup_hint = QLabel(
+            "백업 명령의 출력은 Excel 컬럼 추출에 사용하지 않고, 구성 백업 파일 전체로 저장됩니다."
+        )
+        backup_hint.setObjectName("backupCommandHint")
+        backup_hint.setWordWrap(True)
+        layout.addWidget(backup_hint)
+        layout.addStretch(1)
+
+        self.tabs.addTab(tab, "백업 명령")
+
+        self.backup_enabled_check.toggled.connect(self._on_backup_enabled_changed)
         self.backup_command_edit.textChanged.connect(self._schedule_preview)
+        self._on_backup_enabled_changed(False)
+
+    def _on_backup_enabled_changed(self, enabled: bool) -> None:
+        self.backup_command_edit.setEnabled(enabled)
+        self._schedule_preview()
 
     def _build_column_tab(self) -> None:
         tab = QWidget()
@@ -324,12 +408,17 @@ class InspectorProfileDialog(QDialog):
         left = QVBoxLayout()
         left.addWidget(QLabel("Excel에 표시할 컬럼"))
         self.column_list = QListWidget()
+        self.column_list.setAccessibleName("Excel 컬럼 목록")
         self.column_list.currentRowChanged.connect(self._on_column_selected)
         left.addWidget(self.column_list, 1)
         buttons = QHBoxLayout()
-        add_button = make_action_button("추가", ActionKind.ADD, tooltip="Excel 출력 컬럼을 추가합니다.")
+        add_button = make_action_button(
+            "추가", ActionKind.ADD, tooltip="Excel 출력 컬럼을 추가합니다."
+        )
         add_button.clicked.connect(self._add_column)
-        remove_button = make_action_button("삭제", ActionKind.DELETE, tooltip="선택한 출력 컬럼을 삭제합니다.")
+        remove_button = make_action_button(
+            "삭제", ActionKind.DELETE, tooltip="선택한 출력 컬럼을 삭제합니다."
+        )
         remove_button.clicked.connect(self._remove_column)
         buttons.addWidget(add_button)
         buttons.addWidget(remove_button)
@@ -343,7 +432,9 @@ class InspectorProfileDialog(QDialog):
         self.column_name_edit.setPlaceholderText("예: OS버전, 시리얼번호, CPU 사용률")
         self.column_command_combo = NoWheelComboBox()
         self.extract_method_combo = NoWheelComboBox()
-        self.extract_method_combo.addItem("몇 번째 줄/몇 번째 값 가져오기", "split_fields")
+        self.extract_method_combo.addItem(
+            "몇 번째 줄/몇 번째 값 가져오기", "split_fields"
+        )
         self.extract_method_combo.addItem("특정 단어 뒤의 값 가져오기", "keyword_after")
         self.extract_method_combo.addItem("줄 전체 가져오기", "line_text")
         self.extract_method_combo.addItem("정규식 직접 입력", "regex")
@@ -371,10 +462,24 @@ class InspectorProfileDialog(QDialog):
         form.addRow("찾을 단어", self.keyword_edit)
         form.addRow("정규식", self.regex_edit)
         form.addRow("Python 추출 함수", self.python_parser_combo)
+        self._extraction_method_fields = {
+            "line_number": (form.labelForField(self.line_number_spin), self.line_number_spin),
+            "start_field": (form.labelForField(self.start_field_spin), self.start_field_spin),
+            "end_field": (form.labelForField(self.end_field_spin), self.end_field_spin),
+            "keyword": (form.labelForField(self.keyword_edit), self.keyword_edit),
+            "regex": (form.labelForField(self.regex_edit), self.regex_edit),
+            "python": (
+                form.labelForField(self.python_parser_combo),
+                self.python_parser_combo,
+            ),
+        }
         right.addLayout(form)
         right.addWidget(self.preview_label)
+        sample_view_label = QLabel("선택한 명령 출력 예시")
+        right.addWidget(sample_view_label)
         self.sample_line_view = QPlainTextEdit()
         self.sample_line_view.setReadOnly(True)
+        self.sample_line_view.setAccessibleName("선택한 명령 출력 예시")
         right.addWidget(self.sample_line_view, 1)
 
         layout.addLayout(left, 2)
@@ -384,36 +489,53 @@ class InspectorProfileDialog(QDialog):
         for widget in (self.column_name_edit, self.keyword_edit, self.regex_edit):
             widget.textChanged.connect(self._on_column_changed)
         self.column_command_combo.currentIndexChanged.connect(self._on_column_changed)
-        self.extract_method_combo.currentIndexChanged.connect(self._on_column_changed)
+        self.extract_method_combo.currentIndexChanged.connect(
+            self._on_extraction_method_changed
+        )
         self.line_number_spin.valueChanged.connect(self._on_column_changed)
         self.start_field_spin.valueChanged.connect(self._on_column_changed)
         self.end_field_spin.valueChanged.connect(self._on_column_changed)
         self.python_parser_combo.currentTextChanged.connect(self._on_column_changed)
+        self._update_extraction_method_fields()
 
     def _build_review_tab(self) -> None:
         tab = QWidget()
         layout = QVBoxLayout(tab)
+        layout.addWidget(QLabel("입력 확인"))
         self.issue_list = QListWidget()
+        self.issue_list.setAccessibleName("프로파일 입력 확인")
         layout.addWidget(self.issue_list, 1)
+        layout.addWidget(QLabel("프로파일 요약"))
         self.summary_preview = QPlainTextEdit()
         self.summary_preview.setReadOnly(True)
+        self.summary_preview.setAccessibleName("프로파일 요약")
         layout.addWidget(self.summary_preview, 2)
         self.tabs.addTab(tab, "미리보기/저장")
 
     def _build_advanced_tab(self) -> None:
         tab = QWidget()
         layout = QVBoxLayout(tab)
-        hint = QLabel("전문가 설정입니다. 정규식, Python 추출 함수, YAML 원문, 접속 문제 해결 설정이 필요할 때만 사용하세요.")
+        hint = QLabel(
+            "전문가 설정입니다. 정규식, Python 추출 함수, YAML 원문, 접속 문제 해결 설정이 필요할 때만 사용하세요."
+        )
         hint.setWordWrap(True)
         layout.addWidget(hint)
         actions = QHBoxLayout()
-        create_parser_button = make_action_button("Python 함수", ActionKind.ADD, tooltip="Python 추출 함수를 만듭니다.")
+        create_parser_button = make_action_button(
+            "Python 함수", ActionKind.ADD, tooltip="Python 추출 함수를 만듭니다."
+        )
         create_parser_button.clicked.connect(self._open_python_parser_dialog)
-        open_parser_button = make_action_button("함수 폴더", ActionKind.OPEN, tooltip="Python 추출 함수 폴더를 엽니다.")
-        open_parser_button.clicked.connect(lambda: os.startfile(str(self.service.custom_parsers_dir)))
+        open_parser_button = make_action_button(
+            "함수 폴더", ActionKind.OPEN, tooltip="Python 추출 함수 폴더를 엽니다."
+        )
+        open_parser_button.clicked.connect(
+            lambda: os.startfile(str(self.service.custom_parsers_dir))
+        )
         export_button = make_action_button("YAML 저장", ActionKind.EXPORT)
         export_button.clicked.connect(self._export_yaml)
-        generate_button = make_action_button("기본 파일", ActionKind.ADD, tooltip="기본 프로파일 파일을 생성합니다.")
+        generate_button = make_action_button(
+            "기본 파일", ActionKind.ADD, tooltip="기본 프로파일 파일을 생성합니다."
+        )
         generate_button.clicked.connect(self._generate_all_profiles)
         actions.addWidget(create_parser_button)
         actions.addWidget(open_parser_button)
@@ -431,7 +553,9 @@ class InspectorProfileDialog(QDialog):
         form.addRow("SSH 접속 장비 유형", self.ssh_device_type_edit)
         form.addRow("Telnet 접속 장비 유형", self.telnet_device_type_edit)
         layout.addLayout(form)
+        layout.addWidget(QLabel("프로파일 YAML 미리보기"))
         self.yaml_preview = QPlainTextEdit()
+        self.yaml_preview.setAccessibleName("프로파일 YAML 미리보기")
         layout.addWidget(self.yaml_preview, 1)
         self.tabs.addTab(tab, "전문가 설정")
         self.ssh_device_type_edit.textChanged.connect(self._schedule_preview)
@@ -442,7 +566,9 @@ class InspectorProfileDialog(QDialog):
         self.copy_profile_combo.clear()
         self.copy_profile_combo.addItem("새 프로파일", None)
         for profile in self.profiles:
-            label = profile.get("display_name") or f"{profile['vendor']} / {profile['os']}"
+            label = (
+                profile.get("display_name") or f"{profile['vendor']} / {profile['os']}"
+            )
             if profile.get("is_reference") and "참고용" not in label:
                 label = f"{label} (참고용)"
             self.copy_profile_combo.addItem(label, profile)
@@ -450,7 +576,11 @@ class InspectorProfileDialog(QDialog):
         self._refresh_python_parser_choices()
 
     def _refresh_python_parser_choices(self, selected: str = "") -> None:
-        current = selected or self.python_parser_combo.currentText() if hasattr(self, "python_parser_combo") else ""
+        current = (
+            selected or self.python_parser_combo.currentText()
+            if hasattr(self, "python_parser_combo")
+            else ""
+        )
         self.python_parser_combo.blockSignals(True)
         self.python_parser_combo.clear()
         self.python_parser_combo.addItem("")
@@ -461,18 +591,26 @@ class InspectorProfileDialog(QDialog):
         self.python_parser_combo.blockSignals(False)
 
     def _load_state(self) -> None:
-        self.vendor_edit.setText(self.state["vendor"])
-        self.model_edit.setText(self.state["model"])
-        self.os_edit.setText(self.state["os"])
-        self.os_version_edit.setText(self.state["os_version"])
-        self.connection_combo.setCurrentIndex(0)
-        self.backup_enabled_check.setChecked(bool(self.state["backup_enabled"]))
-        self.backup_command_edit.setText(self.state["backup_command"])
-        self.ssh_device_type_edit.setText(self.state["ssh_device_type"])
-        self.telnet_device_type_edit.setText(self.state["telnet_device_type"])
-        self._refresh_command_list(0)
-        self._refresh_column_commands()
-        self._refresh_column_list(0)
+        was_loading = self._loading_state
+        self._loading_state = True
+        try:
+            self.vendor_edit.setText(self.state["vendor"])
+            self.model_edit.setText(self.state["model"])
+            self.os_edit.setText(self.state["os"])
+            self.os_version_edit.setText(self.state["os_version"])
+            connection_index = self.connection_combo.findData(
+                self.state.get("connection_type", "ssh")
+            )
+            self.connection_combo.setCurrentIndex(max(0, connection_index))
+            self.backup_enabled_check.setChecked(bool(self.state["backup_enabled"]))
+            self.backup_command_edit.setText(self.state["backup_command"])
+            self.ssh_device_type_edit.setText(self.state["ssh_device_type"])
+            self.telnet_device_type_edit.setText(self.state["telnet_device_type"])
+            self._refresh_command_list(0)
+            self._refresh_column_commands()
+            self._refresh_column_list(0)
+        finally:
+            self._loading_state = was_loading
 
     def _collect_state(self) -> None:
         self._persist_command()
@@ -536,7 +674,10 @@ class InspectorProfileDialog(QDialog):
         self._persist_command()
         item = self.command_list.item(self._selected_command_row)
         if item:
-            item.setText(self.command_edit.text().strip() or f"명령 {self._selected_command_row + 1}")
+            item.setText(
+                self.command_edit.text().strip()
+                or f"명령 {self._selected_command_row + 1}"
+            )
         self._refresh_column_commands()
         self._schedule_preview()
 
@@ -549,6 +690,21 @@ class InspectorProfileDialog(QDialog):
     def _remove_command(self) -> None:
         row = self.command_list.currentRow()
         if row < 0:
+            return
+        self._persist_command()
+        command = str(self.state["commands"][row].get("command", "")).strip()
+        referenced_columns = [
+            str(column.get("name", "") or "이름 없는 컬럼")
+            for column in self.state["columns"]
+            if str(column.get("command", "")).strip() == command
+        ]
+        if referenced_columns:
+            QMessageBox.warning(
+                self,
+                "명령을 삭제할 수 없음",
+                "이 명령을 사용하는 Excel 컬럼이 있습니다.\n"
+                f"먼저 컬럼의 명령을 변경하거나 삭제하세요: {', '.join(referenced_columns)}",
+            )
             return
         self.state["commands"].pop(row)
         if not self.state["commands"]:
@@ -592,15 +748,25 @@ class InspectorProfileDialog(QDialog):
             data = self.state["columns"][row]
             self.column_name_edit.setText(data.get("name", ""))
             self.column_command_combo.setCurrentText(data.get("command", ""))
-            self.extract_method_combo.setCurrentIndex(max(0, self.extract_method_combo.findData(data.get("method", "split_fields"))))
+            self.extract_method_combo.setCurrentIndex(
+                max(
+                    0,
+                    self.extract_method_combo.findData(
+                        data.get("method", "split_fields")
+                    ),
+                )
+            )
             self.line_number_spin.setValue(int(data.get("line_number", 1) or 1))
             self.start_field_spin.setValue(int(data.get("start_field", 1) or 1))
-            self.end_field_spin.setValue(int(data.get("end_field", data.get("start_field", 1)) or 1))
+            self.end_field_spin.setValue(
+                int(data.get("end_field", data.get("start_field", 1)) or 1)
+            )
             self.keyword_edit.setText(data.get("keyword", ""))
             self.regex_edit.setText(data.get("regex", ""))
             self.python_parser_combo.setCurrentText(data.get("python_parser", ""))
         finally:
             self._loading_column = False
+        self._update_extraction_method_fields()
         self._refresh_extraction_preview()
 
     def _persist_column(self) -> None:
@@ -631,9 +797,31 @@ class InspectorProfileDialog(QDialog):
         self._persist_column()
         item = self.column_list.item(self._selected_column_row)
         if item:
-            item.setText(self.column_name_edit.text().strip() or f"컬럼 {self._selected_column_row + 1}")
+            item.setText(
+                self.column_name_edit.text().strip()
+                or f"컬럼 {self._selected_column_row + 1}"
+            )
         self._refresh_extraction_preview()
         self._schedule_preview()
+
+    def _on_extraction_method_changed(self) -> None:
+        self._update_extraction_method_fields()
+        self._on_column_changed()
+
+    def _update_extraction_method_fields(self) -> None:
+        if not hasattr(self, "_extraction_method_fields"):
+            return
+        method = self.extract_method_combo.currentData() or "split_fields"
+        visible_fields = {
+            "split_fields": {"line_number", "start_field", "end_field"},
+            "keyword_after": {"keyword"},
+            "line_text": {"line_number"},
+            "regex": {"regex"},
+            "python": {"python"},
+        }.get(str(method), set())
+        for name, (label, field) in self._extraction_method_fields.items():
+            label.setVisible(name in visible_fields)
+            field.setVisible(name in visible_fields)
 
     def _add_column(self) -> None:
         self._persist_column()
@@ -666,7 +854,11 @@ class InspectorProfileDialog(QDialog):
         self._schedule_preview()
 
     def _commands(self) -> list[str]:
-        return [row.get("command", "").strip() for row in self.state["commands"] if row.get("command", "").strip()]
+        return [
+            row.get("command", "").strip()
+            for row in self.state["commands"]
+            if row.get("command", "").strip()
+        ]
 
     def _sample_for_command(self, command: str) -> str:
         for row in self.state["commands"]:
@@ -681,7 +873,9 @@ class InspectorProfileDialog(QDialog):
         numbered = []
         for idx, line in enumerate(lines, start=1):
             marker = ">" if idx == self.line_number_spin.value() else " "
-            fields = " | ".join(f"{i}:{value}" for i, value in enumerate(line.split(), start=1))
+            fields = " | ".join(
+                f"{i}:{value}" for i, value in enumerate(line.split(), start=1)
+            )
             numbered.append(f"{marker} {idx:02d}: {line}\n     {fields}")
         self.sample_line_view.setPlainText("\n".join(numbered))
         result = self._preview_value(sample)
@@ -699,7 +893,7 @@ class InspectorProfileDialog(QDialog):
             end = self.end_field_spin.value()
             if not (1 <= start <= len(fields)):
                 return ""
-            return " ".join(fields[start - 1:min(max(end, start), len(fields))])
+            return " ".join(fields[start - 1 : min(max(end, start), len(fields))])
         if method == "keyword_after":
             keyword = self.keyword_edit.text().strip()
             if not keyword:
@@ -710,22 +904,61 @@ class InspectorProfileDialog(QDialog):
         if method == "line_text":
             if 1 <= line_number <= len(lines):
                 return lines[line_number - 1].strip()
+        if method == "regex":
+            pattern = self.regex_edit.text().strip()
+            if not pattern:
+                return ""
+            try:
+                match = re.search(pattern, sample, flags=re.MULTILINE)
+            except re.error as exc:
+                return f"정규식 오류: {exc}"
+            if match is None:
+                return ""
+            if match.lastindex:
+                return match.group(1)
+            return match.group(0)
         return ""
 
-    def _copy_selected_profile(self) -> None:
-        profile = self.copy_profile_combo.currentData()
-        if not isinstance(profile, dict):
+    def _copy_selected_profile(self, index: int | None = None) -> None:
+        if self._loading_state:
             return
-        self.state["vendor"] = profile.get("vendor", "")
-        self.state["os"] = profile.get("os", "")
-        self.state["commands"] = [{"command": command, "sample": ""} for command in profile.get("commands", [])] or self.state["commands"]
-        self.state["backup_command"] = profile.get("backup_command", "")
-        self.state["backup_enabled"] = bool(profile.get("backup_command"))
-        self.state["columns"] = self._columns_from_profile(profile)
-        connection = profile.get("connection_overrides") or {}
-        self.state["ssh_device_type"] = connection.get("ssh") or connection.get("default") or ""
-        self.state["telnet_device_type"] = connection.get("telnet") or ""
+        selected_index = (
+            self.copy_profile_combo.currentIndex() if index is None else int(index)
+        )
+        if self._dirty:
+            answer = QMessageBox.question(
+                self,
+                "작성 중인 내용 바꾸기",
+                "저장하지 않은 변경 내용이 있습니다. 선택한 프로파일로 바꿀까요?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                self.copy_profile_combo.blockSignals(True)
+                self.copy_profile_combo.setCurrentIndex(self._last_profile_index)
+                self.copy_profile_combo.blockSignals(False)
+                return
+        profile = self.copy_profile_combo.currentData()
+        if isinstance(profile, dict):
+            self.state["vendor"] = profile.get("vendor", "")
+            self.state["os"] = profile.get("os", "")
+            self.state["commands"] = [
+                {"command": command, "sample": ""}
+                for command in profile.get("commands", [])
+            ] or self.state["commands"]
+            self.state["backup_command"] = profile.get("backup_command", "")
+            self.state["backup_enabled"] = bool(profile.get("backup_command"))
+            self.state["columns"] = self._columns_from_profile(profile)
+            connection = profile.get("connection_overrides") or {}
+            self.state["ssh_device_type"] = (
+                connection.get("ssh") or connection.get("default") or ""
+            )
+            self.state["telnet_device_type"] = connection.get("telnet") or ""
+        else:
+            self.state = self._empty_state()
         self._load_state()
+        self._last_profile_index = selected_index
+        self._dirty = True
         self._schedule_preview()
 
     def _columns_from_profile(self, profile: dict[str, Any]) -> list[dict[str, Any]]:
@@ -733,11 +966,19 @@ class InspectorProfileDialog(QDialog):
         for command, rule in (profile.get("parsing_rules") or {}).items():
             if not isinstance(rule, dict):
                 continue
-            rule_list = rule.get("patterns") if isinstance(rule.get("patterns"), list) else [rule]
+            rule_list = (
+                rule.get("patterns")
+                if isinstance(rule.get("patterns"), list)
+                else [rule]
+            )
             for item in rule_list:
                 if not isinstance(item, dict):
                     continue
-                if item.get("parser_type") in {"split_fields", "keyword_after", "line_text"}:
+                if item.get("parser_type") in {
+                    "split_fields",
+                    "keyword_after",
+                    "line_text",
+                }:
                     rows.append(
                         {
                             "name": item.get("output_column", ""),
@@ -745,7 +986,9 @@ class InspectorProfileDialog(QDialog):
                             "method": item.get("parser_type", "split_fields"),
                             "line_number": int(item.get("line_number", 1) or 1),
                             "start_field": int(item.get("start_field", 1) or 1),
-                            "end_field": int(item.get("end_field", item.get("start_field", 1)) or 1),
+                            "end_field": int(
+                                item.get("end_field", item.get("start_field", 1)) or 1
+                            ),
                             "keyword": item.get("keyword", ""),
                             "regex": "",
                             "python_parser": "",
@@ -790,7 +1033,9 @@ class InspectorProfileDialog(QDialog):
                 vendor=self.state["vendor"],
                 os_name=self.state["os"],
                 inspection_commands=self._commands(),
-                backup_command=self.state["backup_command"] if self.state["backup_enabled"] else "",
+                backup_command=self.state["backup_command"]
+                if self.state["backup_enabled"]
+                else "",
                 default_device_type=self.state["ssh_device_type"],
                 telnet_device_type=self.state["telnet_device_type"],
                 parser_rows=parser_rows,
@@ -824,13 +1069,17 @@ class InspectorProfileDialog(QDialog):
                 {
                     "command": column.get("command", ""),
                     "output_column": column.get("name", ""),
-                    "parser_type": method if method in {"split_fields", "keyword_after", "line_text"} else "",
+                    "parser_type": method
+                    if method in {"split_fields", "keyword_after", "line_text"}
+                    else "",
                     "line_number": column.get("line_number", 1),
                     "start_field": column.get("start_field", 1),
                     "end_field": column.get("end_field", column.get("start_field", 1)),
                     "keyword": column.get("keyword", ""),
                     "pattern": column.get("regex", "") if method == "regex" else "",
-                    "custom_parser": column.get("python_parser", "") if method == "python" else "",
+                    "custom_parser": column.get("python_parser", "")
+                    if method == "python"
+                    else "",
                 }
             )
         return rows
@@ -843,20 +1092,45 @@ class InspectorProfileDialog(QDialog):
             issues.append("OS를 입력하세요. 예: IOS-XE")
         if not self._commands():
             issues.append("점검 명령을 하나 이상 입력하세요. 예: show version")
+        if self.state["backup_enabled"] and not self.state["backup_command"]:
+            issues.append("장비 구성 백업을 사용하려면 백업 명령을 입력하세요.")
+        seen_columns: set[str] = set()
         for column in self.state["columns"]:
-            if not column.get("name"):
+            column_name = str(column.get("name", "")).strip()
+            if not column_name:
                 issues.append("Excel 컬럼명을 입력하세요. 예: OS버전")
+            elif column_name.casefold() in seen_columns:
+                issues.append(f"Excel 컬럼명이 중복되었습니다: {column_name}")
+            else:
+                seen_columns.add(column_name.casefold())
             if not column.get("command"):
-                issues.append(f"{column.get('name') or '컬럼'}: 가져올 명령 결과를 선택하세요.")
+                issues.append(
+                    f"{column.get('name') or '컬럼'}: 가져올 명령 결과를 선택하세요."
+                )
             if column.get("method") == "keyword_after" and not column.get("keyword"):
-                issues.append(f"{column.get('name')}: 찾을 단어를 입력하세요. 예: Processor board ID")
-            if column.get("method") == "regex" and not column.get("regex"):
-                issues.append(f"{column.get('name')}: 정규식을 입력하세요.")
+                issues.append(
+                    f"{column.get('name')}: 찾을 단어를 입력하세요. 예: Processor board ID"
+                )
+            if column.get("method") == "regex":
+                pattern = str(column.get("regex", "")).strip()
+                if not pattern:
+                    issues.append(f"{column.get('name')}: 정규식을 입력하세요.")
+                else:
+                    try:
+                        re.compile(pattern)
+                    except re.error as exc:
+                        issues.append(
+                            f"{column.get('name')}: 정규식 오류를 수정하세요. ({exc})"
+                        )
             if column.get("method") == "python" and not column.get("python_parser"):
-                issues.append(f"{column.get('name')}: Python 추출 함수를 선택하거나 만드세요.")
+                issues.append(
+                    f"{column.get('name')}: Python 추출 함수를 선택하거나 만드세요."
+                )
         return issues
 
-    def _human_summary(self, parser_rows: list[dict[str, Any]], issues: list[str]) -> str:
+    def _human_summary(
+        self, parser_rows: list[dict[str, Any]], issues: list[str]
+    ) -> str:
         lines = [
             f"장비: {self.state['vendor']} {self.state['model']} / {self.state['os']} {self.state['os_version']}".strip(),
             f"접속: {self.connection_combo.currentText()}",
@@ -867,8 +1141,12 @@ class InspectorProfileDialog(QDialog):
             "[Excel 컬럼]",
         ]
         for row in parser_rows:
-            method = row.get("parser_type") or ("정규식" if row.get("pattern") else "Python")
-            lines.append(f"- {row.get('output_column')} <- {row.get('command')} ({method})")
+            method = row.get("parser_type") or (
+                "정규식" if row.get("pattern") else "Python"
+            )
+            lines.append(
+                f"- {row.get('output_column')} <- {row.get('command')} ({method})"
+            )
         if issues:
             lines.extend(["", "[저장 전 확인]", *[f"- {issue}" for issue in issues]])
         return "\n".join(lines)
@@ -876,30 +1154,73 @@ class InspectorProfileDialog(QDialog):
     def _save_profile(self) -> None:
         self.refresh_preview()
         if not self.save_button.isEnabled():
-            self.tabs.setCurrentIndex(3)
+            self.tabs.setCurrentIndex(4)
             return
+        vendor = self.state["vendor"]
+        os_name = self.state["os"]
+        if self.service.custom_profile_exists(vendor, os_name):
+            answer = QMessageBox.question(
+                self,
+                "기존 프로파일 덮어쓰기",
+                f"{vendor} / {os_name} 사용자 프로파일이 이미 있습니다.\n"
+                "이 프로파일만 새 내용으로 바꿀까요?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
         try:
-            path = self.service.save_custom_rules_text(self.latest_yaml_text)
+            path = self.service.merge_custom_profile_rules_text(self.latest_yaml_text)
         except Exception as exc:
             QMessageBox.warning(self, "저장 실패", str(exc))
             return
-        QMessageBox.information(self, "프로파일 저장 완료", f"프로파일을 저장했습니다.\n{path}")
+        self._dirty = False
+        QMessageBox.information(
+            self, "프로파일 저장 완료", f"프로파일을 저장했습니다.\n{path}"
+        )
 
     def _open_python_parser_dialog(self) -> None:
         self._parser_dialog = PythonParserDialog(self.service, self)
         if self._parser_dialog.exec() and self._parser_dialog.saved_function_name:
             function_name = self._parser_dialog.saved_function_name
             self._refresh_python_parser_choices(function_name)
-            self.extract_method_combo.setCurrentIndex(self.extract_method_combo.findData("python"))
+            self.extract_method_combo.setCurrentIndex(
+                self.extract_method_combo.findData("python")
+            )
             self.python_parser_combo.setCurrentText(function_name)
             self._on_column_changed()
 
-    def _export_yaml(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(self, "YAML 내보내기", "custom_rules.yaml", "YAML Files (*.yaml *.yml)")
-        if not path:
-            return
-        Path(path).write_text(self.yaml_preview.toPlainText(), encoding="utf-8")
-        QMessageBox.information(self, "내보내기 완료", path)
+    def _export_yaml(self) -> Path | None:
+        suggested_path = timestamped_export_path(
+            self.exports_dir, "custom_rules", "yaml"
+        )
+        selected_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "YAML 내보내기",
+            str(suggested_path),
+            "YAML Files (*.yaml *.yml)",
+        )
+        if not selected_path:
+            return None
+        path = Path(selected_path)
+        if path.suffix.casefold() not in {".yaml", ".yml"}:
+            path = (
+                path.with_suffix(".yaml")
+                if path.suffix
+                else Path(f"{path}.yaml")
+            )
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(self.yaml_preview.toPlainText(), encoding="utf-8")
+        except OSError as exc:
+            QMessageBox.warning(
+                self, "내보내기 실패", f"YAML을 저장하지 못했습니다.\n{exc}"
+            )
+            return None
+        QMessageBox.information(
+            self, "내보내기 완료", f"YAML을 저장했습니다:\n{path}"
+        )
+        return path
 
     def _generate_all_profiles(self) -> None:
         try:
@@ -907,8 +1228,37 @@ class InspectorProfileDialog(QDialog):
         except Exception as exc:
             QMessageBox.warning(self, "프로파일 생성 실패", str(exc))
             return
-        QMessageBox.information(self, "프로파일 생성 완료", f"{count}개 기본 프로파일 파일을 생성했습니다.\n{self.service.vendor_profiles_dir}")
+        QMessageBox.information(
+            self,
+            "프로파일 생성 완료",
+            f"{count}개 기본 프로파일 파일을 생성했습니다.\n{self.service.vendor_profiles_dir}",
+        )
         os.startfile(str(self.service.vendor_profiles_dir))
 
     def _schedule_preview(self) -> None:
+        if self._loading_state:
+            return
+        self._dirty = True
         self.preview_timer.start()
+
+    def _request_close(self) -> None:
+        if self._confirm_discard_changes():
+            self.accept()
+
+    def _confirm_discard_changes(self) -> bool:
+        if not self._dirty:
+            return True
+        answer = QMessageBox.question(
+            self,
+            "저장하지 않은 변경 내용",
+            "저장하지 않은 변경 내용이 있습니다. 닫을까요?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes
+
+    def closeEvent(self, event) -> None:
+        if not self.isVisible() or self._confirm_discard_changes():
+            event.accept()
+            return
+        event.ignore()

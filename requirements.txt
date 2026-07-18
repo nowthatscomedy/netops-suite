@@ -6,10 +6,13 @@ openpyxl>=3.1,<4
 PyYAML>=6,<7
 Jinja2>=3.1,<4
 
-paramiko>=3.5,<4
-cryptography>=43,<47
-pyOpenSSL>=24,<26
-netmiko>=4.2,<5
+# Netmiko 4.7 still requires Paramiko <5. Paramiko 5 is the first release
+# fixing GHSA-r374-rxx8-8654. scripts/audit_dependencies.py carries a narrow,
+# expiring exception until an officially compatible Netmiko version is available.
+paramiko>=3.5,<5
+cryptography>=49,<50
+pyOpenSSL>=26.3,<27
+netmiko>=4.7,<5
 telnetlib3>=2,<5
 
 pyftpdlib>=2,<3
@@ -19,6 +22,5 @@ xlrd>=2,<3
 
 colorama>=0.4.6,<1
 rich>=14,<15
+Pygments>=2.20,<3
 InquirerPy>=0.3.4,<1
-
-pytest>=8,<9

@@ -9,12 +9,16 @@ from app.assistant.models import ToolCallRequest
 
 ACTION_TOOL_MAP = {
     "ping": "net.ping",
+    "ping_batch": "net.ping.batch",
     "external_ping": "net.external_ping",
     "tcp_check": "net.tcp_check",
+    "tcp_batch": "net.tcp.batch",
     "subnet_calculate": "net.subnet.calculate",
     "dns_lookup": "net.dns.lookup",
     "dns_flush_cache": "net.dns.flush_cache",
     "public_ip": "net.public_ip",
+    "tracert": "tracert",
+    "pathping": "pathping",
     "ipconfig": "net.ipconfig.read",
     "route_print": "net.route.print",
     "arp_table": "net.arp.table",
@@ -29,21 +33,52 @@ ACTION_TOOL_MAP = {
 }
 
 
-def tool_call_from_netops_action(action: Any, *, user_intent: str = "", session_id: str = "") -> ToolCallRequest:
+def tool_call_from_netops_action(
+    action: Any, *, user_intent: str = "", session_id: str = ""
+) -> ToolCallRequest:
     tool_name = ACTION_TOOL_MAP.get(str(getattr(action, "kind", "")))
     if not tool_name:
-        raise ValueError(f"지원하지 않는 NetOps 어시스턴트 작업입니다: {getattr(action, 'kind', '')}")
+        raise ValueError(
+            f"지원하지 않는 NetOps 어시스턴트 작업입니다: {getattr(action, 'kind', '')}"
+        )
 
     args: dict[str, Any] = {}
     kind = getattr(action, "kind", "")
+    targets = tuple(getattr(action, "targets", ()) or ())
+    endpoints = tuple(getattr(action, "endpoints", ()) or ())
+    if len(endpoints) > 1 or (
+        len(targets) > 1
+        and kind
+        in {
+            "dns_lookup",
+            "tracert",
+            "pathping",
+            "subnet_calculate",
+            "oui_lookup",
+        }
+    ):
+        raise ValueError("다중 대상 작업은 대상별 호출로 확장한 뒤 변환해야 합니다.")
     if kind == "ping":
         args["target"] = getattr(action, "target", "")
+    if kind == "ping_batch":
+        args["targets"] = list(targets)
     if kind == "external_ping":
-        targets = tuple(getattr(action, "targets", ()) or ())
         if targets:
             args["targets"] = list(targets)
     if kind == "tcp_check":
-        args.update({"target": getattr(action, "target", ""), "port": int(getattr(action, "port", 0) or 0)})
+        args.update(
+            {
+                "target": getattr(action, "target", ""),
+                "port": int(getattr(action, "port", 0) or 0),
+            }
+        )
+    if kind == "tcp_batch":
+        args.update(
+            {
+                "targets": list(targets),
+                "ports": list(getattr(action, "ports", ()) or ()),
+            }
+        )
     if kind == "dns_lookup":
         args.update(
             {
@@ -54,6 +89,13 @@ def tool_call_from_netops_action(action: Any, *, user_intent: str = "", session_
         )
     if kind == "subnet_calculate":
         args["cidr"] = getattr(action, "target", "")
+    if kind in {"tracert", "pathping"}:
+        args.update(
+            {
+                "target": getattr(action, "target", ""),
+                "resolve_names": bool(getattr(action, "resolve_names", True)),
+            }
+        )
     if kind == "set_dns":
         args.update(
             {
@@ -82,13 +124,30 @@ def tool_call_from_netops_action(action: Any, *, user_intent: str = "", session_
                 "interval_seconds": int(getattr(action, "interval_seconds", 5) or 5),
             }
         )
+    if kind in {"ping", "ping_batch", "external_ping", "tcp_check", "tcp_batch"}:
+        count = int(getattr(action, "count", 0) or 0)
+        timeout_ms = int(getattr(action, "timeout_ms", 0) or 0)
+        if count > 0:
+            args["count"] = count
+        if timeout_ms > 0:
+            args["timeout_ms"] = timeout_ms
+        if bool(getattr(action, "continuous", False)):
+            args["continuous"] = True
 
-    identity = json.dumps({"tool": tool_name, "args": args, "intent": user_intent}, ensure_ascii=False, sort_keys=True)
+    identity = json.dumps(
+        {"tool": tool_name, "args": args, "intent": user_intent},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
     call_id = f"{tool_name}:{hashlib.sha256(identity.encode('utf-8')).hexdigest()[:16]}"
     return ToolCallRequest(
         tool_name=tool_name,
         arguments=args,
         call_id=call_id,
         actor="netops_assistant",
-        metadata={"source": "netops_assistant", "session_id": session_id, "user_intent": user_intent},
+        metadata={
+            "source": "netops_assistant",
+            "session_id": session_id,
+            "user_intent": user_intent,
+        },
     )

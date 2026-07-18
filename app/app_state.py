@@ -35,6 +35,14 @@ from app.utils.file_utils import (
     AppPaths,
     build_app_paths,
     default_app_config,
+    default_effective_path_settings,
+    default_ftp_profiles,
+    default_ftp_runtime,
+    default_ip_profiles,
+    default_scp_profiles,
+    default_scp_runtime,
+    default_tftp_runtime,
+    default_vendor_presets,
     ensure_runtime_files,
     load_json,
     migrate_config_directory,
@@ -42,6 +50,14 @@ from app.utils.file_utils import (
     resolve_app_paths_with_settings,
     save_json,
     validate_path_settings,
+)
+
+RETIRED_DIAGNOSTIC_DEFAULT_KEYS = frozenset(
+    {
+        "default_ping_count",
+        "default_ping_timeout_ms",
+        "default_tcp_timeout_ms",
+    }
 )
 
 
@@ -67,6 +83,7 @@ class AppState(QObject):
         self.logger: logging.Logger = configure_logging(self.paths.app_log, self._emit_log_message)
         self.thread_pool = QThreadPool.globalInstance()
         self._is_admin = False
+        self.settings_reset_pending_restart = False
         report("권한 상태 확인", "관리자 권한 실행 여부를 확인합니다.")
         self.is_admin = is_running_as_admin()
 
@@ -124,11 +141,24 @@ class AppState(QObject):
         base_config = default_app_config()
         should_save_app_config = False
         if isinstance(loaded_config, dict):
-            base_config.update({key: value for key, value in loaded_config.items() if key not in {"update", "ai_chat"}})
+            base_config.update(
+                {
+                    key: value
+                    for key, value in loaded_config.items()
+                    if key
+                    not in {
+                        "update",
+                        "ai_chat",
+                        *RETIRED_DIAGNOSTIC_DEFAULT_KEYS,
+                    }
+                }
+            )
             normalized_update = normalize_update_config(loaded_config.get("update", {}))
             base_config["update"] = normalized_update
             normalized_ai_chat = normalize_ai_chat_config(loaded_config.get("ai_chat", {}))
             base_config["ai_chat"] = normalized_ai_chat
+            if RETIRED_DIAGNOSTIC_DEFAULT_KEYS.intersection(loaded_config):
+                should_save_app_config = True
 
             loaded_update = loaded_config.get("update", {})
             if not isinstance(loaded_update, dict) or loaded_update != normalized_update:
@@ -165,13 +195,17 @@ class AppState(QObject):
         self.config_reloaded.emit()
         if hasattr(self, "logger"):
             if should_save_app_config:
-                self.logger.info("Normalized app_config.json update settings.")
+                self.logger.info("Normalized app_config.json.")
             if migrated_legacy:
                 self.logger.info("Migrated legacy vendor presets into ip_profiles.json")
             self.logger.info("Configuration reloaded from disk.")
 
     def save_app_config(self, config: dict) -> None:
-        normalized = dict(config)
+        normalized = {
+            key: value
+            for key, value in config.items()
+            if key not in RETIRED_DIAGNOSTIC_DEFAULT_KEYS
+        }
         normalized["update"] = normalize_update_config(config.get("update", {}))
         normalized["ai_chat"] = normalize_ai_chat_config(config.get("ai_chat", {}))
         self.app_config = normalized
@@ -235,6 +269,91 @@ class AppState(QObject):
         )
         self.paths_changed.emit()
         return result
+
+    def reset_all_settings(self) -> dict[str, object]:
+        """Reset user configuration while preserving logs and generated results."""
+        current_paths = self.paths
+        reset_path_settings = default_effective_path_settings(current_paths)
+        target_paths = resolve_app_paths_with_settings(
+            current_paths,
+            reset_path_settings,
+        )
+        ensure_runtime_files(target_paths)
+
+        defaults_by_attribute = {
+            "app_config": default_app_config(),
+            "ip_profiles": default_ip_profiles(),
+            "ftp_profiles": default_ftp_profiles(),
+            "ftp_runtime": default_ftp_runtime(),
+            "scp_profiles": default_scp_profiles(),
+            "scp_runtime": default_scp_runtime(),
+            "tftp_runtime": default_tftp_runtime(),
+            "vendor_presets": default_vendor_presets(),
+        }
+        current_config_dir = Path(current_paths.config_dir).resolve(strict=False)
+        target_config_dir = Path(target_paths.config_dir).resolve(strict=False)
+        reset_files: list[Path] = []
+        for paths in (
+            current_paths,
+            *(() if current_config_dir == target_config_dir else (target_paths,)),
+        ):
+            for attribute, default_value in defaults_by_attribute.items():
+                file_path = Path(getattr(paths, attribute))
+                save_json(file_path, default_value)
+                reset_files.append(file_path)
+
+        inspector_dir = Path(current_paths.data_root) / "inspector"
+        custom_setting_files = [
+            inspector_dir / "custom_rules.yaml",
+            inspector_dir / "custom_rules.json",
+            *sorted((inspector_dir / "custom_parsers").glob("*.py")),
+        ]
+        removed_custom_files: list[Path] = []
+        for file_path in custom_setting_files:
+            if not file_path.is_file():
+                continue
+            file_path.unlink()
+            removed_custom_files.append(file_path)
+
+        if current_paths.path_settings is None:
+            raise RuntimeError("Path settings file is not configured.")
+        save_json(current_paths.path_settings, reset_path_settings)
+
+        for attribute in (
+            "config_dir",
+            "app_config",
+            "ip_profiles",
+            "ftp_profiles",
+            "ftp_runtime",
+            "scp_profiles",
+            "scp_runtime",
+            "tftp_runtime",
+            "vendor_presets",
+            "public_iperf_cache",
+            "ai_model_catalog_cache",
+            "oui_cache",
+            "ftp_keys_dir",
+        ):
+            setattr(current_paths, attribute, getattr(target_paths, attribute))
+        current_paths.exports_dir = target_paths.exports_dir
+
+        # MainWindow uses this flag to avoid writing the pre-reset UI/runtime state
+        # back over the defaults while the application is closing for restart.
+        self.settings_reset_pending_restart = True
+        self.reload_config_files()
+        self.paths_changed.emit()
+        self.logger.warning(
+            "All user settings reset to defaults (files=%s, custom_inspector_files=%s, "
+            "logs_and_exports_preserved=true, restart_required=true).",
+            len(reset_files),
+            len(removed_custom_files),
+        )
+        return {
+            "reset_files": tuple(reset_files),
+            "removed_custom_files": tuple(removed_custom_files),
+            "target_paths": target_paths,
+            "restart_required": True,
+        }
 
     def get_ui_state(self) -> dict:
         ui_state = self.app_config.get("ui_state", {})

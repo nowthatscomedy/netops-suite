@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -14,7 +13,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
-    QPushButton,
     QPlainTextEdit,
     QSizePolicy,
     QSplitter,
@@ -27,7 +25,7 @@ from app.models.result_models import OperationResult
 from app.models.scp_models import ScpProfile, ScpServerRuntime, ScpTransferResult
 from app.ui.common import confirm_risky_action, make_empty_state, make_table_item, set_table_minimums
 from app.ui.dialogs.scp_profile_dialog import ScpProfileDialog
-from app.utils.file_utils import open_in_explorer, timestamped_export_path
+from app.utils.file_utils import open_in_explorer
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
@@ -112,6 +110,10 @@ class ScpDiagnosticsMixin:
         connection_layout.addLayout(form)
 
         self.scp_client_remote_sources_edit = QPlainTextEdit()
+        self.scp_client_remote_sources_edit.setTabChangesFocus(True)
+        self.scp_client_remote_sources_edit.setAccessibleName(
+            "SCP 다운로드 원격 경로 목록"
+        )
         self.scp_client_remote_sources_edit.setPlaceholderText(
             "다운로드할 원격 경로를 한 줄에 하나씩 입력하세요.\n예:\n./config.cfg\n/var/log/messages"
         )
@@ -569,28 +571,27 @@ class ScpDiagnosticsMixin:
         self._update_scp_client_activity_visibility()
 
     def _export_scp_transfer_results(self) -> None:
-        if self.scp_transfer_table.rowCount() == 0:
-            QMessageBox.warning(self, "내보내기 불가", "저장할 SCP 전송 결과가 없습니다.")
-            return
-        path = timestamped_export_path(self.state.paths.exports_dir, "scp_transfers", "csv")
-        with path.open("w", encoding="utf-8-sig", newline="") as handle:
-            writer = csv.writer(handle)
-            writer.writerow(
-                [self.scp_transfer_table.horizontalHeaderItem(column).text() for column in range(self.scp_transfer_table.columnCount())]
-            )
-            for row in range(self.scp_transfer_table.rowCount()):
-                writer.writerow(
-                    [self._cell(self.scp_transfer_table, row, column) for column in range(self.scp_transfer_table.columnCount())]
-                )
-        QMessageBox.information(self, "CSV 저장 완료", f"SCP 전송 결과를 저장했습니다.\n{path}")
+        self._export_table_to_csv(
+            self.scp_transfer_table,
+            "scp_transfers",
+            empty_message="저장할 SCP 전송 결과가 없습니다.",
+            success_message="SCP 전송 결과를 저장했습니다.",
+        )
 
     def _export_scp_client_logs(self) -> None:
         if not self._scp_client_logs:
             QMessageBox.warning(self, "내보내기 불가", "저장할 SCP 클라이언트 로그가 없습니다.")
             return
-        path = timestamped_export_path(self.state.paths.exports_dir, "scp_client_log", "txt")
-        path.write_text("\n".join(self._scp_client_logs) + "\n", encoding="utf-8")
-        QMessageBox.information(self, "TXT 저장 완료", f"SCP 클라이언트 로그를 저장했습니다.\n{path}")
+        self._export_text_to_file(
+            "\n".join(self._scp_client_logs) + "\n",
+            prefix="scp_client_log",
+            extension="txt",
+            dialog_title="SCP 클라이언트 로그 저장",
+            file_filter="텍스트 파일 (*.txt)",
+            success_title="TXT 저장 완료",
+            success_message="SCP 클라이언트 로그를 저장했습니다.\n{path}",
+            failure_title="TXT 저장 실패",
+        )
 
     def _start_scp_server(self) -> None:
         if self._scp_server_running:
@@ -682,9 +683,16 @@ class ScpDiagnosticsMixin:
         if not self._scp_server_logs:
             QMessageBox.warning(self, "내보내기 불가", "저장할 SCP 서버 로그가 없습니다.")
             return
-        path = timestamped_export_path(self.state.paths.exports_dir, "scp_server_log", "txt")
-        path.write_text("\n".join(self._scp_server_logs) + "\n", encoding="utf-8")
-        QMessageBox.information(self, "TXT 저장 완료", f"SCP 서버 로그를 저장했습니다.\n{path}")
+        self._export_text_to_file(
+            "\n".join(self._scp_server_logs) + "\n",
+            prefix="scp_server_log",
+            extension="txt",
+            dialog_title="SCP 서버 로그 저장",
+            file_filter="텍스트 파일 (*.txt)",
+            success_title="TXT 저장 완료",
+            success_message="SCP 서버 로그를 저장했습니다.\n{path}",
+            failure_title="TXT 저장 실패",
+        )
 
     def _set_scp_client_busy(self, busy: bool) -> None:
         self._scp_client_busy = busy

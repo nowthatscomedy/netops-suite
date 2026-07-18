@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPlainTextEdit,
-    QPushButton,
     QScrollArea,
     QSizePolicy,
     QTableWidget,
@@ -23,10 +22,15 @@ from PySide6.QtWidgets import (
 
 from app.models.result_models import TcpCheckResult
 from app.ui.common import make_empty_state, make_inline_status, set_inline_status
+from app.utils.parser import parse_port_list, parse_target_entries
 from app.utils.validators import ValidationError
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
+
+DEFAULT_TCP_COUNT = 4
+DEFAULT_TCP_TIMEOUT_MS = 1000
+
 
 class TcpDiagnosticsMixin:
     def _build_tcp_tab(self) -> QWidget:
@@ -55,6 +59,8 @@ class TcpDiagnosticsMixin:
         form.setHorizontalSpacing(8)
         form.setVerticalSpacing(6)
         self.tcp_targets_edit = QPlainTextEdit()
+        self.tcp_targets_edit.setTabChangesFocus(True)
+        self.tcp_targets_edit.setAccessibleName("TCPing 대상 목록")
         target_height = self.tcp_targets_edit.fontMetrics().lineSpacing() * 3 + 18
         self.tcp_targets_edit.setMinimumHeight(target_height)
         self.tcp_targets_edit.setMaximumHeight(target_height + self.tcp_targets_edit.fontMetrics().lineSpacing())
@@ -62,17 +68,19 @@ class TcpDiagnosticsMixin:
         self.tcp_targets_edit.setPlaceholderText("DNS,8.8.8.8\nGW,192.168.0.1\n192.168.0.254")
         self.tcp_targets_edit.setToolTip(
             "한 줄에 하나씩 입력합니다. 형식: 이름,IP 또는 IP. "
-            "이름은 결과표의 이름 열에 표시됩니다."
+            "이름은 결과표의 이름 열에 표시되며 입력한 모든 대상을 실행합니다."
         )
         self.tcp_targets_help_label = QLabel(
             "한 줄에 하나씩 입력합니다. 형식: 이름,IP 또는 IP. "
-            "이름은 결과표의 이름 열에 표시되고, 생략하면 대상 주소가 이름으로 사용됩니다."
+            "이름은 결과표의 이름 열에 표시되고, 생략하면 대상 주소가 이름으로 사용됩니다. "
+            "입력한 모든 대상과 포트 조합을 실행합니다."
         )
         self.tcp_targets_help_label.setObjectName("tcpTargetsHelpLabel")
         self.tcp_targets_help_label.setWordWrap(True)
         self.tcp_targets_help_label.setStyleSheet("color:#667085; padding:2px 2px 0 2px;")
         self.tcp_ports_edit = QLineEdit()
         self.tcp_ports_edit.setPlaceholderText("예: 22,80,443 또는 8000-8010")
+        self.tcp_ports_edit.setAccessibleName("TCPing 포트 목록")
         self.tcp_ports_help_label = QLabel(
             "쉼표/공백/세미콜론으로 여러 포트를 입력하거나 범위를 입력합니다. "
             "예: 22,80,443 또는 8000-8010. 대상 × 포트 조합별로 확인합니다."
@@ -81,14 +89,13 @@ class TcpDiagnosticsMixin:
         self.tcp_ports_help_label.setWordWrap(True)
         self.tcp_ports_help_label.setStyleSheet("color:#667085; padding:2px 2px 0 2px;")
         self.tcp_count_edit = QLineEdit()
-        self.tcp_count_edit.setPlaceholderText("4")
+        self.tcp_count_edit.setAccessibleName("TCPing 횟수")
+        self.tcp_count_edit.setPlaceholderText(str(DEFAULT_TCP_COUNT))
         self.tcp_count_edit.setMaximumWidth(110)
         self.tcp_timeout_edit = QLineEdit()
-        self.tcp_timeout_edit.setPlaceholderText(str(int(self.state.app_config.get("default_tcp_timeout_ms", 1000))))
+        self.tcp_timeout_edit.setAccessibleName("TCPing 제한 시간 밀리초")
+        self.tcp_timeout_edit.setPlaceholderText(str(DEFAULT_TCP_TIMEOUT_MS))
         self.tcp_timeout_edit.setMaximumWidth(110)
-        self.tcp_workers_edit = QLineEdit()
-        self.tcp_workers_edit.setPlaceholderText(str(int(self.state.app_config.get("default_tcp_workers", 32))))
-        self.tcp_workers_edit.setMaximumWidth(110)
         self.tcp_continuous_check = QCheckBox("계속 실행 (-t)")
         self.tcp_continuous_hint = make_inline_status("warning", "")
 
@@ -98,8 +105,6 @@ class TcpDiagnosticsMixin:
         options_row.addWidget(self.tcp_count_edit)
         options_row.addWidget(QLabel("Timeout (ms)"))
         options_row.addWidget(self.tcp_timeout_edit)
-        options_row.addWidget(QLabel("동시 실행 수"))
-        options_row.addWidget(self.tcp_workers_edit)
         options_row.addStretch(1)
 
         button_row = QHBoxLayout()
@@ -125,12 +130,16 @@ class TcpDiagnosticsMixin:
         form.addWidget(self.tcp_continuous_hint, 6, 1)
         layout.addWidget(group)
 
+        self.tcp_status_label = make_inline_status("info", "")
+        self.tcp_status_label.setAccessibleName("TCPing 작업 상태")
+        layout.addWidget(self.tcp_status_label)
+
         self.tcp_table = QTableWidget(0, 12)
         self.tcp_table.setHorizontalHeaderLabels(
             ["이름", "대상", "포트", "상태", "시도", "성공", "실패", "손실률", "최소(ms)", "평균(ms)", "최대(ms)", "최근 시각"]
         )
         self._setup_table(self.tcp_table)
-        self._set_stretch_columns(self.tcp_table, 1)
+        self._set_stretch_columns(self.tcp_table, 0, minimum_section_size=62)
         self.tcp_table.setSortingEnabled(True)
         self.tcp_empty_label = make_empty_state("대상과 포트를 입력하고 실행을 누르면 결과가 표시됩니다.")
 
@@ -160,18 +169,23 @@ class TcpDiagnosticsMixin:
 
     def start_tcp_check(self) -> None:
         try:
-            count = self._positive_int_or_default(self.tcp_count_edit, "TCP 횟수", 4)
+            targets = parse_target_entries(self.tcp_targets_edit.toPlainText())
+            if not targets:
+                raise ValidationError(
+                    "최소 1개 이상의 TCPing 대상을 입력해 주세요."
+                )
+            ports = parse_port_list(self.tcp_ports_edit.text())
+            count = self._positive_int_or_default(
+                self.tcp_count_edit,
+                "TCP 횟수",
+                DEFAULT_TCP_COUNT,
+            )
             timeout_ms = self._positive_int_or_default(
                 self.tcp_timeout_edit,
                 "TCP Timeout",
-                int(self.state.app_config.get("default_tcp_timeout_ms", 1000)),
+                DEFAULT_TCP_TIMEOUT_MS,
             )
-            workers = self._positive_int_or_default(
-                self.tcp_workers_edit,
-                "동시 실행 수",
-                int(self.state.app_config.get("default_tcp_workers", 32)),
-            )
-        except ValidationError as exc:
+        except (ValidationError, ValueError) as exc:
             QMessageBox.warning(self, "입력 확인", str(exc))
             return
 
@@ -181,8 +195,13 @@ class TcpDiagnosticsMixin:
         self.tcp_table.setRowCount(0)
         self.tcp_empty_label.setVisible(False)
         self.tcp_log.clear()
+        self.tcp_empty_label.setText(
+            "대상과 포트를 입력하고 실행을 누르면 결과가 표시됩니다."
+        )
         self.tcp_cancel_event = Event()
+        self._tcp_total_endpoints = len(targets) * len(ports)
         self._set_tcp_running(True)
+        self._update_tcp_status("info", completed=0)
 
         self._start_worker(
             self.state.tcp_check_service.run_multi_check,
@@ -190,21 +209,21 @@ class TcpDiagnosticsMixin:
             self.tcp_ports_edit.text(),
             count,
             timeout_ms,
-            workers,
-            self.tcp_continuous_check.isChecked(),
+            continuous=self.tcp_continuous_check.isChecked(),
             cancel_event=self.tcp_cancel_event,
             on_progress=self._handle_tcp_progress,
             on_result=self._finish_tcp,
             on_finished=lambda: self._set_tcp_running(False),
-            error_title="TCPing 실행 실패",
+            on_error=self._handle_tcp_error,
         )
 
     def _handle_tcp_progress(self, event: dict) -> None:
         result: TcpCheckResult = event["result"]
-        line = event["line"]
+        line = str(event.get("line", "") or "")
         key = (result.name, result.target, result.port)
-        self.tcp_log.appendPlainText(line)
-        self.tcp_log_lines.setdefault(key, []).append(line)
+        if line:
+            self.tcp_log.appendPlainText(line)
+            self.tcp_log_lines.setdefault(key, []).append(line)
 
         sort_state = self._capture_sort_state(self.tcp_table)
         if sort_state[0]:
@@ -247,6 +266,7 @@ class TcpDiagnosticsMixin:
         ]
         for column, value in enumerate(values):
             item = self._sortable_table_item(value, sort_values[column])
+            item.setToolTip(value)
             if column == 3:
                 if result.status == "열림":
                     item.setForeground(QColor("#1b5e20"))
@@ -258,18 +278,71 @@ class TcpDiagnosticsMixin:
         self.tcp_row_map[key] = row
         self._restore_sort_state(self.tcp_table, sort_state)
         self._rebuild_tcp_row_map()
+        self._update_tcp_status("info")
 
     def _finish_tcp(self, results: list[TcpCheckResult]) -> None:
         self.tcp_results = results
+        for result in results:
+            self._handle_tcp_progress({"result": result})
         self.tcp_empty_label.setVisible(not bool(results))
+        if self.tcp_cancel_event is not None and self.tcp_cancel_event.is_set():
+            self._update_tcp_status("warning", final_prefix="중지됨")
+        else:
+            self._update_tcp_status("success", final_prefix="완료")
 
     def _set_tcp_running(self, running: bool) -> None:
         self.tcp_start_button.setEnabled(not running)
         self.tcp_cancel_button.setEnabled(running)
+        self.tcp_targets_edit.setEnabled(not running)
+        self.tcp_ports_edit.setEnabled(not running)
+        self.tcp_count_edit.setEnabled(
+            not running and not self.tcp_continuous_check.isChecked()
+        )
+        self.tcp_timeout_edit.setEnabled(not running)
+        self.tcp_continuous_check.setEnabled(not running)
 
     def cancel_tcp_check(self) -> None:
         if self.tcp_cancel_event:
             self.tcp_cancel_event.set()
+            self.tcp_cancel_button.setEnabled(False)
+            self._update_tcp_status("warning", final_prefix="중지 요청")
+
+    def _handle_tcp_error(self, message: str) -> None:
+        detail = str(message).strip() or "TCPing 실행 중 오류가 발생했습니다."
+        self.tcp_empty_label.setText(
+            "TCPing을 완료하지 못했습니다. 대상, 포트와 네트워크 상태를 확인한 뒤 다시 시도해 주세요."
+        )
+        self.tcp_empty_label.show()
+        set_inline_status(
+            self.tcp_status_label,
+            "error",
+            f"TCPing 실행 실패: {detail}",
+        )
+
+    def _update_tcp_status(
+        self,
+        kind: str,
+        *,
+        completed: int | None = None,
+        final_prefix: str = "실행 중",
+    ) -> None:
+        total = int(getattr(self, "_tcp_total_endpoints", 0) or 0)
+        completed_count = (
+            len(self.tcp_row_map) if completed is None else int(completed)
+        )
+        open_count = 0
+        for row in range(self.tcp_table.rowCount()):
+            if self._cell(self.tcp_table, row, 3) == "열림":
+                open_count += 1
+        problem_count = max(completed_count - open_count, 0)
+        set_inline_status(
+            self.tcp_status_label,
+            kind,
+            (
+                f"{final_prefix} · 결과 {completed_count}/{total}"
+                f" · 열림 {open_count} · 확인 필요 {problem_count}"
+            ),
+        )
 
     def _find_tcp_row(self, key: tuple[str, str, int]) -> int | None:
         mapped_row = self.tcp_row_map.get(key)

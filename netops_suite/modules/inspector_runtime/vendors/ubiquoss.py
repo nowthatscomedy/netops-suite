@@ -411,7 +411,7 @@ class UbiquossE4020SSHHandler(CustomDeviceHandler):
         if self.session_log_file:
             with open(self.session_log_file, 'a', encoding='utf-8') as log:
                 log.write(f"\n{'='*50}\n")
-                log.write(f"세션 완료 (Ubiquoss SSH)\n")
+                log.write("세션 완료 (Ubiquoss SSH)\n")
                 log.write(f"{'='*50}\n\n")
 
 @register_handler('ubiquoss', 'e4020', 'telnet')
@@ -493,5 +493,5 @@ class UbiquossE4020Handler(CustomDeviceHandler):
             if self.session_log_file:
                 with open(self.session_log_file, 'a', encoding='utf-8') as log:
                     log.write(f"\n{'='*50}\n")
-                    log.write(f"세션 완료\n")
+                    log.write("세션 완료\n")
                     log.write(f"{'='*50}\n\n") 

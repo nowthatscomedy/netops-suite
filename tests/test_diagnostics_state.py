@@ -4,7 +4,16 @@ from types import SimpleNamespace
 
 import pytest
 from PySide6.QtCore import QRect, Qt
-from PySide6.QtWidgets import QGroupBox, QMessageBox, QSplitter, QTableWidget, QTabWidget
+from PySide6.QtWidgets import (
+    QGroupBox,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QSplitter,
+    QHeaderView,
+    QTableWidget,
+    QTabWidget,
+)
 
 from app.models.ftp_models import FtpProfile
 from app.models.network_models import NetworkAdapterInfo, OuiRecord, PublicIperfServer
@@ -185,11 +194,9 @@ def build_fake_state(tmp_path):
     state = SimpleNamespace(
         thread_pool=SyncThreadPool(),
         app_config={
-            "default_ping_count": 4,
-            "default_ping_timeout_ms": 4000,
-            "default_ping_workers": 8,
-            "default_tcp_timeout_ms": 1000,
-            "default_tcp_workers": 32,
+            "default_ping_count": 99,
+            "default_ping_timeout_ms": 99999,
+            "default_tcp_timeout_ms": 99999,
         },
         paths=SimpleNamespace(exports_dir=tmp_path, root=tmp_path),
         network_interface_service=FakeNetworkInterfaceService(),
@@ -316,6 +323,20 @@ def build_fake_state(tmp_path):
     state.save_scp_profiles = save_scp_profiles
     state.save_tftp_runtime = save_tftp_runtime
     return state
+
+
+def test_iperf_program_management_routes_to_settings(qapp, tmp_path):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    requested: list[str] = []
+    tab.tool_settings_requested.connect(requested.append)
+    try:
+        tab.iperf_settings_button.click()
+
+        assert requested == ["iperf3"]
+        assert tab.iperf_settings_button.text() == "설정에서 관리"
+        assert not hasattr(tab, "iperf_manage_button")
+    finally:
+        tab.close()
 
 
 def _show_compact_file_transfer_tab(tab: DiagnosticsTab, qapp) -> None:
@@ -450,6 +471,11 @@ def test_diagnostics_state_save_and_restore_shape(qapp, tmp_path):
 
     saved = tab.save_ui_state()
 
+    assert not hasattr(tab, "ping_workers_edit")
+    assert not hasattr(tab, "tcp_workers_edit")
+    assert "workers" not in saved["ping"]
+    assert "workers" not in saved["tcp"]
+
     assert set(saved) == {"current_tool_key", "tools", "ping", "tcp", "dns", "trace", "ftp", "iperf"}
     assert saved["current_tool_key"] == "ping"
     assert saved["tools"]["version"] == 2
@@ -526,6 +552,8 @@ def test_diagnostics_state_save_and_restore_shape(qapp, tmp_path):
     restored_saved = tab.save_ui_state()
     assert restored_saved["tools"]["version"] == 2
     assert restored_saved["tools"]["oui_targets"] == "Legacy,AA:BB:CC:DD:EE:FF"
+    assert "workers" not in restored_saved["ping"]
+    assert "workers" not in restored_saved["tcp"]
 
 
 def test_diagnostics_sidebar_labels_navigation_and_legacy_tools_migration(qapp, tmp_path):
@@ -569,6 +597,10 @@ def test_ping_tcp_target_inputs_are_readable_and_explain_multi_target_format(qap
 
     tab.select_diagnostic_tab("ping")
     qapp.processEvents()
+    assert not hasattr(tab, "ping_workers_edit")
+    assert "동시 실행 수" not in {
+        label.text() for label in tab.ping_input_group.findChildren(QLabel)
+    }
     _assert_plain_text_edit_min_visible_lines(tab.ping_targets_edit, lines=4)
     _assert_vertical_widgets_do_not_overlap(tab.ping_targets_edit, tab.ping_targets_help_label)
     _assert_vertical_widgets_do_not_overlap(tab.ping_targets_help_label, tab.ping_count_edit)
@@ -579,6 +611,10 @@ def test_ping_tcp_target_inputs_are_readable_and_explain_multi_target_format(qap
 
     tab.select_diagnostic_tab("tcp")
     qapp.processEvents()
+    assert not hasattr(tab, "tcp_workers_edit")
+    assert "동시 실행 수" not in {
+        label.text() for label in tab.tcp_input_group.findChildren(QLabel)
+    }
     _assert_plain_text_edit_min_visible_lines(tab.tcp_targets_edit, lines=3)
     _assert_vertical_widgets_do_not_overlap(tab.tcp_targets_edit, tab.tcp_targets_help_label)
     _assert_vertical_widgets_do_not_overlap(tab.tcp_targets_help_label, tab.tcp_ports_edit)
@@ -615,6 +651,45 @@ def test_ping_tcp_target_inputs_are_readable_and_explain_multi_target_format(qap
     assert restored.ping_targets_edit.toPlainText() == ping_targets
     assert restored.tcp_targets_edit.toPlainText() == tcp_targets
     assert restored.tcp_ports_edit.text() == "22,80,443 8000-8010"
+
+
+def test_ping_tcp_start_forwards_all_inputs_without_worker_limit(qapp, tmp_path, monkeypatch):
+    state = build_fake_state(tmp_path)
+    state.ping_service = SimpleNamespace(run_multi_ping=lambda *_args, **_kwargs: [])
+    state.tcp_check_service = SimpleNamespace(run_multi_check=lambda *_args, **_kwargs: [])
+    tab = DiagnosticsTab(state)
+    started: list[tuple[object, tuple, dict]] = []
+    monkeypatch.setattr(
+        tab,
+        "_start_worker",
+        lambda fn, *args, **kwargs: started.append((fn, args, kwargs)),
+    )
+
+    try:
+        ping_targets = "GW,192.168.0.1\nDNS,8.8.8.8\n192.168.0.254"
+        tab.ping_targets_edit.setPlainText(ping_targets)
+        tab.ping_continuous_check.setChecked(True)
+        tab.start_ping()
+
+        _ping_fn, ping_args, ping_kwargs = started[-1]
+        assert ping_args == (ping_targets, 4, 4000)
+        assert ping_kwargs["continuous"] is True
+        assert "max_workers" not in ping_kwargs
+        tab._set_ping_running(False)
+
+        tcp_targets = "API,10.0.0.10\nDB,10.0.0.20"
+        tab.tcp_targets_edit.setPlainText(tcp_targets)
+        tab.tcp_ports_edit.setText("22,80,443")
+        tab.tcp_continuous_check.setChecked(True)
+        tab.start_tcp_check()
+
+        _tcp_fn, tcp_args, tcp_kwargs = started[-1]
+        assert tcp_args == (tcp_targets, "22,80,443", 4, 1000)
+        assert tcp_kwargs["continuous"] is True
+        assert "max_workers" not in tcp_kwargs
+        tab._set_tcp_running(False)
+    finally:
+        tab.close()
 
 
 @pytest.mark.parametrize(("width", "height"), [(1280, 720), (1120, 720), (900, 640)])
@@ -840,6 +915,25 @@ def test_diagnostics_result_tables_keep_readable_height_and_table_first_splitter
     _assert_splitter_ratio(tab.oui_result_splitter)
 
 
+def test_ping_and_tcp_target_columns_keep_content_width_on_compact_layout(qapp, tmp_path):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    tab.resize(1024, 680)
+    tab.show()
+    qapp.processEvents()
+
+    for table in (tab.ping_table, tab.tcp_table):
+        header = table.horizontalHeader()
+        assert header.minimumSectionSize() >= 62
+        assert (
+            header.sectionResizeMode(0)
+            == QHeaderView.ResizeMode.Stretch
+        )
+        assert (
+            header.sectionResizeMode(1)
+            == QHeaderView.ResizeMode.ResizeToContents
+        )
+
+
 def test_quick_tools_remove_symptom_shortcuts_and_subnet_results_are_progressive(qapp, tmp_path):
     tab = DiagnosticsTab(build_fake_state(tmp_path))
     tab.select_diagnostic_tab("subnet")
@@ -897,8 +991,24 @@ def test_quick_diagnostics_exposes_all_connection_tools(qapp, tmp_path):
         "route",
         "arp -a",
         "DNS 캐시",
-        "파일전송(FTP/SCP)",
+        "파일전송",
     ]
+
+
+def test_quick_diagnostic_buttons_have_uniform_size(qapp, tmp_path):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    tab.resize(1600, 800)
+    tab.show()
+    qapp.processEvents()
+
+    try:
+        button_sizes = {(button.width(), button.height()) for button in tab.quick_action_buttons}
+
+        assert len(button_sizes) == 1
+        assert tab.quick_subnet_button.size() == tab.quick_ping_button.size()
+        assert tab.quick_transfer_button.size() == tab.quick_ping_button.size()
+    finally:
+        tab.close()
 
 
 def test_diagnostics_tool_list_is_hidden_after_quick_launcher_expansion(qapp, tmp_path):
@@ -906,6 +1016,16 @@ def test_diagnostics_tool_list_is_hidden_after_quick_launcher_expansion(qapp, tm
 
     assert tab.diagnostic_tool_list.isHidden()
     assert tab.diagnostic_stack.parentWidget() is tab
+
+
+def test_command_output_page_does_not_duplicate_quick_diagnostic_buttons(qapp, tmp_path):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+
+    tab.select_diagnostic_tab("commands")
+    command_page = tab.diagnostic_stack.currentWidget()
+
+    assert command_page.findChildren(QPushButton) == []
+    assert tab.tools_output.parentWidget() is command_page
 
 
 def test_quick_diagnostics_tcp_uses_target_and_port(qapp, tmp_path, monkeypatch):

@@ -556,7 +556,6 @@ class NetworkInspector:
         if self._is_cancelled():
             return device, {"error": "작업이 취소되었습니다."}
         retry_count = 0
-        last_error = None
         self._print_cli_status(f"[{device['ip']}] 연결 테스트 시작 (TCP {device['port']})")
         
         if not self._test_tcping(device['ip'], device['port']):
@@ -694,7 +693,6 @@ class NetworkInspector:
                     except Exception as e:
                         self.logger.error("커스텀 핸들러 실행 실패 (%s): %s", device['ip'], e)
                         retry_count += 1
-                        last_error = e
                         
                         with open(session_log_file, 'a', encoding='utf-8') as log:
                             log.write(f"\n{'='*50}\n")
@@ -860,7 +858,6 @@ class NetworkInspector:
                                 )
                             return device, inspection_results
                     except Exception as e:
-                        last_error = e
                         retry_count += 1
                         self.logger.warning("Netmiko 연결 시도 %d 실패 (%s): %s", retry_count, device['ip'], e)
                         if retry_count >= self.max_retries:
@@ -869,7 +866,6 @@ class NetworkInspector:
                             return device, {"error": "작업이 취소되었습니다."}
                         continue
             except Exception as e:
-                last_error = e
                 retry_count += 1
                 self.logger.warning("연결 시도 %d 실패 (%s): %s", retry_count, device['ip'], e)
                 

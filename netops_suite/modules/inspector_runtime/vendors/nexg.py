@@ -292,7 +292,7 @@ class VForceSSHHandler(CustomDeviceHandler):
             if self.session_log_file:
                 with open(self.session_log_file, 'a', encoding='utf-8') as log:
                     log.write(f"\n{'='*50}\n")
-                    log.write(f"세션 완료\n")
+                    log.write("세션 완료\n")
                     log.write(f"{'='*50}\n\n")
         except Exception as e:
             self.logger.warning("연결 종료 중 오류: %s", e)
@@ -434,5 +434,5 @@ class VForceTelnetHandler(CustomDeviceHandler):
             if self.session_log_file:
                 with open(self.session_log_file, 'a', encoding='utf-8') as log:
                     log.write(f"\n{'='*50}\n")
-                    log.write(f"세션 완료\n")
+                    log.write("세션 완료\n")
                     log.write(f"{'='*50}\n\n") 

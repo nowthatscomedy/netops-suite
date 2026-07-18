@@ -33,21 +33,36 @@ from app.ui.common import (
     set_table_minimums,
 )
 from app.ui.dialogs.inspector_profile_dialog import InspectorProfileDialog
-from netops_suite.modules.inspector import InspectorRunRequest, InspectorRunResult, InspectorService
+from app.utils.file_utils import timestamped_export_path
+from netops_suite.modules.inspector import (
+    InspectorRunRequest,
+    InspectorRunResult,
+    InspectorService,
+)
 from netops_suite.ui.numeric_inputs import NoWheelSpinBox
 from netops_suite.ui.selection_inputs import NoWheelComboBox
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
 
+
 class InspectorTab(QWidget):
     def __init__(self, state: AppState, parent=None) -> None:
         super().__init__(parent)
         self.state = state
-        self.runner = JobRunner(self.state.thread_pool, self, default_error_title="장비 점검 실패")
+        self.runner = JobRunner(
+            self.state.thread_pool, self, default_error_title="장비 점검 실패"
+        )
         self.service = InspectorService(
             work_dir=self.state.paths.data_root / "inspector" / "runs",
             user_data_dir=self.state.paths.data_root / "inspector",
+        )
+        self.exports_dir = Path(
+            getattr(
+                self.state.paths,
+                "exports_dir",
+                self.state.paths.data_root / "exports",
+            )
         )
         self._last_result: InspectorRunResult | None = None
         self._profile_dialog: InspectorProfileDialog | None = None
@@ -59,11 +74,20 @@ class InspectorTab(QWidget):
         self._build_ui()
         self._load_supported_profiles()
 
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt API
+        super().showEvent(event)
+        if not self._inspector_running and not self._shutting_down:
+            self._load_supported_profiles()
+
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(make_step_hint("작업 흐름: 장비 프로파일 확인/관리, 대상 장비 목록 선택, 실행 방식 선택, 검증, 실행, 결과 열기"))
+        layout.addWidget(
+            make_step_hint(
+                "작업 흐름: 장비 프로파일 확인/관리, 대상 장비 목록 선택, 실행 방식 선택, 검증, 실행, 결과 열기"
+            )
+        )
         self.inspector_splitter = QSplitter(Qt.Vertical)
         self.inspector_splitter.setChildrenCollapsible(False)
 
@@ -75,7 +99,9 @@ class InspectorTab(QWidget):
         profile_group = QGroupBox("1. 장비 프로파일")
         profile_group.setObjectName("inspectorProfileGroup")
         profile_layout = QVBoxLayout(profile_group)
-        profile_guide = QLabel("먼저 장비 제조사(vendor)/OS에 맞는 프로파일이 있는지 확인하세요.")
+        profile_guide = QLabel(
+            "먼저 장비 제조사(vendor)/OS에 맞는 프로파일이 있는지 확인하세요."
+        )
         profile_guide.setWordWrap(True)
         profile_layout.addWidget(profile_guide)
         profile_action_row = QHBoxLayout()
@@ -85,9 +111,13 @@ class InspectorTab(QWidget):
             tooltip="지원 제조사(vendor), 모델, OS별 점검 명령과 Excel 출력 컬럼을 관리합니다.",
         )
         self.profile_editor_button.clicked.connect(self._open_profile_editor)
-        self.supported_toggle_button = make_action_button("지원 보기", ActionKind.UTILITY)
+        self.supported_toggle_button = make_action_button(
+            "지원 보기", ActionKind.UTILITY
+        )
         self.supported_toggle_button.setCheckable(True)
-        self.supported_toggle_button.toggled.connect(self._set_supported_profiles_visible)
+        self.supported_toggle_button.toggled.connect(
+            self._set_supported_profiles_visible
+        )
         profile_action_row.addWidget(self.profile_editor_button)
         profile_action_row.addWidget(self.supported_toggle_button)
         profile_action_row.addStretch(1)
@@ -97,7 +127,16 @@ class InspectorTab(QWidget):
         profile_layout.addWidget(self.supported_label)
         self.supported_table = QTableWidget(0, 8)
         self.supported_table.setHorizontalHeaderLabels(
-            ["제조사(vendor)", "OS", "device_type", "명령", "백업", "파싱", "출력 컬럼", "구분"]
+            [
+                "제조사(vendor)",
+                "OS",
+                "device_type",
+                "명령",
+                "백업",
+                "파싱",
+                "출력 컬럼",
+                "구분",
+            ]
         )
         self.supported_table.horizontalHeader().setStretchLastSection(True)
         set_table_minimums(self.supported_table, 160)
@@ -111,27 +150,29 @@ class InspectorTab(QWidget):
         self.inventory_path_edit.textChanged.connect(self._handle_inventory_changed)
         inventory_row = QHBoxLayout()
         inventory_row.addWidget(self.inventory_path_edit, 1)
-        inventory_button = make_action_button(
+        self.inventory_button = make_action_button(
             "선택",
             ActionKind.BROWSE,
             tooltip="점검 대상 장비 목록 Excel 파일을 선택합니다.",
         )
-        inventory_button.clicked.connect(self._pick_inventory)
-        sample_button = make_action_button(
+        self.inventory_button.clicked.connect(self._pick_inventory)
+        self.sample_button = make_action_button(
             "샘플 생성",
             ActionKind.ADD,
             tooltip="필수 컬럼이 들어간 샘플 장비 목록 Excel을 만듭니다.",
         )
-        sample_button.clicked.connect(self._create_sample_inventory)
-        inventory_row.addWidget(inventory_button)
-        inventory_row.addWidget(sample_button)
+        self.sample_button.clicked.connect(self._create_sample_inventory)
+        inventory_row.addWidget(self.inventory_button)
+        inventory_row.addWidget(self.sample_button)
         inventory_layout.addRow("장비 목록 Excel", inventory_row)
 
         self.inventory_password_edit = QLineEdit()
         self.inventory_password_edit.setEchoMode(QLineEdit.Password)
         self.inventory_password_edit.setPlaceholderText("암호화 Excel인 경우에만 입력")
         inventory_layout.addRow("Excel 암호", self.inventory_password_edit)
-        self.inventory_status_label = make_inline_status("info", "대상 장비 목록 파일을 선택하거나 샘플을 생성하세요.")
+        self.inventory_status_label = make_inline_status(
+            "info", "대상 장비 목록 파일을 선택하거나 샘플을 생성하세요."
+        )
         inventory_layout.addRow("", self.inventory_status_label)
         top_layout.addWidget(inventory_group)
 
@@ -186,7 +227,9 @@ class InspectorTab(QWidget):
         )
         guide.setWordWrap(True)
         validation_layout.addWidget(guide)
-        self.validation_status_label = make_inline_status("info", "대상 장비 목록을 선택한 뒤 먼저 검증을 권장합니다.")
+        self.validation_status_label = make_inline_status(
+            "info", "대상 장비 목록을 선택한 뒤 먼저 검증을 권장합니다."
+        )
         validation_layout.addWidget(self.validation_status_label)
 
         action_row = QHBoxLayout()
@@ -196,10 +239,23 @@ class InspectorTab(QWidget):
             tooltip="선택한 Excel의 필수 컬럼과 지원 제조사(vendor)/OS 값을 확인합니다.",
         )
         self.validate_button.clicked.connect(self._validate_inventory)
-        self.run_button = make_action_button("실행", ActionKind.START, tooltip="선택한 모드로 장비 점검/백업 작업을 시작합니다.")
+        self.run_button = make_action_button(
+            "실행",
+            ActionKind.START,
+            tooltip="선택한 모드로 장비 점검/백업 작업을 시작합니다.",
+        )
         self.run_button.clicked.connect(self._run_inspector)
+        self.cancel_button = make_action_button(
+            "중지",
+            ActionKind.STOP,
+            tooltip="실행 중인 장비 점검/백업 작업의 중지를 요청합니다.",
+            object_name="inspectorCancelButton",
+            enabled=False,
+        )
+        self.cancel_button.clicked.connect(self._cancel_inspector)
         action_row.addWidget(self.validate_button)
         action_row.addWidget(self.run_button)
+        action_row.addWidget(self.cancel_button)
         action_row.addStretch(1)
         validation_layout.addLayout(action_row)
         top_layout.addWidget(validation_group)
@@ -219,12 +275,22 @@ class InspectorTab(QWidget):
         self.open_artifacts_button = make_action_button("폴더 열기", ActionKind.OPEN)
         self.open_artifacts_button.clicked.connect(self._open_artifacts)
         self.open_artifacts_button.setEnabled(False)
+        self.result_log_toggle_button = make_action_button(
+            "로그 보기",
+            ActionKind.UTILITY,
+            tooltip="검증 및 실행 상세 로그를 표시하거나 숨깁니다.",
+        )
+        self.result_log_toggle_button.setCheckable(True)
+        self.result_log_toggle_button.toggled.connect(self._set_result_log_visible)
         result_button_row.addWidget(self.open_result_button)
         result_button_row.addWidget(self.open_artifacts_button)
+        result_button_row.addWidget(self.result_log_toggle_button)
         result_button_row.addStretch(1)
         result_layout.addLayout(result_button_row)
 
-        self.summary_label = QLabel("대상 장비 목록 Excel을 선택한 뒤 검증 또는 실행하세요.")
+        self.summary_label = QLabel(
+            "대상 장비 목록 Excel을 선택한 뒤 검증 또는 실행하세요."
+        )
         self.summary_label.setWordWrap(True)
         result_layout.addWidget(self.summary_label)
 
@@ -233,14 +299,18 @@ class InspectorTab(QWidget):
         self.log_view.setMinimumHeight(140)
         self.log_view.setMaximumHeight(16777215)
         result_layout.addWidget(self.log_view, 1)
-        top_scroll = QScrollArea()
-        top_scroll.setObjectName("inspectorTopScrollArea")
-        top_scroll.setWidgetResizable(True)
-        top_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        top_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        top_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        top_scroll.viewport().setObjectName("inspectorTopScrollViewport")
-        top_scroll.setStyleSheet(
+        self.top_scroll = QScrollArea()
+        self.top_scroll.setObjectName("inspectorTopScrollArea")
+        self.top_scroll.setWidgetResizable(True)
+        self.top_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.top_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.top_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.top_scroll.viewport().setObjectName("inspectorTopScrollViewport")
+        self.top_scroll.setStyleSheet(
             """
             QScrollArea#inspectorTopScrollArea,
             QWidget#inspectorTopScrollViewport,
@@ -253,17 +323,23 @@ class InspectorTab(QWidget):
             }
             """
         )
-        top_scroll.setWidget(top_panel)
-        self.inspector_splitter.addWidget(top_scroll)
+        self.top_scroll.setWidget(top_panel)
+        self.inspector_splitter.addWidget(self.top_scroll)
         self.inspector_splitter.addWidget(result_group)
-        self.inspector_splitter.setSizes([420, 280])
+        self.inspector_splitter.setStretchFactor(0, 3)
+        self.inspector_splitter.setStretchFactor(1, 1)
+        self.log_view.setVisible(False)
+        self.inspector_splitter.setSizes([560, 140])
         layout.addWidget(self.inspector_splitter, 1)
         self._update_command_file_state()
         self._set_supported_profiles_visible(False)
         self._update_run_action_state()
 
     def _update_command_file_state(self) -> None:
-        enabled = self.mode_combo.currentData() == "custom_commands"
+        enabled = (
+            self.mode_combo.currentData() == "custom_commands"
+            and not self._inspector_running
+        )
         self.command_path_edit.setEnabled(enabled)
         self.command_button.setEnabled(enabled)
         if enabled:
@@ -283,14 +359,32 @@ class InspectorTab(QWidget):
         if hasattr(self, "open_artifacts_button"):
             self.open_artifacts_button.setEnabled(False)
         if had_previous_result and hasattr(self, "summary_label"):
-            self.summary_label.setText("대상 장비 목록이 변경되었습니다. 새 목록을 검증하거나 실행하세요.")
+            self.summary_label.setText(
+                "대상 장비 목록이 변경되었습니다. 새 목록을 검증하거나 실행하세요."
+            )
         path = self.inventory_path_edit.text().strip()
         if path:
-            set_inline_status(self.inventory_status_label, "info", "대상 장비 목록이 선택되었습니다. 다음 단계: 먼저 검증")
-            set_inline_status(self.validation_status_label, "warning", "아직 대상 장비 목록을 검증하지 않았습니다.")
+            set_inline_status(
+                self.inventory_status_label,
+                "info",
+                "대상 장비 목록이 선택되었습니다. 다음 단계: 먼저 검증",
+            )
+            set_inline_status(
+                self.validation_status_label,
+                "warning",
+                "아직 대상 장비 목록을 검증하지 않았습니다.",
+            )
         else:
-            set_inline_status(self.inventory_status_label, "info", "대상 장비 목록 파일을 선택하거나 샘플을 생성하세요.")
-            set_inline_status(self.validation_status_label, "info", "대상 장비 목록을 선택한 뒤 먼저 검증을 권장합니다.")
+            set_inline_status(
+                self.inventory_status_label,
+                "info",
+                "대상 장비 목록 파일을 선택하거나 샘플을 생성하세요.",
+            )
+            set_inline_status(
+                self.validation_status_label,
+                "info",
+                "대상 장비 목록을 선택한 뒤 먼저 검증을 권장합니다.",
+            )
         self._update_run_action_state()
 
     def _update_run_action_state(self) -> None:
@@ -299,14 +393,41 @@ class InspectorTab(QWidget):
         has_inventory = bool(self.inventory_path_edit.text().strip())
         needs_command = self.mode_combo.currentData() == "custom_commands"
         has_command = bool(self.command_path_edit.text().strip())
-        enabled = has_inventory and (not needs_command or has_command) and not self._inspector_running
+        enabled = (
+            has_inventory
+            and (not needs_command or has_command)
+            and not self._inspector_running
+        )
         self.run_button.setEnabled(enabled)
+        cancel_requested = bool(
+            self._cancel_event is not None and self._cancel_event.is_set()
+        )
+        if hasattr(self, "cancel_button"):
+            self.cancel_button.setEnabled(
+                self._inspector_running and not cancel_requested
+            )
+            if cancel_requested:
+                self.cancel_button.setToolTip("중지 요청을 처리하고 있습니다.")
+            elif self._inspector_running:
+                self.cancel_button.setToolTip(
+                    "실행 중인 장비 점검/백업 작업의 중지를 요청합니다."
+                )
+            else:
+                self.cancel_button.setToolTip(
+                    "장비 점검/백업 작업을 실행하는 동안 사용할 수 있습니다."
+                )
         if not has_inventory:
-            self.run_button.setToolTip("대상 장비 목록 Excel 파일을 선택하면 실행할 수 있습니다.")
+            self.run_button.setToolTip(
+                "대상 장비 목록 Excel 파일을 선택하면 실행할 수 있습니다."
+            )
         elif needs_command and not has_command:
-            self.run_button.setToolTip("사용자 명령 모드에서는 명령 파일을 먼저 선택하세요.")
+            self.run_button.setToolTip(
+                "사용자 명령 모드에서는 명령 파일을 먼저 선택하세요."
+            )
         else:
-            self.run_button.setToolTip("선택한 모드로 장비 점검/백업 작업을 시작합니다.")
+            self.run_button.setToolTip(
+                "선택한 모드로 장비 점검/백업 작업을 시작합니다."
+            )
 
     def _set_supported_profiles_visible(self, visible: bool) -> None:
         self.supported_label.setVisible(visible)
@@ -314,18 +435,41 @@ class InspectorTab(QWidget):
         self.supported_toggle_button.setText("지원 숨김" if visible else "지원 보기")
 
     def _pick_inventory(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "대상 장비 목록 선택", "", "Excel Files (*.xlsx *.xls *.xlsm)")
+        path, _ = QFileDialog.getOpenFileName(
+            self, "대상 장비 목록 선택", "", "Excel Files (*.xlsx *.xls *.xlsm)"
+        )
         if path:
             self.inventory_path_edit.setText(path)
 
     def _pick_command_file(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "사용자 명령 파일 선택", "", "Command Files (*.txt *.xlsx *.xls *.xlsm)")
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "사용자 명령 파일 선택",
+            "",
+            "Command Files (*.txt *.xlsx *.xls *.xlsm)",
+        )
         if path:
             self.command_path_edit.setText(path)
 
-    def _create_sample_inventory(self) -> None:
-        target = self.state.paths.data_root / "inspector" / "samples" / "sample_inventory.xlsx"
-        target.parent.mkdir(parents=True, exist_ok=True)
+    def _create_sample_inventory(self) -> Path | None:
+        suggested_path = timestamped_export_path(
+            self.exports_dir, "sample_inventory", "xlsx"
+        )
+        selected_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "샘플 장비 목록 저장",
+            str(suggested_path),
+            "Excel Files (*.xlsx)",
+        )
+        if not selected_path:
+            return None
+        target = Path(selected_path)
+        if target.suffix.casefold() != ".xlsx":
+            target = (
+                target.with_suffix(".xlsx")
+                if target.suffix
+                else Path(f"{target}.xlsx")
+            )
         df = pd.DataFrame(
             [
                 {
@@ -340,14 +484,27 @@ class InspectorTab(QWidget):
                 }
             ]
         )
-        df.to_excel(target, index=False)
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            df.to_excel(target, index=False)
+        except Exception as exc:
+            QMessageBox.warning(
+                self, "샘플 생성 실패", f"샘플 장비 목록을 저장하지 못했습니다.\n{exc}"
+            )
+            return None
         self.inventory_path_edit.setText(str(target))
         set_inline_status(
             self.inventory_status_label,
             "success",
             f"샘플 장비 목록이 선택되었습니다. 다음 단계: 먼저 검증 ({target})",
         )
+        QMessageBox.information(
+            self,
+            "샘플 생성 완료",
+            f"샘플 장비 목록을 저장하고 선택했습니다:\n{target}",
+        )
         self.validate_button.setFocus()
+        return target
 
     def _load_supported_profiles(self) -> None:
         try:
@@ -356,7 +513,9 @@ class InspectorTab(QWidget):
             self.supported_label.setText(self._inspector_error_message(exc))
             self._log_inspector_exception("지원 제조사(vendor) 목록 로드 실패", exc)
             return
-        self.supported_label.setText(f"지원 제조사(vendor)/모델/OS 조합: {len(profiles)}개")
+        self.supported_label.setText(
+            f"지원 제조사(vendor)/모델/OS 조합: {len(profiles)}개"
+        )
         self.supported_table.setRowCount(len(profiles))
         for row, profile in enumerate(profiles):
             connection = profile.get("connection_overrides") or {}
@@ -369,7 +528,9 @@ class InspectorTab(QWidget):
                 profile["backup_command"] or "-",
                 str(profile["parse_rule_count"]),
                 ", ".join(profile["output_columns"][:8]),
-                "참고용" if profile.get("is_reference") else ("사용자" if profile.get("is_custom") else ""),
+                "참고용"
+                if profile.get("is_reference")
+                else ("사용자" if profile.get("is_custom") else ""),
             ]
             for column, value in enumerate(values):
                 self.supported_table.setItem(row, column, make_table_item(str(value)))
@@ -378,34 +539,61 @@ class InspectorTab(QWidget):
     def _validate_inventory(self) -> None:
         path = self.inventory_path_edit.text().strip()
         if not path:
-            set_inline_status(self.validation_status_label, "warning", "대상 장비 목록 Excel 파일을 먼저 선택하세요.")
+            set_inline_status(
+                self.validation_status_label,
+                "warning",
+                "대상 장비 목록 Excel 파일을 먼저 선택하세요.",
+            )
             return
+        self._set_result_log_visible(True)
         try:
-            devices = self.service.load_inventory(path, self.inventory_password_edit.text().strip() or None)
+            devices = self.service.load_inventory(
+                path, self.inventory_password_edit.text().strip() or None
+            )
         except Exception as exc:
             self._log_inspector_exception("대상 장비 목록 검증 실패", exc)
-            set_inline_status(self.validation_status_label, "error", self._inspector_error_message(exc))
+            set_inline_status(
+                self.validation_status_label,
+                "error",
+                self._inspector_error_message(exc),
+            )
             QMessageBox.warning(self, "검증 실패", self._inspector_error_message(exc))
             return
         self._inventory_validated = True
         self.summary_label.setText(f"검증 완료: 장비 {len(devices)}대")
-        set_inline_status(self.validation_status_label, "success", f"검증 완료: 장비 {len(devices)}대")
-        self.log_view.appendPlainText(f"[validate] {Path(path).name}: {len(devices)} devices")
+        set_inline_status(
+            self.validation_status_label, "success", f"검증 완료: 장비 {len(devices)}대"
+        )
+        self.log_view.appendPlainText(
+            f"[validate] {Path(path).name}: {len(devices)} devices"
+        )
         self._update_run_action_state()
 
     def _run_inspector(self) -> None:
-        if self._shutting_down:
+        if self._shutting_down or self._inspector_running:
             return
         path = self.inventory_path_edit.text().strip()
         if not path:
-            set_inline_status(self.validation_status_label, "warning", "대상 장비 목록 Excel 파일을 먼저 선택하세요.")
+            set_inline_status(
+                self.validation_status_label,
+                "warning",
+                "대상 장비 목록 Excel 파일을 먼저 선택하세요.",
+            )
             return
         mode = self.mode_combo.currentData()
         if mode == "custom_commands" and not self.command_path_edit.text().strip():
-            set_inline_status(self.validation_status_label, "warning", "사용자 명령 모드에서는 명령 파일을 먼저 선택하세요.")
+            set_inline_status(
+                self.validation_status_label,
+                "warning",
+                "사용자 명령 모드에서는 명령 파일을 먼저 선택하세요.",
+            )
             return
         if not self._inventory_validated:
-            set_inline_status(self.validation_status_label, "warning", "아직 검증하지 않았습니다. 실행 전 '먼저 검증'을 권장합니다.")
+            set_inline_status(
+                self.validation_status_label,
+                "warning",
+                "아직 검증하지 않았습니다. 실행 전 '먼저 검증'을 권장합니다.",
+            )
         if not confirm_risky_action(
             self,
             "대량 장비 점검 실행",
@@ -414,7 +602,7 @@ class InspectorTab(QWidget):
                 "일부 장비에서 로그인 실패, 세션 잠금, 네트워크 부하가 발생할 수 있습니다."
             ),
             reversibility="기본 점검/백업 모드는 장비 설정을 변경하지 않습니다. 사용자 명령 모드는 명령 파일 내용에 따라 되돌리기 어려울 수 있습니다.",
-            output_location="결과 Excel, 백업 파일, 세션 로그, 원본 명령 출력(raw output)은 결과 파일 탭과 inspector runs 폴더에 기록됩니다.",
+            output_location="결과 Excel, 백업 파일, 세션 로그, 원본 명령 출력(raw output)은 설정에 지정한 결과 폴더와 inspector runs 폴더에 기록됩니다.",
             question="현재 대상 장비 목록과 실행 모드를 확인한 뒤 진행할까요?",
             confirm_text="점검/백업 실행",
         ):
@@ -424,7 +612,8 @@ class InspectorTab(QWidget):
             mode=mode,
             inventory_password=self.inventory_password_edit.text().strip() or None,
             command_path=self.command_path_edit.text().strip() or None,
-            output_name=self.output_name_edit.text().strip() or "inspection_results.xlsx",
+            output_name=self.output_name_edit.text().strip()
+            or "inspection_results.xlsx",
             max_workers=self.max_workers_spin.value(),
             timeout=self.timeout_spin.value(),
             max_retries=self.retry_spin.value(),
@@ -435,6 +624,8 @@ class InspectorTab(QWidget):
         self._result_open_busy = False
         self._inspector_running = True
         self._cancel_event = Event()
+        self._set_result_log_visible(True)
+        self._set_run_controls_locked(True)
         self._update_run_action_state()
         self.open_result_button.setEnabled(False)
         self.open_artifacts_button.setEnabled(False)
@@ -448,10 +639,71 @@ class InspectorTab(QWidget):
             on_error=self._handle_error,
         )
 
+    def _cancel_inspector(self) -> None:
+        cancel_event = self._cancel_event
+        if (
+            self._shutting_down
+            or not self._inspector_running
+            or cancel_event is None
+            or cancel_event.is_set()
+        ):
+            return
+        cancel_event.set()
+        self.summary_label.setText(
+            "장비 점검 작업의 중지를 요청했습니다. 진행 중인 장비 작업이 종료될 때까지 기다려 주세요."
+        )
+        set_inline_status(
+            self.validation_status_label,
+            "warning",
+            "중지 요청을 보냈습니다. 현재 처리 중인 장비가 안전하게 종료되면 작업이 중지됩니다.",
+        )
+        self.log_view.appendPlainText(
+            "[cancel] 사용자가 장비 점검 작업 중지를 요청했습니다."
+        )
+        self._update_run_action_state()
+
+    def _set_result_log_visible(self, visible: bool) -> None:
+        if not hasattr(self, "log_view"):
+            return
+        self.log_view.setVisible(visible)
+        self.result_log_toggle_button.blockSignals(True)
+        self.result_log_toggle_button.setChecked(visible)
+        self.result_log_toggle_button.blockSignals(False)
+        self.result_log_toggle_button.setText(
+            "로그 숨기기" if visible else "로그 보기"
+        )
+        if visible:
+            self.inspector_splitter.setSizes([420, 280])
+        else:
+            self.inspector_splitter.setSizes([560, 140])
+
+    def _set_run_controls_locked(self, locked: bool) -> None:
+        self.profile_editor_button.setEnabled(not locked)
+        self.inventory_button.setEnabled(not locked)
+        self.sample_button.setEnabled(not locked)
+        self.validate_button.setEnabled(not locked)
+        for edit in (
+            self.inventory_path_edit,
+            self.inventory_password_edit,
+            self.command_path_edit,
+            self.output_name_edit,
+        ):
+            edit.setReadOnly(locked)
+        for widget in (
+            self.mode_combo,
+            self.max_workers_spin,
+            self.timeout_spin,
+            self.retry_spin,
+        ):
+            widget.setEnabled(not locked)
+        self._update_command_file_state()
+
     def _finish_inspector_run(self) -> None:
         if self._shutting_down:
             return
         self._inspector_running = False
+        self._cancel_event = None
+        self._set_run_controls_locked(False)
         self._update_run_action_state()
 
     def _handle_progress(self, event: object) -> None:
@@ -472,40 +724,74 @@ class InspectorTab(QWidget):
         self.summary_label.setText(
             f"완료: 모드 {result.mode} / 장비 {result.devices_total}대 / 결과 {result.results_total}건"
         )
-        set_inline_status(self.validation_status_label, "success", "실행이 완료되었습니다. 결과 파일 탭 또는 아래 버튼에서 결과를 확인하세요.")
+        set_inline_status(
+            self.validation_status_label,
+            "success",
+            "실행이 완료되었습니다. 결과 폴더 또는 아래 버튼에서 결과를 확인하세요.",
+        )
         self.open_result_button.setEnabled(bool(result.result_excel))
         self.open_artifacts_button.setEnabled(True)
 
     def _handle_error(self, text: str) -> None:
         if self._shutting_down:
             return
-        self._inspector_running = False
-        self._update_run_action_state()
+        cancel_requested = bool(
+            self._cancel_event is not None and self._cancel_event.is_set()
+        )
+        cancelled = cancel_requested and any(
+            marker in str(text) for marker in ("취소", "중지")
+        )
+        if cancelled:
+            self.summary_label.setText("장비 점검 작업이 중지되었습니다.")
+            set_inline_status(
+                self.validation_status_label,
+                "warning",
+                "사용자 요청으로 장비 점검 작업을 중지했습니다.",
+            )
+            self.log_view.appendPlainText(
+                "[cancelled] 장비 점검 작업이 중지되었습니다."
+            )
+            return
         self.summary_label.setText("장비 점검 실패")
-        set_inline_status(self.validation_status_label, "error", self._inspector_error_message(text))
+        set_inline_status(
+            self.validation_status_label, "error", self._inspector_error_message(text)
+        )
         QMessageBox.warning(self, "장비 점검 실패", self._inspector_error_message(text))
 
     def _open_result(self) -> None:
-        if self._result_open_busy or not self._last_result or not self._last_result.result_excel:
+        if (
+            self._result_open_busy
+            or not self._last_result
+            or not self._last_result.result_excel
+        ):
             return
         result_path = Path(self._last_result.result_excel)
         if not result_path.is_file():
             self.open_result_button.setEnabled(False)
-            QMessageBox.warning(self, "결과 Excel 열기 실패", f"결과 파일을 찾을 수 없습니다.\n{result_path}")
+            QMessageBox.warning(
+                self,
+                "결과 Excel 열기 실패",
+                f"결과 파일을 찾을 수 없습니다.\n{result_path}",
+            )
             return
 
         self._result_open_busy = True
         self.open_result_button.setEnabled(False)
         logger = getattr(self.state, "logger", None)
         if logger:
-            logger.info("Opening inspector result Excel by explicit user action: %s", result_path)
+            logger.info(
+                "Opening inspector result Excel by explicit user action: %s",
+                result_path,
+            )
         try:
             os.startfile(str(result_path))
         except OSError as exc:
             self._result_open_busy = False
             self.open_result_button.setEnabled(True)
             if logger:
-                logger.exception("Failed to open inspector result Excel: %s", result_path)
+                logger.exception(
+                    "Failed to open inspector result Excel: %s", result_path
+                )
             QMessageBox.warning(self, "결과 Excel 열기 실패", str(exc))
             return
         QTimer.singleShot(800, self._finish_result_open)
@@ -517,7 +803,9 @@ class InspectorTab(QWidget):
             if self._last_result and self._last_result.result_excel
             else None
         )
-        self.open_result_button.setEnabled(bool(result_path and result_path.is_file() and not self._inspector_running))
+        self.open_result_button.setEnabled(
+            bool(result_path and result_path.is_file() and not self._inspector_running)
+        )
 
     def shutdown(self) -> None:
         if self._shutting_down:
@@ -529,17 +817,26 @@ class InspectorTab(QWidget):
     def _open_artifacts(self) -> None:
         if not self._last_result:
             return
-        for candidate in (self._last_result.backup_dir, self._last_result.session_log_dir):
+        for candidate in (
+            self._last_result.backup_dir,
+            self._last_result.session_log_dir,
+        ):
             if candidate and Path(candidate).exists():
                 os.startfile(candidate)
                 return
 
     def _open_profile_editor(self) -> None:
         try:
-            self._profile_dialog = InspectorProfileDialog(self.service, self)
+            self._profile_dialog = InspectorProfileDialog(
+                self.service,
+                self,
+                exports_dir=self.exports_dir,
+            )
         except Exception as exc:
             self._log_inspector_exception("장비 프로파일 관리 열기 실패", exc)
-            QMessageBox.warning(self, "장비 프로파일 관리 열기 실패", self._inspector_error_message(exc))
+            QMessageBox.warning(
+                self, "장비 프로파일 관리 열기 실패", self._inspector_error_message(exc)
+            )
             return
         self._profile_dialog.exec()
         self._load_supported_profiles()

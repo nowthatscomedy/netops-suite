@@ -8,4 +8,4 @@ if (-not (Test-Path $Python)) {
     py -3 -m venv .venv
 }
 
-& $Python -m pip install -r requirements.txt
+& $Python -m pip install -r requirements-dev-lock.txt

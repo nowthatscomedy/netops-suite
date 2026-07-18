@@ -6,6 +6,7 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -14,7 +15,9 @@ from typing import Any
 from app.models.ai_models import default_ai_chat_config
 
 DEFAULT_UPDATE_REPO = "nowthatscomedy/netops-suite"
-DEFAULT_UPDATE_ASSET_PATTERN = r"^NetOpsSuite-setup-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\.exe$"
+DEFAULT_UPDATE_ASSET_PATTERN = (
+    r"^NetOpsSuite-setup-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\.exe$"
+)
 PROJECT_DATA_ENV = "NETOPS_SUITE_USE_PROJECT_DATA"
 DATA_ROOT_ENV = "NETOPS_SUITE_DATA_ROOT"
 PATH_SETTINGS_FILENAME = "path_settings.json"
@@ -22,6 +25,7 @@ PATH_SETTINGS_VERSION = 1
 PATH_SETTING_KEYS = ("config_dir", "logs_dir", "exports_dir")
 
 LOGGER = logging.getLogger("netops_suite.file_utils")
+_SAVE_JSON_LOCK = threading.RLock()
 
 
 @dataclass(slots=True)
@@ -122,7 +126,9 @@ def _is_writable_directory(path: Path) -> bool:
     probe_path: Path | None = None
     try:
         path.mkdir(parents=True, exist_ok=True)
-        descriptor, probe_name = tempfile.mkstemp(prefix=".netops_write_test_", dir=path)
+        descriptor, probe_name = tempfile.mkstemp(
+            prefix=".netops_write_test_", dir=path
+        )
         probe_path = Path(probe_name)
         os.close(descriptor)
         descriptor = None
@@ -151,7 +157,9 @@ def detect_data_root(root: Path, *, prefer_project_data: bool = False) -> Path:
     if override:
         return Path(override).expanduser()
 
-    if (prefer_project_data or _env_flag_enabled(PROJECT_DATA_ENV)) and not _is_protected_install_root(root):
+    if (
+        prefer_project_data or _env_flag_enabled(PROJECT_DATA_ENV)
+    ) and not _is_protected_install_root(root):
         if _is_writable_directory(root):
             return root
 
@@ -168,7 +176,9 @@ def default_path_settings() -> dict[str, Any]:
 
 
 def _contains_control_character(value: str) -> bool:
-    return any(ord(character) < 32 or 127 <= ord(character) <= 159 for character in value)
+    return any(
+        ord(character) < 32 or 127 <= ord(character) <= 159 for character in value
+    )
 
 
 def normalize_path_settings(settings: Any) -> dict[str, Any]:
@@ -182,7 +192,9 @@ def normalize_path_settings(settings: Any) -> dict[str, Any]:
         if isinstance(value, os.PathLike):
             value = os.fspath(value)
         if isinstance(value, str):
-            normalized[key] = value if _contains_control_character(value) else value.strip()
+            normalized[key] = (
+                value if _contains_control_character(value) else value.strip()
+            )
     return normalized
 
 
@@ -250,8 +262,14 @@ def resolve_app_paths_with_settings(current_paths: AppPaths, settings: Any) -> A
     defaults = default_effective_path_settings(current_paths)
     config_dir = Path(validated["config_dir"] or defaults["config_dir"])
     logs_dir = Path(validated["logs_dir"] or defaults["logs_dir"])
-    exports_dir = Path(validated["exports_dir"]) if validated["exports_dir"] else logs_dir / "exports"
-    path_settings = current_paths.path_settings or (Path(current_paths.data_root) / PATH_SETTINGS_FILENAME)
+    exports_dir = (
+        Path(validated["exports_dir"])
+        if validated["exports_dir"]
+        else logs_dir / "exports"
+    )
+    path_settings = current_paths.path_settings or (
+        Path(current_paths.data_root) / PATH_SETTINGS_FILENAME
+    )
 
     return AppPaths(
         root=Path(current_paths.root),
@@ -268,7 +286,8 @@ def resolve_app_paths_with_settings(current_paths: AppPaths, settings: Any) -> A
         tftp_runtime=config_dir / Path(current_paths.tftp_runtime).name,
         vendor_presets=config_dir / Path(current_paths.vendor_presets).name,
         public_iperf_cache=config_dir / Path(current_paths.public_iperf_cache).name,
-        ai_model_catalog_cache=config_dir / Path(current_paths.ai_model_catalog_cache).name,
+        ai_model_catalog_cache=config_dir
+        / Path(current_paths.ai_model_catalog_cache).name,
         oui_cache=config_dir / Path(current_paths.oui_cache).name,
         ftp_keys_dir=config_dir / Path(current_paths.ftp_keys_dir).name,
         app_log=logs_dir / Path(current_paths.app_log).name,
@@ -341,7 +360,10 @@ def migrate_config_directory(
             continue
         created = False
         try:
-            with source_path.open("rb") as source_handle, target_path.open("xb") as target_handle:
+            with (
+                source_path.open("rb") as source_handle,
+                target_path.open("xb") as target_handle,
+            ):
                 created = True
                 shutil.copyfileobj(source_handle, target_handle)
             shutil.copystat(source_path, target_path)
@@ -387,18 +409,17 @@ def build_app_paths(root_dir: Path | None = None) -> AppPaths:
     try:
         return resolve_app_paths_with_settings(base_paths, raw_settings)
     except ValueError as exc:
-        LOGGER.warning("Invalid path settings in %s; using defaults: %s", base_paths.path_settings, exc)
+        LOGGER.warning(
+            "Invalid path settings in %s; using defaults: %s",
+            base_paths.path_settings,
+            exc,
+        )
         return base_paths
 
 
 def default_app_config() -> dict[str, Any]:
     return {
         "app_name": "NetOps Suite",
-        "default_ping_count": 4,
-        "default_ping_timeout_ms": 4000,
-        "default_ping_workers": 8,
-        "default_tcp_timeout_ms": 1000,
-        "default_tcp_workers": 32,
         "wireless_refresh_interval_sec": 2,
         "default_nslookup_type": "A",
         "update": default_update_config(),
@@ -415,7 +436,9 @@ def default_update_config() -> dict[str, Any]:
 def normalize_update_config(update_config: Any) -> dict[str, Any]:
     config = default_update_config()
     if isinstance(update_config, dict):
-        config["check_on_startup"] = bool(update_config.get("check_on_startup", config["check_on_startup"]))
+        config["check_on_startup"] = bool(
+            update_config.get("check_on_startup", config["check_on_startup"])
+        )
     return config
 
 
@@ -528,21 +551,50 @@ def default_tftp_runtime() -> dict[str, Any]:
 
 
 def ensure_runtime_files(paths: AppPaths) -> None:
-    for directory in (paths.config_dir, paths.logs_dir, paths.exports_dir, paths.ftp_keys_dir):
+    for directory in (
+        paths.config_dir,
+        paths.logs_dir,
+        paths.exports_dir,
+        paths.ftp_keys_dir,
+    ):
         directory.mkdir(parents=True, exist_ok=True)
 
     if paths.path_settings is not None and not paths.path_settings.exists():
         save_json(paths.path_settings, default_path_settings())
 
     defaults = {
-        paths.app_config: (default_app_config(), paths.root / "config" / "app_config.json"),
-        paths.ip_profiles: (default_ip_profiles(), paths.root / "config" / "ip_profiles.json"),
-        paths.ftp_profiles: (default_ftp_profiles(), paths.root / "config" / "ftp_profiles.json"),
-        paths.ftp_runtime: (default_ftp_runtime(), paths.root / "config" / "ftp_runtime.json"),
-        paths.scp_profiles: (default_scp_profiles(), paths.root / "config" / "scp_profiles.json"),
-        paths.scp_runtime: (default_scp_runtime(), paths.root / "config" / "scp_runtime.json"),
-        paths.tftp_runtime: (default_tftp_runtime(), paths.root / "config" / "tftp_runtime.json"),
-        paths.vendor_presets: (default_vendor_presets(), paths.root / "config" / "vendor_presets.json"),
+        paths.app_config: (
+            default_app_config(),
+            paths.root / "config" / "app_config.json",
+        ),
+        paths.ip_profiles: (
+            default_ip_profiles(),
+            paths.root / "config" / "ip_profiles.json",
+        ),
+        paths.ftp_profiles: (
+            default_ftp_profiles(),
+            paths.root / "config" / "ftp_profiles.json",
+        ),
+        paths.ftp_runtime: (
+            default_ftp_runtime(),
+            paths.root / "config" / "ftp_runtime.json",
+        ),
+        paths.scp_profiles: (
+            default_scp_profiles(),
+            paths.root / "config" / "scp_profiles.json",
+        ),
+        paths.scp_runtime: (
+            default_scp_runtime(),
+            paths.root / "config" / "scp_runtime.json",
+        ),
+        paths.tftp_runtime: (
+            default_tftp_runtime(),
+            paths.root / "config" / "tftp_runtime.json",
+        ),
+        paths.vendor_presets: (
+            default_vendor_presets(),
+            paths.root / "config" / "vendor_presets.json",
+        ),
     }
     for file_path, (default_value, source_path) in defaults.items():
         if not file_path.exists():
@@ -570,7 +622,9 @@ def load_json(file_path: Path, default: Any) -> Any:
     except (json.JSONDecodeError, UnicodeError) as exc:
         backup_path = _backup_invalid_json(file_path)
         if backup_path:
-            LOGGER.warning("Invalid JSON in %s. Backed up to %s: %s", file_path, backup_path, exc)
+            LOGGER.warning(
+                "Invalid JSON in %s. Backed up to %s: %s", file_path, backup_path, exc
+            )
         else:
             LOGGER.warning("Invalid JSON in %s and backup failed: %s", file_path, exc)
         return default
@@ -580,18 +634,31 @@ def load_json(file_path: Path, default: Any) -> Any:
 
 
 def save_json(file_path: Path, data: Any) -> None:
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(data, ensure_ascii=False, indent=2)
-    temp_path = file_path.with_name(f".{file_path.name}.{os.getpid()}.tmp")
-    try:
-        temp_path.write_text(payload, encoding="utf-8")
-        temp_path.replace(file_path)
-    finally:
-        if temp_path.exists():
-            try:
-                temp_path.unlink()
-            except OSError:
-                LOGGER.warning("Failed to remove temporary JSON file %s", temp_path)
+    with _SAVE_JSON_LOCK:
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = json.dumps(data, ensure_ascii=False, indent=2)
+        descriptor, temp_name = tempfile.mkstemp(
+            prefix=f".{file_path.name}.",
+            suffix=".tmp",
+            dir=file_path.parent,
+        )
+        temp_path = Path(temp_name)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                descriptor = -1
+                handle.write(payload)
+            temp_path.replace(file_path)
+        finally:
+            if descriptor >= 0:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+            if temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    LOGGER.warning("Failed to remove temporary JSON file %s", temp_path)
 
 
 def _backup_invalid_json(file_path: Path) -> Path | None:
@@ -606,7 +673,17 @@ def _backup_invalid_json(file_path: Path) -> Path | None:
 
 def timestamped_export_path(directory: Path, prefix: str, extension: str) -> Path:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return directory / f"{prefix}_{timestamp}.{extension.lstrip('.')}"
+    suffix = extension.lstrip(".")
+    candidate = directory / f"{prefix}_{timestamp}.{suffix}"
+    if not candidate.exists():
+        return candidate
+    for index in range(1, 10000):
+        candidate = directory / f"{prefix}_{timestamp}_{index:02d}.{suffix}"
+        if not candidate.exists():
+            return candidate
+    raise FileExistsError(
+        f"사용 가능한 내보내기 파일 이름을 만들 수 없습니다: {directory}"
+    )
 
 
 def open_in_explorer(path: Path) -> None:

@@ -11,14 +11,29 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 import pandas as pd
-from PySide6.QtCore import QThreadPool
-from PySide6.QtWidgets import QApplication, QCheckBox, QGroupBox, QLabel, QMessageBox, QPushButton, QScrollArea, QSizePolicy, QWidget
+import yaml
+from PySide6.QtCore import QThreadPool, Qt
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QFileDialog,
+    QGroupBox,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QWidget,
+)
 
 from app.app_state import AppState
 from app.main_window import MainWindow
 from app.ui.common import confirm_risky_action
 from app.ui.common.theme import APP_STYLE_SHEET
-from app.ui.dialogs.inspector_profile_dialog import InspectorProfileDialog, PythonParserDialog
+from app.ui.dialogs.inspector_profile_dialog import (
+    InspectorProfileDialog,
+    PythonParserDialog,
+)
 from app.ui.tabs.artifacts_tab import ArtifactsTab
 from app.ui.tabs.interface_tab import InterfaceTab
 from app.ui.tabs.inspector_tab import InspectorTab
@@ -58,8 +73,8 @@ def test_config_builder_service_renders_valid_csv(tmp_path: Path):
                 "blocks:",
                 "  - name: base",
                 "    lines:",
-                "      - \"hostname {{ hostname }}\"",
-                "      - \"ip address {{ mgmt_ip }}\"",
+                '      - "hostname {{ hostname }}"',
+                '      - "ip address {{ mgmt_ip }}"',
                 "",
             ]
         ),
@@ -88,7 +103,9 @@ def test_inspector_service_loads_supported_vendor_profiles():
     assert profiles["cisco"]
 
 
-def test_inspector_profile_listing_does_not_require_telnetlib3(monkeypatch, tmp_path: Path):
+def test_inspector_profile_listing_does_not_require_telnetlib3(
+    monkeypatch, tmp_path: Path
+):
     service = InspectorService(user_data_dir=tmp_path / "inspector")
     service.reload_runtime_modules()
     real_import = builtins.__import__
@@ -124,24 +141,41 @@ def test_inspector_inventory_validation_uses_runtime_core_and_vendors(tmp_path: 
         ]
     ).to_excel(inventory_path, index=False)
 
-    devices = InspectorService(user_data_dir=tmp_path / "inspector").load_inventory(str(inventory_path))
+    devices = InspectorService(user_data_dir=tmp_path / "inspector").load_inventory(
+        str(inventory_path)
+    )
 
     assert len(devices) == 1
     assert devices[0]["vendor"] == "cisco"
     assert devices[0]["os"] == "ios"
 
 
-def test_inspector_sample_inventory_validates_without_manual_edits(qt_app, tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(QMessageBox, "information", lambda *args, **kwargs: QMessageBox.Ok)
+def test_inspector_sample_inventory_validates_without_manual_edits(
+    qt_app, tmp_path: Path, monkeypatch
+):
+    monkeypatch.setattr(
+        QMessageBox, "information", lambda *args, **kwargs: QMessageBox.Ok
+    )
     state = SimpleNamespace(
         thread_pool=QThreadPool.globalInstance(),
-        paths=SimpleNamespace(data_root=tmp_path / "data"),
+        paths=SimpleNamespace(
+            data_root=tmp_path / "data",
+            exports_dir=tmp_path / "exports",
+        ),
+    )
+    chosen_path = tmp_path / "selected" / "sample_inventory"
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        lambda *_args, **_kwargs: (str(chosen_path), "Excel Files (*.xlsx)"),
     )
     tab = InspectorTab(state)
     try:
-        tab._create_sample_inventory()
+        saved_path = tab._create_sample_inventory()
 
         sample_path = tab.inventory_path_edit.text()
+        assert saved_path == chosen_path.with_suffix(".xlsx")
+        assert Path(sample_path) == saved_path
         devices = tab.service.load_inventory(sample_path)
 
         assert len(devices) == 1
@@ -159,7 +193,9 @@ def test_telnet_compat_uses_telnetlib3_not_deprecated_stdlib():
 
 def test_telnet_compat_reports_missing_dependency_when_telnet_is_used(monkeypatch):
     module_path = Path("netops_suite/modules/inspector_runtime/core/telnet_compat.py")
-    spec = importlib.util.spec_from_file_location("telnet_compat_missing_test", module_path)
+    spec = importlib.util.spec_from_file_location(
+        "telnet_compat_missing_test", module_path
+    )
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -177,15 +213,22 @@ def test_telnet_compat_reports_missing_dependency_when_telnet_is_used(monkeypatc
 
 def test_inspector_reference_profiles_load():
     profiles = InspectorService().supported_profile_definitions()
-    reference_profiles = [profile for profile in profiles if profile.get("is_reference")]
+    reference_profiles = [
+        profile for profile in profiles if profile.get("is_reference")
+    ]
     cisco_reference = next(
-        profile for profile in reference_profiles if profile["vendor"] == "reference-cisco"
+        profile
+        for profile in reference_profiles
+        if profile["vendor"] == "reference-cisco"
     )
 
     assert cisco_reference["display_name"] == "참고용 Cisco IOS-XE 기본 점검"
     assert "show version" in cisco_reference["commands"]
     assert "OS버전" in cisco_reference["output_columns"]
-    assert cisco_reference["parsing_rules"]["show version"]["patterns"][0]["parser_type"] == "split_fields"
+    assert (
+        cisco_reference["parsing_rules"]["show version"]["patterns"][0]["parser_type"]
+        == "split_fields"
+    )
 
 
 def test_inspector_custom_rules_use_user_data_root(tmp_path: Path):
@@ -203,10 +246,188 @@ inspection_commands:
     assert path.exists()
 
 
+def test_inspector_profile_merge_preserves_other_profiles_and_creates_backup(
+    tmp_path: Path,
+):
+    service = InspectorService(user_data_dir=tmp_path / "inspector")
+    service.save_custom_rules_text(
+        """
+inspection_commands:
+  Vendor_A:
+    OS_A:
+      - show old
+    OS_Other:
+      - show same vendor keep
+  vendor_b:
+    os_b:
+      - show keep
+backup_commands:
+  Vendor_A:
+    OS_A: show old backup
+  vendor_b:
+    os_b: show keep backup
+parsing_rules:
+  vendor_b:
+    os_b:
+      show keep:
+        output_column: Keep
+        pattern: keep
+custom_metadata:
+  owner: qa
+""".lstrip()
+    )
+    assert service.custom_profile_exists("vendor_a", "os_a")
+
+    service.merge_custom_profile_rules_text(
+        """
+inspection_commands:
+  vendor_a:
+    os_a:
+      - show new
+connection_overrides:
+  vendor_a:
+    os_a:
+      default: cisco_ios
+""".lstrip()
+    )
+
+    merged = yaml.safe_load(service.custom_rules_path.read_text(encoding="utf-8"))
+    assert merged["inspection_commands"]["vendor_a"]["os_a"] == ["show new"]
+    assert merged["inspection_commands"]["vendor_a"]["OS_Other"] == [
+        "show same vendor keep"
+    ]
+    assert merged["inspection_commands"]["vendor_b"]["os_b"] == ["show keep"]
+    assert "vendor_a" not in merged.get("backup_commands", {})
+    assert merged["backup_commands"]["vendor_b"]["os_b"] == "show keep backup"
+    assert merged["parsing_rules"]["vendor_b"]["os_b"]["show keep"][
+        "output_column"
+    ] == "Keep"
+    assert (
+        merged["connection_overrides"]["vendor_a"]["os_a"]["default"]
+        == "cisco_ios"
+    )
+    assert merged["custom_metadata"] == {"owner": "qa"}
+    assert len(list(service.user_data_dir.glob("custom_rules.backup-*.yaml"))) == 1
+
+
+def test_inspector_atomic_save_keeps_original_when_replace_fails(
+    tmp_path: Path, monkeypatch
+):
+    service = InspectorService(user_data_dir=tmp_path / "inspector")
+    service.save_custom_rules_text(
+        "inspection_commands:\n  stable:\n    os:\n      - show stable\n"
+    )
+    original = service.custom_rules_path.read_text(encoding="utf-8")
+
+    def fail_replace(_source, _target):
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(
+        "netops_suite.modules.inspector.service.os.replace", fail_replace
+    )
+    with pytest.raises(OSError, match="replace failed"):
+        service.save_custom_rules_text(
+            "inspection_commands:\n  broken:\n    os:\n      - show broken\n"
+        )
+
+    assert service.custom_rules_path.read_text(encoding="utf-8") == original
+    assert not list(service.user_data_dir.glob(".custom_rules.yaml.*.tmp"))
+
+
+def test_inspector_hot_reloads_custom_rules_written_outside_the_gui(tmp_path: Path):
+    user_data_dir = tmp_path / "inspector"
+    service = InspectorService(user_data_dir=user_data_dir)
+
+    assert not any(
+        profile["key"] == "test_vendor|test_version"
+        for profile in service.supported_profile_definitions()
+    )
+
+    service.custom_rules_path.write_text(
+        """
+inspection_commands:
+  test_vendor:
+    test_version:
+      - show running-config
+backup_commands:
+  test_vendor:
+    test_version: show running-config
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    profiles = service.supported_profile_definitions()
+    loaded = next(
+        profile for profile in profiles if profile["key"] == "test_vendor|test_version"
+    )
+    assert loaded["commands"] == ["show running-config"]
+    assert loaded["backup_command"] == "show running-config"
+    assert loaded["is_custom"] is True
+
+    inventory_path = tmp_path / "hot-reload-inventory.xlsx"
+    pd.DataFrame(
+        [
+            {
+                "ip": "192.0.2.20",
+                "vendor": "test_vendor",
+                "os": "test_version",
+                "connection_type": "ssh",
+                "port": 22,
+                "username": "admin",
+                "password": "test-password",
+            }
+        ]
+    ).to_excel(inventory_path, index=False)
+    devices = service.load_inventory(str(inventory_path))
+    assert devices[0]["vendor"] == "test_vendor"
+    assert devices[0]["os"] == "test_version"
+
+
+def test_inspector_tab_refreshes_external_profiles_when_reopened(
+    qt_app, tmp_path: Path
+):
+    state = SimpleNamespace(
+        thread_pool=QThreadPool.globalInstance(),
+        paths=SimpleNamespace(data_root=tmp_path / "data"),
+    )
+    tab = InspectorTab(state)
+    try:
+        tab.show()
+        qt_app.processEvents()
+        tab.service.custom_rules_path.write_text(
+            """
+inspection_commands:
+  external_vendor:
+    external_os:
+      - show version
+""".lstrip(),
+            encoding="utf-8",
+        )
+
+        tab.hide()
+        qt_app.processEvents()
+        tab.show()
+        qt_app.processEvents()
+
+        visible_pairs = {
+            (
+                tab.supported_table.item(row, 0).text(),
+                tab.supported_table.item(row, 1).text(),
+            )
+            for row in range(tab.supported_table.rowCount())
+        }
+        assert ("external_vendor", "external_os") in visible_pairs
+    finally:
+        tab.close()
+
+
 def test_inspector_discovers_user_python_parsers(tmp_path: Path):
     service = InspectorService(user_data_dir=tmp_path / "inspector")
     parser_file = service.custom_parsers_dir / "my_parser.py"
-    parser_file.write_text("def parsing_custom(output):\n    return {'value': output.strip()}\n", encoding="utf-8")
+    parser_file.write_text(
+        "def parsing_custom(output):\n    return {'value': output.strip()}\n",
+        encoding="utf-8",
+    )
 
     assert service.discover_user_custom_parsers() == ["parsing_custom"]
 
@@ -215,7 +436,10 @@ def test_inspector_service_saves_and_tests_custom_parser(tmp_path: Path):
     service = InspectorService(user_data_dir=tmp_path / "inspector")
     code = "def parsing_cpu_usage(output: str):\n    return output.split()[2]\n"
 
-    assert service.test_custom_parser_code("parsing_cpu_usage", code, "CPU Usage 12 %") == "12"
+    assert (
+        service.test_custom_parser_code("parsing_cpu_usage", code, "CPU Usage 12 %")
+        == "12"
+    )
     path = service.save_custom_parser("parsing_cpu_usage", code)
 
     assert path.exists()
@@ -228,8 +452,14 @@ def test_vendor_profile_dialog_uses_engineer_friendly_flow(qt_app, tmp_path: Pat
     try:
         tabs = [dialog.tabs.tabText(index) for index in range(dialog.tabs.count())]
         assert dialog.windowTitle() == "장비 점검 프로파일 만들기"
-        assert tabs[:4] == ["장비 정보", "점검 명령", "Excel 컬럼", "미리보기/저장"]
-        assert "Netmiko" not in "\n".join(tabs[:4])
+        assert tabs[:5] == [
+            "장비 정보",
+            "점검 명령",
+            "백업 명령",
+            "Excel 컬럼",
+            "미리보기/저장",
+        ]
+        assert "Netmiko" not in "\n".join(tabs[:5])
 
         dialog.vendor_edit.setText("Cisco")
         dialog.os_edit.setText("IOS-XE")
@@ -242,7 +472,346 @@ def test_vendor_profile_dialog_uses_engineer_friendly_flow(qt_app, tmp_path: Pat
         dialog.close()
 
 
-def test_vendor_profile_dialog_opens_without_telnetlib3(monkeypatch, qt_app, tmp_path: Path):
+def test_vendor_profile_dialog_separates_backup_command_from_inspection_commands(
+    qt_app, tmp_path: Path
+):
+    service = InspectorService(user_data_dir=tmp_path / "inspector")
+    dialog = InspectorProfileDialog(service)
+    try:
+        inspection_tab = dialog.findChild(QWidget, "inspectionCommandsTab")
+        backup_tab = dialog.findChild(QWidget, "backupCommandTab")
+
+        assert inspection_tab is not None
+        assert backup_tab is not None
+        assert inspection_tab.findChild(QCheckBox, "backupEnabledCheck") is None
+        assert (
+            backup_tab.findChild(QCheckBox, "backupEnabledCheck")
+            is dialog.backup_enabled_check
+        )
+
+        backup_profile_index = next(
+            index
+            for index in range(1, dialog.copy_profile_combo.count())
+            if (dialog.copy_profile_combo.itemData(index) or {}).get("backup_command")
+        )
+        backup_profile = dialog.copy_profile_combo.itemData(backup_profile_index)
+        dialog.copy_profile_combo.setCurrentIndex(backup_profile_index)
+
+        assert dialog.backup_enabled_check.isChecked()
+        assert dialog.backup_command_edit.isEnabled()
+        assert (
+            dialog.backup_command_edit.text()
+            == backup_profile["backup_command"]
+        )
+
+        dialog.backup_enabled_check.setChecked(False)
+        assert not dialog.backup_command_edit.isEnabled()
+        dialog.backup_enabled_check.setChecked(True)
+        dialog.backup_command_edit.setText("show startup-config")
+        dialog.vendor_edit.setText("Cisco")
+        dialog.os_edit.setText("IOS-XE")
+        dialog.refresh_preview()
+
+        assert dialog.backup_command_edit.isEnabled()
+        assert dialog.state["backup_enabled"] is True
+        assert dialog.state["backup_command"] == "show startup-config"
+        assert "backup_commands:" in dialog.latest_yaml_text
+        assert "show startup-config" in dialog.latest_yaml_text
+    finally:
+        dialog.close()
+
+
+def test_vendor_profile_dialog_blocks_blank_backup_invalid_regex_and_duplicate_columns(
+    qt_app, tmp_path: Path
+):
+    service = InspectorService(user_data_dir=tmp_path / "inspector")
+    dialog = InspectorProfileDialog(service)
+    try:
+        dialog.vendor_edit.setText("test_vendor")
+        dialog.os_edit.setText("test_os")
+        dialog.backup_enabled_check.setChecked(True)
+        dialog.backup_command_edit.clear()
+        dialog._add_column()
+        dialog.column_name_edit.setText("OS버전")
+        dialog.extract_method_combo.setCurrentIndex(
+            dialog.extract_method_combo.findData("regex")
+        )
+        dialog.regex_edit.setText("[")
+        dialog.refresh_preview()
+
+        issues = [
+            dialog.issue_list.item(index).text()
+            for index in range(dialog.issue_list.count())
+        ]
+        assert any("백업 명령" in issue for issue in issues)
+        assert any("중복" in issue and "OS버전" in issue for issue in issues)
+        assert any("정규식 오류" in issue for issue in issues)
+        assert not dialog.save_button.isEnabled()
+    finally:
+        dialog.close()
+
+
+def test_vendor_profile_dialog_shows_only_fields_for_selected_extraction_method(
+    qt_app, tmp_path: Path
+):
+    service = InspectorService(user_data_dir=tmp_path / "inspector")
+    dialog = InspectorProfileDialog(service)
+    try:
+        dialog.tabs.setCurrentIndex(3)
+        dialog.show()
+        qt_app.processEvents()
+
+        dialog.extract_method_combo.setCurrentIndex(
+            dialog.extract_method_combo.findData("split_fields")
+        )
+        qt_app.processEvents()
+        assert dialog.line_number_spin.isVisibleTo(dialog)
+        assert dialog.start_field_spin.isVisibleTo(dialog)
+        assert not dialog.keyword_edit.isVisibleTo(dialog)
+        assert not dialog.regex_edit.isVisibleTo(dialog)
+
+        dialog.extract_method_combo.setCurrentIndex(
+            dialog.extract_method_combo.findData("regex")
+        )
+        qt_app.processEvents()
+        assert dialog.regex_edit.isVisibleTo(dialog)
+        assert not dialog.line_number_spin.isVisibleTo(dialog)
+        assert not dialog.start_field_spin.isVisibleTo(dialog)
+        assert not dialog.keyword_edit.isVisibleTo(dialog)
+        assert not dialog.python_parser_combo.isVisibleTo(dialog)
+    finally:
+        dialog._dirty = False
+        dialog.close()
+
+
+def test_vendor_profile_dialog_protects_unsaved_profile_switch_and_close(
+    qt_app, tmp_path: Path, monkeypatch
+):
+    service = InspectorService(user_data_dir=tmp_path / "inspector")
+    dialog = InspectorProfileDialog(service)
+    try:
+        assert dialog.copy_profile_combo.count() > 1
+        dialog.show()
+        qt_app.processEvents()
+        dialog.vendor_edit.setText("작성 중")
+
+        monkeypatch.setattr(
+            QMessageBox,
+            "question",
+            lambda *_args, **_kwargs: QMessageBox.StandardButton.No,
+        )
+        dialog.copy_profile_combo.setCurrentIndex(1)
+        assert dialog.copy_profile_combo.currentIndex() == 0
+        assert dialog.vendor_edit.text() == "작성 중"
+
+        dialog.close()
+        qt_app.processEvents()
+        assert dialog.isVisible()
+
+        monkeypatch.setattr(
+            QMessageBox,
+            "question",
+            lambda *_args, **_kwargs: QMessageBox.StandardButton.Yes,
+        )
+        dialog.copy_profile_combo.setCurrentIndex(1)
+        assert dialog.copy_profile_combo.currentIndex() == 1
+        assert dialog.vendor_edit.text() != "작성 중"
+        dialog.close()
+        qt_app.processEvents()
+        assert not dialog.isVisible()
+    finally:
+        dialog._dirty = False
+        dialog.close()
+
+
+def test_vendor_profile_dialog_does_not_delete_a_referenced_command(
+    qt_app, tmp_path: Path, monkeypatch
+):
+    service = InspectorService(user_data_dir=tmp_path / "inspector")
+    dialog = InspectorProfileDialog(service)
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        lambda _parent, _title, message: warnings.append(message),
+    )
+    try:
+        original_count = len(dialog.state["commands"])
+        dialog.command_list.setCurrentRow(0)
+        dialog._remove_command()
+
+        assert len(dialog.state["commands"]) == original_count
+        assert warnings
+        assert "OS버전" in warnings[0]
+    finally:
+        dialog.close()
+
+
+def test_vendor_profile_dialog_confirms_target_profile_overwrite(
+    qt_app, tmp_path: Path, monkeypatch
+):
+    service = InspectorService(user_data_dir=tmp_path / "inspector")
+    service.save_custom_rules_text(
+        """
+inspection_commands:
+  test_vendor:
+    test_os:
+      - show old
+  keep_vendor:
+    keep_os:
+      - show keep
+""".lstrip()
+    )
+    dialog = InspectorProfileDialog(service)
+    monkeypatch.setattr(QMessageBox, "information", lambda *_args, **_kwargs: None)
+    try:
+        dialog.vendor_edit.setText("test_vendor")
+        dialog.os_edit.setText("test_os")
+        dialog.refresh_preview()
+
+        monkeypatch.setattr(
+            QMessageBox,
+            "question",
+            lambda *_args, **_kwargs: QMessageBox.StandardButton.No,
+        )
+        dialog._save_profile()
+        unchanged = yaml.safe_load(
+            service.custom_rules_path.read_text(encoding="utf-8")
+        )
+        assert unchanged["inspection_commands"]["test_vendor"]["test_os"] == [
+            "show old"
+        ]
+
+        monkeypatch.setattr(
+            QMessageBox,
+            "question",
+            lambda *_args, **_kwargs: QMessageBox.StandardButton.Yes,
+        )
+        dialog._save_profile()
+        saved = yaml.safe_load(service.custom_rules_path.read_text(encoding="utf-8"))
+        assert saved["inspection_commands"]["test_vendor"]["test_os"] == [
+            "show version",
+            "show inventory",
+        ]
+        assert saved["inspection_commands"]["keep_vendor"]["keep_os"] == [
+            "show keep"
+        ]
+    finally:
+        dialog.close()
+
+
+def test_vendor_profile_yaml_export_uses_selected_path_and_repairs_extension(
+    qt_app, tmp_path: Path, monkeypatch
+):
+    service = InspectorService(user_data_dir=tmp_path / "inspector")
+    exports_dir = tmp_path / "exports"
+    dialog = InspectorProfileDialog(service, exports_dir=exports_dir)
+    selected = tmp_path / "chosen" / "qa-profile"
+    proposed_paths: list[Path] = []
+
+    def choose_path(_parent, _title, proposed, _file_filter):
+        proposed_paths.append(Path(proposed))
+        return str(selected), "YAML Files (*.yaml *.yml)"
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", choose_path)
+    monkeypatch.setattr(QMessageBox, "information", lambda *_args, **_kwargs: None)
+    try:
+        dialog.yaml_preview.setPlainText("inspection_commands:\n  qa: {}\n")
+        saved_path = dialog._export_yaml()
+
+        assert saved_path == selected.with_suffix(".yaml")
+        assert saved_path.read_text(encoding="utf-8").startswith(
+            "inspection_commands:"
+        )
+        assert proposed_paths[0].parent == exports_dir
+        assert proposed_paths[0].name.startswith("custom_rules_")
+        assert proposed_paths[0].suffix == ".yaml"
+    finally:
+        dialog.close()
+
+
+def test_vendor_profile_yaml_export_preserves_yml_extension(
+    qt_app, tmp_path: Path, monkeypatch
+):
+    service = InspectorService(user_data_dir=tmp_path / "inspector")
+    dialog = InspectorProfileDialog(service, exports_dir=tmp_path / "exports")
+    selected = tmp_path / "chosen" / "qa-profile.yml"
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        lambda *_args, **_kwargs: (
+            str(selected),
+            "YAML Files (*.yaml *.yml)",
+        ),
+    )
+    monkeypatch.setattr(QMessageBox, "information", lambda *_args, **_kwargs: None)
+    try:
+        dialog.yaml_preview.setPlainText("inspection_commands: {}\n")
+
+        saved_path = dialog._export_yaml()
+
+        assert saved_path == selected
+        assert saved_path.read_text(encoding="utf-8") == "inspection_commands: {}\n"
+    finally:
+        dialog.close()
+
+
+def test_vendor_profile_yaml_export_cancel_creates_no_file(
+    qt_app, tmp_path: Path, monkeypatch
+):
+    service = InspectorService(user_data_dir=tmp_path / "inspector")
+    exports_dir = tmp_path / "exports"
+    dialog = InspectorProfileDialog(service, exports_dir=exports_dir)
+    information_calls: list[tuple] = []
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        lambda *_args, **_kwargs: ("", ""),
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "information",
+        lambda *args, **kwargs: information_calls.append((args, kwargs)),
+    )
+    try:
+        dialog.yaml_preview.setPlainText("inspection_commands: {}\n")
+
+        assert dialog._export_yaml() is None
+        assert not list(tmp_path.rglob("*.yaml"))
+        assert information_calls == []
+    finally:
+        dialog.close()
+
+
+def test_vendor_profile_dialog_uses_space_and_accessible_labels(
+    qt_app, tmp_path: Path
+):
+    service = InspectorService(user_data_dir=tmp_path / "inspector")
+    dialog = InspectorProfileDialog(service)
+    try:
+        dialog.resize(1280, 800)
+        dialog.show()
+        qt_app.processEvents()
+
+        dialog.tabs.setCurrentWidget(
+            dialog.findChild(QWidget, "inspectionCommandsTab")
+        )
+        qt_app.processEvents()
+
+        assert dialog.sample_output_edit.height() >= 300
+        assert dialog.command_list.accessibleName() == "점검 명령 목록"
+        assert dialog.column_list.accessibleName() == "Excel 컬럼 목록"
+        assert dialog.sample_line_view.accessibleName() == "선택한 명령 출력 예시"
+        assert dialog.issue_list.accessibleName() == "프로파일 입력 확인"
+        assert dialog.summary_preview.accessibleName() == "프로파일 요약"
+        assert dialog.yaml_preview.accessibleName() == "프로파일 YAML 미리보기"
+    finally:
+        dialog.close()
+
+
+def test_vendor_profile_dialog_opens_without_telnetlib3(
+    monkeypatch, qt_app, tmp_path: Path
+):
     service = InspectorService(user_data_dir=tmp_path / "inspector")
     service.reload_runtime_modules()
     real_import = builtins.__import__
@@ -266,9 +835,13 @@ def test_python_parser_dialog_saves_function(qt_app, tmp_path: Path, monkeypatch
     service = InspectorService(user_data_dir=tmp_path / "inspector")
     dialog = PythonParserDialog(service)
     try:
-        monkeypatch.setattr(QMessageBox, "information", lambda *args, **kwargs: QMessageBox.Ok)
+        monkeypatch.setattr(
+            QMessageBox, "information", lambda *args, **kwargs: QMessageBox.Ok
+        )
         dialog.function_name_edit.setText("parsing_test_value")
-        dialog.code_edit.setPlainText("def parsing_test_value(output: str):\n    return output.strip().upper()\n")
+        dialog.code_edit.setPlainText(
+            "def parsing_test_value(output: str):\n    return output.strip().upper()\n"
+        )
         dialog.sample_output_edit.setPlainText("ok")
         dialog._test_code()
 
@@ -307,10 +880,18 @@ def test_split_fields_parser_extracts_range():
         from core.inspector import NetworkInspector
 
         output = "CPU Usage        12 %\nMemory Usage     40 %"
-        assert NetworkInspector._parse_split_fields(
-            output,
-            {"line_number": 1, "start_field": 3, "end_field": 4, "delimiter": "whitespace"},
-        ) == "12 %"
+        assert (
+            NetworkInspector._parse_split_fields(
+                output,
+                {
+                    "line_number": 1,
+                    "start_field": 3,
+                    "end_field": 4,
+                    "delimiter": "whitespace",
+                },
+            )
+            == "12 %"
+        )
 
 
 def test_multiple_excel_columns_from_same_command_are_preserved(tmp_path: Path):
@@ -385,7 +966,13 @@ def test_config_builder_prepares_user_sample_without_overwrite(tmp_path: Path):
     sample.write_text("sentinel", encoding="utf-8")
     prepared_again = service.prepare_sample_device_values_for_profile(profile)
 
-    assert sample == tmp_path / "config_builder" / "device_values" / "sample_cisco_ios_l2_access_base_devices.csv"
+    assert (
+        sample
+        == tmp_path
+        / "config_builder"
+        / "device_values"
+        / "sample_cisco_ios_l2_access_base_devices.csv"
+    )
     assert "CISCO_IOS_L2_ACCESS_BASE" in original_text
     assert prepared_again.read_text(encoding="utf-8") == "sentinel"
 
@@ -410,30 +997,40 @@ def test_config_builder_generates_blank_sample_for_custom_profile(tmp_path: Path
                 "blocks:",
                 "  - name: base",
                 "    lines:",
-                "      - \"hostname {{ hostname }}\"",
+                '      - "hostname {{ hostname }}"',
                 "",
             ]
         ),
         encoding="utf-8",
     )
-    service = ConfigBuilderService(profiles_dir=profiles_dir, user_data_dir=tmp_path / "config_builder")
+    service = ConfigBuilderService(
+        profiles_dir=profiles_dir, user_data_dir=tmp_path / "config_builder"
+    )
     profiles, issues = service.load_profiles()
 
-    sample = service.prepare_sample_device_values_for_profile(profiles["CUSTOM_PROFILE"])
+    sample = service.prepare_sample_device_values_for_profile(
+        profiles["CUSTOM_PROFILE"]
+    )
     lines = sample.read_text(encoding="utf-8").splitlines()
 
     assert not issues
-    assert sample == tmp_path / "config_builder" / "device_values" / "custom_profile_devices.csv"
+    assert (
+        sample
+        == tmp_path / "config_builder" / "device_values" / "custom_profile_devices.csv"
+    )
     assert lines[0] == "device_id,profile_id,hostname,mgmt_ip"
     assert lines[1].startswith(",CUSTOM_PROFILE,,")
 
 
-def test_config_builder_tab_embeds_full_builder_and_removes_legacy_shortcuts(qt_app, tmp_path: Path):
+def test_config_builder_tab_embeds_full_builder_and_removes_legacy_shortcuts(
+    qt_app, tmp_path: Path
+):
     tab = ConfigBuilderTab(_config_builder_state(tmp_path))
     try:
         tab.show()
         QApplication.processEvents()
-        button = lambda name: tab.findChild(QPushButton, name)
+        def button(name):
+            return tab.findChild(QPushButton, name)
         builder = tab.builder_widget
 
         assert button("configBuilderGuideButton") is None
@@ -451,7 +1048,10 @@ def test_config_builder_tab_embeds_full_builder_and_removes_legacy_shortcuts(qt_
         assert builder.findChild(QWidget, "configBuilderRightPanel") is not None
         assert builder.findChild(QWidget, "configBuilderAdvancedPanel").isHidden()
         assert "QWidget#configBuilderEmbeddedCentral QWidget" in builder.styleSheet()
-        assert builder.findChild(QPushButton, "configBuilderSampleStartButton").text() == "샘플로 시작"
+        assert (
+            builder.findChild(QPushButton, "configBuilderSampleStartButton").text()
+            == "샘플로 시작"
+        )
         assert builder.open_file_button.text() == "장비 변수 파일 열기"
         assert builder.add_row_button.text() == "빈 행 추가"
         assert builder.advanced_toggle_button.text() == "고급 작업"
@@ -467,13 +1067,17 @@ def test_config_builder_tab_embeds_full_builder_and_removes_legacy_shortcuts(qt_
         tab.close()
 
 
-def test_config_builder_tab_uses_existing_builder_profile_blocks(qt_app, tmp_path: Path):
+def test_config_builder_tab_uses_existing_builder_profile_blocks(
+    qt_app, tmp_path: Path
+):
     tab = ConfigBuilderTab(_config_builder_state(tmp_path))
     try:
         tab.show()
         QApplication.processEvents()
         builder = tab.builder_widget
-        group_titles = {group.title(): group for group in builder.findChildren(QGroupBox)}
+        group_titles = {
+            group.title(): group for group in builder.findChildren(QGroupBox)
+        }
         for title in ("명령 블록 선택", "필터", "표시 컬럼", "파일 상태"):
             assert title in group_titles
             assert not group_titles[title].isVisible()
@@ -513,14 +1117,22 @@ def test_config_builder_tab_initial_empty_state_is_actionable(qt_app, tmp_path: 
         QApplication.processEvents()
         builder = tab.builder_widget
         empty_state = builder.findChild(QWidget, "configBuilderEmptyState")
-        empty_text = " ".join(label.text() for label in empty_state.findChildren(QLabel))
+        empty_text = " ".join(
+            label.text() for label in empty_state.findChildren(QLabel)
+        )
 
         assert empty_state is not None
         assert empty_state.isVisible()
         assert "아직 장비 목록이 없습니다." in empty_text
-        assert "샘플로 시작" in [button.text() for button in empty_state.findChildren(QPushButton)]
-        assert "장비 변수 파일 열기" in [button.text() for button in empty_state.findChildren(QPushButton)]
-        assert "빈 행 추가" in [button.text() for button in empty_state.findChildren(QPushButton)]
+        assert "샘플로 시작" in [
+            button.text() for button in empty_state.findChildren(QPushButton)
+        ]
+        assert "장비 변수 파일 열기" in [
+            button.text() for button in empty_state.findChildren(QPushButton)
+        ]
+        assert "빈 행 추가" in [
+            button.text() for button in empty_state.findChildren(QPushButton)
+        ]
         assert builder.table_model.rowCount() == 0
         assert builder.cli_preview.toPlainText() == ""
         assert builder.issue_list.item(0).text() == "선택한 장비 없음"
@@ -550,7 +1162,9 @@ def test_config_builder_tab_empty_state_hides_after_first_row(qt_app, tmp_path: 
         tab.close()
 
 
-def test_config_builder_tab_sample_start_shows_device_variable_columns(qt_app, tmp_path: Path):
+def test_config_builder_tab_sample_start_shows_device_variable_columns(
+    qt_app, tmp_path: Path
+):
     tab = ConfigBuilderTab(_config_builder_state(tmp_path))
     try:
         tab.show()
@@ -571,7 +1185,8 @@ def test_config_builder_tab_sample_start_shows_device_variable_columns(qt_app, t
         visible_columns = [
             header
             for column, header in enumerate(builder.table_model.headers)
-            if not builder.table_view.isColumnHidden(column) or not builder.pinned_table_view.isColumnHidden(column)
+            if not builder.table_view.isColumnHidden(column)
+            or not builder.pinned_table_view.isColumnHidden(column)
         ]
         assert "profile_id" in visible_columns
         assert "hostname" in visible_columns
@@ -580,7 +1195,9 @@ def test_config_builder_tab_sample_start_shows_device_variable_columns(qt_app, t
         tab.close()
 
 
-def test_config_builder_tab_loads_new_device_file_with_all_columns_visible(qt_app, tmp_path: Path):
+def test_config_builder_tab_loads_new_device_file_with_all_columns_visible(
+    qt_app, tmp_path: Path
+):
     device_file = tmp_path / "devices.csv"
     device_file.write_text(
         "\n".join(
@@ -610,7 +1227,9 @@ def test_config_builder_tab_loads_new_device_file_with_all_columns_visible(qt_ap
         tab.close()
 
 
-def test_config_builder_tab_profile_editor_uses_service_profiles_dir(qt_app, tmp_path: Path, monkeypatch):
+def test_config_builder_tab_profile_editor_uses_service_profiles_dir(
+    qt_app, tmp_path: Path, monkeypatch
+):
     captured: dict[str, object] = {}
 
     class FakeProfileBuilderDialog:
@@ -633,21 +1252,29 @@ def test_config_builder_tab_profile_editor_uses_service_profiles_dir(qt_app, tmp
 
         tab.builder_widget.edit_current_profile_dialog()
 
-        assert captured["profiles_dir"] == tmp_path / "data" / "config_builder" / "profiles"
+        assert (
+            captured["profiles_dir"]
+            == tmp_path / "data" / "config_builder" / "profiles"
+        )
         assert captured["profile_id"] == "CISCO_IOS_L2_ACCESS_BASE"
         assert captured["parent"] is tab.builder_widget
     finally:
         tab.close()
 
 
-def test_config_builder_tab_full_editor_receives_profiles_dir(qt_app, tmp_path: Path, monkeypatch):
+def test_config_builder_tab_full_editor_receives_profiles_dir(
+    qt_app, tmp_path: Path, monkeypatch
+):
     captured: dict[str, object] = {}
 
     class FakeDesktopWindow:
-        def __init__(self, profiles_dir=None):
+        def __init__(self, profiles_dir=None, *, exports_dir=None):
             captured["profiles_dir"] = Path(profiles_dir)
+            captured["exports_dir"] = Path(exports_dir)
             self.loaded = None
-            self.add_profile_combo = SimpleNamespace(setCurrentText=lambda text: captured.setdefault("profile_id", text))
+            self.add_profile_combo = SimpleNamespace(
+                setCurrentText=lambda text: captured.setdefault("profile_id", text)
+            )
 
         def load_device_file(self, path):
             self.loaded = Path(path)
@@ -672,7 +1299,11 @@ def test_config_builder_tab_full_editor_receives_profiles_dir(qt_app, tmp_path: 
 
         tab._open_full_editor()
 
-        assert captured["profiles_dir"] == tmp_path / "data" / "config_builder" / "profiles"
+        assert (
+            captured["profiles_dir"]
+            == tmp_path / "data" / "config_builder" / "profiles"
+        )
+        assert captured["exports_dir"] == tmp_path / "exports"
         assert captured["profile_id"] == "CISCO_IOS_L2_ACCESS_BASE"
         assert captured["loaded"] == tmp_path / "devices.csv"
         assert captured["shown"] is True
@@ -686,7 +1317,9 @@ def test_config_builder_tab_no_longer_starts_external_helper_files():
     sources = "\n".join(
         [
             Path("app/ui/tabs/config_builder_tab.py").read_text(encoding="utf-8"),
-            Path("netops_suite/modules/config_builder/switch_configurator/desktop_impl.py").read_text(encoding="utf-8"),
+            Path(
+                "netops_suite/modules/config_builder/switch_configurator/desktop_impl.py"
+            ).read_text(encoding="utf-8"),
         ]
     )
 
@@ -700,7 +1333,10 @@ def test_config_builder_tab_no_longer_starts_external_helper_files():
 
 
 def test_config_builder_full_editor_window_uses_netops_title(qt_app, tmp_path: Path):
-    from netops_suite.modules.config_builder.switch_configurator.desktop_impl import DesktopWindow, SwitchConfigBuilderWidget
+    from netops_suite.modules.config_builder.switch_configurator.desktop_impl import (
+        DesktopWindow,
+        SwitchConfigBuilderWidget,
+    )
 
     window = DesktopWindow(profiles_dir=tmp_path / "profiles")
     try:
@@ -710,7 +1346,9 @@ def test_config_builder_full_editor_window_uses_netops_title(qt_app, tmp_path: P
         window.close()
 
 
-def test_config_builder_full_editor_keeps_advanced_controls_available(qt_app, tmp_path: Path, monkeypatch):
+def test_config_builder_full_editor_keeps_advanced_controls_available(
+    qt_app, tmp_path: Path, monkeypatch
+):
     from netops_suite.modules.config_builder.switch_configurator import desktop_impl
 
     monkeypatch.setattr(desktop_impl, "APP_STATE_PATH", tmp_path / "missing_state.json")
@@ -720,7 +1358,9 @@ def test_config_builder_full_editor_keeps_advanced_controls_available(qt_app, tm
         window.show()
         QApplication.processEvents()
         builder = window.builder
-        group_titles = {group.title(): group for group in builder.findChildren(QGroupBox)}
+        group_titles = {
+            group.title(): group for group in builder.findChildren(QGroupBox)
+        }
 
         assert builder._embedded is False
         assert not builder.main_toolbar.isHidden()
@@ -728,7 +1368,14 @@ def test_config_builder_full_editor_keeps_advanced_controls_available(qt_app, tm
         assert "QWidget#configBuilderFullEditorCentral" in builder.styleSheet()
         assert "QGroupBox" in builder.styleSheet()
         assert "background: #ffffff" in builder.styleSheet()
-        for title in ("프로파일 작업", "명령 블록 선택", "필터", "행 작업", "표시 컬럼", "파일 상태"):
+        for title in (
+            "프로파일 작업",
+            "명령 블록 선택",
+            "필터",
+            "행 작업",
+            "표시 컬럼",
+            "파일 상태",
+        ):
             assert title in group_titles
             assert group_titles[title].isVisible()
         for widget in (
@@ -755,7 +1402,7 @@ def test_packaging_names_match_suite_release_contract():
     installer_script = Path("installer/netops-suite.iss").read_text(encoding="utf-8")
 
     assert "NetOpsSuite" in build_script
-    assert 'NetOpsSuite-setup-$normalizedVersion.exe' in build_script
+    assert "NetOpsSuite-setup-$normalizedVersion.exe" in build_script
     assert "SHA256SUMS.txt" in build_script
     assert "Get-FileHash" in build_script
     assert "ChecksumPath" in publish_script
@@ -817,7 +1464,12 @@ def test_inspector_tab_buttons_use_clear_workflow_labels(qt_app, tmp_path: Path)
                 parent = parent.parentWidget()
             return False
 
-        assert step_titles == ["1. 장비 프로파일", "2. 대상 장비 목록", "3. 실행 방식", "4. 검증 및 실행"]
+        assert step_titles == [
+            "1. 장비 프로파일",
+            "2. 대상 장비 목록",
+            "3. 실행 방식",
+            "4. 검증 및 실행",
+        ]
         assert step_hint is not None
         assert "장비 프로파일 확인/관리" in step_hint.text()
         assert "실행 방식 선택" in step_hint.text()
@@ -864,9 +1516,117 @@ def test_inspector_tab_buttons_use_clear_workflow_labels(qt_app, tmp_path: Path)
         tab._inspector_running = False
         tab._update_run_action_state()
         assert tab.run_button.isEnabled()
-        message = tab._inspector_error_message(ModuleNotFoundError("No module named 'vendors'"))
+        message = tab._inspector_error_message(
+            ModuleNotFoundError("No module named 'vendors'")
+        )
         assert "No module named" not in message
         assert "requirements.txt" in message
+    finally:
+        tab.close()
+
+
+def test_inspector_sample_inventory_save_can_be_cancelled_without_creating_file(
+    qt_app, tmp_path: Path, monkeypatch
+):
+    state = SimpleNamespace(
+        thread_pool=QThreadPool.globalInstance(),
+        paths=SimpleNamespace(
+            data_root=tmp_path / "data",
+            exports_dir=tmp_path / "exports",
+        ),
+    )
+    proposed_paths: list[Path] = []
+    information_calls: list[tuple] = []
+
+    def cancel_save(_parent, _title, proposed, _file_filter):
+        proposed_paths.append(Path(proposed))
+        return "", ""
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", cancel_save)
+    monkeypatch.setattr(
+        QMessageBox,
+        "information",
+        lambda *args, **kwargs: information_calls.append((args, kwargs)),
+    )
+    tab = InspectorTab(state)
+    try:
+        assert tab._create_sample_inventory() is None
+        assert tab.inventory_path_edit.text() == ""
+        assert proposed_paths[0].parent == state.paths.exports_dir
+        assert proposed_paths[0].name.startswith("sample_inventory_")
+        assert not list(tmp_path.rglob("*.xlsx"))
+        assert information_calls == []
+    finally:
+        tab.close()
+
+
+def test_inspector_tab_prioritizes_setup_at_1024x680_and_toggles_log(
+    qt_app, tmp_path: Path
+):
+    state = SimpleNamespace(
+        thread_pool=QThreadPool.globalInstance(),
+        paths=SimpleNamespace(data_root=tmp_path / "data"),
+    )
+    tab = InspectorTab(state)
+    try:
+        tab.resize(1024, 680)
+        tab.show()
+        qt_app.processEvents()
+
+        assert tab.log_view.isHidden()
+        assert tab.result_log_toggle_button.text() == "로그 보기"
+        assert tab.top_scroll.viewport().height() >= 400
+
+        tab.result_log_toggle_button.click()
+        qt_app.processEvents()
+        assert tab.log_view.isVisibleTo(tab)
+        assert tab.result_log_toggle_button.text() == "로그 숨기기"
+
+        tab.result_log_toggle_button.click()
+        qt_app.processEvents()
+        assert tab.log_view.isHidden()
+    finally:
+        tab.close()
+
+
+def test_inspector_tab_locks_run_configuration_until_worker_finishes(
+    qt_app, tmp_path: Path
+):
+    state = SimpleNamespace(
+        thread_pool=QThreadPool.globalInstance(),
+        paths=SimpleNamespace(data_root=tmp_path / "data"),
+    )
+    tab = InspectorTab(state)
+    try:
+        tab.mode_combo.setCurrentIndex(
+            tab.mode_combo.findData("custom_commands")
+        )
+        tab._inspector_running = True
+        tab._set_run_controls_locked(True)
+
+        assert not tab.profile_editor_button.isEnabled()
+        assert not tab.inventory_button.isEnabled()
+        assert not tab.sample_button.isEnabled()
+        assert not tab.validate_button.isEnabled()
+        assert not tab.mode_combo.isEnabled()
+        assert not tab.max_workers_spin.isEnabled()
+        assert not tab.command_button.isEnabled()
+        assert tab.inventory_path_edit.isReadOnly()
+        assert tab.command_path_edit.isReadOnly()
+        assert tab.output_name_edit.isReadOnly()
+
+        tab._inspector_running = False
+        tab._set_run_controls_locked(False)
+        assert tab.profile_editor_button.isEnabled()
+        assert tab.inventory_button.isEnabled()
+        assert tab.sample_button.isEnabled()
+        assert tab.validate_button.isEnabled()
+        assert tab.mode_combo.isEnabled()
+        assert tab.max_workers_spin.isEnabled()
+        assert tab.command_button.isEnabled()
+        assert not tab.inventory_path_edit.isReadOnly()
+        assert not tab.command_path_edit.isReadOnly()
+        assert not tab.output_name_edit.isReadOnly()
     finally:
         tab.close()
 
@@ -916,7 +1676,9 @@ def test_inspector_tab_does_not_open_excel_when_device_list_or_result_changes(
         tab.close()
 
 
-def test_inspector_result_excel_opens_once_per_explicit_action(qt_app, tmp_path: Path, monkeypatch):
+def test_inspector_result_excel_opens_once_per_explicit_action(
+    qt_app, tmp_path: Path, monkeypatch
+):
     state = SimpleNamespace(
         thread_pool=QThreadPool.globalInstance(),
         paths=SimpleNamespace(data_root=tmp_path / "data"),
@@ -982,7 +1744,9 @@ def test_inspector_tab_top_sections_use_white_background(qt_app, tmp_path: Path)
         tab.close()
 
 
-def test_artifacts_tab_shortens_path_column_and_keeps_table_readable(qt_app, tmp_path: Path):
+def test_artifacts_tab_shortens_path_column_and_keeps_table_readable(
+    qt_app, tmp_path: Path
+):
     data_root = tmp_path / "data"
     logs_dir = tmp_path / "logs"
     exports_dir = tmp_path / "exports"
@@ -990,7 +1754,9 @@ def test_artifacts_tab_shortens_path_column_and_keeps_table_readable(qt_app, tmp
     deep_path.parent.mkdir(parents=True)
     deep_path.write_text("ok", encoding="utf-8")
     state = SimpleNamespace(
-        paths=SimpleNamespace(logs_dir=logs_dir, exports_dir=exports_dir, data_root=data_root),
+        paths=SimpleNamespace(
+            logs_dir=logs_dir, exports_dir=exports_dir, data_root=data_root
+        ),
     )
 
     tab = ArtifactsTab(state)
@@ -1005,11 +1771,16 @@ def test_artifacts_tab_shortens_path_column_and_keeps_table_readable(qt_app, tmp
         tab.close()
 
 
-def test_main_window_uses_purpose_based_tab_labels_and_step_hints(qt_app, tmp_path: Path):
+def test_main_window_uses_purpose_based_tab_labels_and_step_hints(
+    qt_app, tmp_path: Path
+):
     state = AppState(tmp_path)
     window = MainWindow(state)
     try:
-        labels = [window.tab_widget.tabText(index) for index in range(window.tab_widget.count())]
+        labels = [
+            window.tab_widget.tabText(index)
+            for index in range(window.tab_widget.count())
+        ]
 
         assert labels == [
             "네트워크 설정",
@@ -1018,9 +1789,15 @@ def test_main_window_uses_purpose_based_tab_labels_and_step_hints(qt_app, tmp_pa
             "장비 점검/백업",
             "CLI 설정 생성",
             "NetOps 어시스턴트",
-            "결과 파일",
             "설정",
         ]
+        assert window.nav_list.count() == 7
+        assert window.nav_list.focusPolicy() == Qt.FocusPolicy.StrongFocus
+        assert window.nav_list.accessibleName() == "주요 화면"
+        assert all(
+            window.nav_list.item(index).text() != "결과 파일"
+            for index in range(window.nav_list.count())
+        )
         diagnostic_labels = [
             window.diagnostics_tab.diagnostic_tool_list.item(index).text()
             for index in range(window.diagnostics_tab.diagnostic_tool_list.count())
@@ -1052,12 +1829,29 @@ def test_main_window_uses_purpose_based_tab_labels_and_step_hints(qt_app, tmp_pa
             window.inspector_tab,
             window.config_builder_tab,
             window.ai_chat_tab,
-            window.artifacts_tab,
+            window.settings_tab,
         ):
             hint = tab.findChild(QLabel, "stepHint")
             assert hint is not None
             assert hint.maximumHeight() <= 42
-        assert window.diagnostics_tab.diagnostic_stack.sizePolicy().verticalPolicy() == QSizePolicy.Policy.Ignored
+        assert (
+            window.diagnostics_tab.diagnostic_stack.sizePolicy().verticalPolicy()
+            == QSizePolicy.Policy.Ignored
+        )
+    finally:
+        window.close()
+
+
+@pytest.mark.parametrize("legacy_index", [6, 7])
+def test_main_window_migrates_legacy_results_and_settings_indices_to_settings(
+    qt_app, tmp_path: Path, legacy_index: int
+):
+    state = AppState(tmp_path)
+    state.app_config["ui_state"] = {"main_window": {"current_tab": legacy_index}}
+    window = MainWindow(state)
+    try:
+        assert window.tab_widget.currentWidget() is window.settings_tab
+        assert window.nav_list.currentItem().text() == "설정"
     finally:
         window.close()
 
@@ -1066,7 +1860,10 @@ def test_main_workspace_uses_single_white_content_surface():
     assert "QWidget {\n    color: #1f2933;\n    background: #ffffff;" in APP_STYLE_SHEET
     assert "QWidget#appShell {\n    background: #ffffff;" in APP_STYLE_SHEET
     assert "QFrame#workspacePanel {\n    background: #ffffff;" in APP_STYLE_SHEET
-    assert "QTabWidget::pane {\n    border: 0;\n    background: #ffffff;" in APP_STYLE_SHEET
+    assert (
+        "QTabWidget::pane {\n    border: 0;\n    background: #ffffff;"
+        in APP_STYLE_SHEET
+    )
 
 
 def test_interface_tab_skips_startup_refresh_without_admin(qt_app, tmp_path: Path):
@@ -1097,7 +1894,9 @@ def test_interface_tab_skips_startup_refresh_without_admin(qt_app, tmp_path: Pat
         tab.close()
 
 
-def test_interface_tab_startup_refresh_runs_for_admin_and_manual_refresh_still_available(qt_app, tmp_path: Path):
+def test_interface_tab_startup_refresh_runs_for_admin_and_manual_refresh_still_available(
+    qt_app, tmp_path: Path
+):
     state = SimpleNamespace(
         is_admin=True,
         thread_pool=QThreadPool.globalInstance(),
@@ -1115,9 +1914,17 @@ def test_interface_tab_startup_refresh_runs_for_admin_and_manual_refresh_still_a
 
         assert calls == [state.network_interface_service.list_adapters]
 
+        # A second request is ignored while the first refresh is still pending.
+        tab.refresh_adapters()
+        assert calls == [state.network_interface_service.list_adapters]
+
+        tab._set_loading(False)
         state.is_admin = False
         tab.refresh_adapters()
-        assert calls == [state.network_interface_service.list_adapters, state.network_interface_service.list_adapters]
+        assert calls == [
+            state.network_interface_service.list_adapters,
+            state.network_interface_service.list_adapters,
+        ]
     finally:
         tab.close()
 
@@ -1190,7 +1997,10 @@ def test_action_button_helper_sets_role_icon_and_state(qt_app):
 
 
 def test_ui_buttons_are_created_through_action_helper():
-    roots = [Path("app"), Path("netops_suite/modules/config_builder/switch_configurator")]
+    roots = [
+        Path("app"),
+        Path("netops_suite/modules/config_builder/switch_configurator"),
+    ]
     offenders = []
     for root in roots:
         for path in root.rglob("*.py"):
@@ -1207,7 +2017,12 @@ def qt_app(qapp):
 
 
 def _config_builder_state(tmp_path: Path):
-    return SimpleNamespace(paths=SimpleNamespace(data_root=tmp_path / "data"))
+    return SimpleNamespace(
+        paths=SimpleNamespace(
+            data_root=tmp_path / "data",
+            exports_dir=tmp_path / "exports",
+        )
+    )
 
 
 def _select_config_builder_profile(tab: ConfigBuilderTab, profile_id: str) -> None:

@@ -10,6 +10,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$AssetPath,
     [string]$ChecksumPath = "",
+    [string[]]$AdditionalAssetPath = @(),
     [switch]$IsPrerelease,
     [switch]$AllowAssetReplace
 )
@@ -24,12 +25,43 @@ if ($TargetCommitish -notmatch '^[0-9a-fA-F]{40}$') {
     throw "TargetCommitish must be the exact 40-character source commit SHA for this release."
 }
 
-if (-not (Test-Path $AssetPath)) {
+if (-not (Test-Path -LiteralPath $AssetPath -PathType Leaf)) {
     throw "Release asset was not found: $AssetPath"
 }
 
-if (-not [string]::IsNullOrWhiteSpace($ChecksumPath) -and -not (Test-Path $ChecksumPath)) {
+if (
+    -not [string]::IsNullOrWhiteSpace($ChecksumPath) -and
+    -not (Test-Path -LiteralPath $ChecksumPath -PathType Leaf)
+) {
     throw "Checksum asset was not found: $ChecksumPath"
+}
+
+$validatedAdditionalAssetPaths = @()
+foreach ($additionalPath in @($AdditionalAssetPath)) {
+    if ([string]::IsNullOrWhiteSpace([string]$additionalPath)) {
+        continue
+    }
+    if (-not (Test-Path -LiteralPath $additionalPath -PathType Leaf)) {
+        throw "Additional release asset was not found: $additionalPath"
+    }
+    $validatedAdditionalAssetPaths += [string]$additionalPath
+}
+
+# Reject duplicate output names before creating a tag or draft. GitHub release
+# assets share one namespace, even when the source files come from different
+# directories.
+$assetPathsForNameValidation = @($AssetPath)
+if (-not [string]::IsNullOrWhiteSpace($ChecksumPath)) {
+    $assetPathsForNameValidation += $ChecksumPath
+}
+$assetPathsForNameValidation += $validatedAdditionalAssetPaths
+$assetNames = @{}
+foreach ($candidatePath in $assetPathsForNameValidation) {
+    $candidateName = Split-Path -Path $candidatePath -Leaf
+    if ($assetNames.ContainsKey($candidateName)) {
+        throw "Release assets must have unique file names: $candidateName"
+    }
+    $assetNames[$candidateName] = $true
 }
 
 $apiHeaders = @{
@@ -200,6 +232,246 @@ if (-not $release.draft) {
     throw "Refusing to upload assets to an already-published release."
 }
 
+function Get-GitHubStatusCode {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$ErrorRecord
+    )
+
+    try {
+        if ($ErrorRecord.Exception.Response) {
+            return [int]$ErrorRecord.Exception.Response.StatusCode
+        }
+    }
+    catch {
+        return $null
+    }
+    return $null
+}
+
+function Test-IsRetryableGitHubFailure {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$ErrorRecord
+    )
+
+    $statusCode = Get-GitHubStatusCode -ErrorRecord $ErrorRecord
+    if ($null -eq $statusCode) {
+        # Connection resets and timeouts generally do not expose an HTTP
+        # response. Their outcome is ambiguous, so callers reconcile state
+        # before retrying.
+        return $true
+    }
+    return @(408, 409, 429, 500, 502, 503, 504) -contains $statusCode
+}
+
+function Get-DraftReleaseSnapshot {
+    param(
+        [Parameter(Mandatory = $true)]
+        [long]$ReleaseId
+    )
+
+    $snapshot = Invoke-GitHubRest `
+        -Method GET `
+        -Uri "https://api.github.com/repos/$Repository/releases/$ReleaseId"
+    if (-not $snapshot.draft) {
+        throw "Release $ReleaseId is no longer a draft. Refusing to modify its assets."
+    }
+    return $snapshot
+}
+
+function Get-ReleaseAssetById {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Release,
+        [Parameter(Mandatory = $true)]
+        [long]$AssetId
+    )
+
+    return @(
+        $Release.assets |
+            Where-Object { [int64]$_.id -eq $AssetId }
+    ) | Select-Object -First 1
+}
+
+function Get-MatchingReleaseAsset {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Release,
+        [Parameter(Mandatory = $true)]
+        [string]$AssetName,
+        [Parameter(Mandatory = $true)]
+        [long]$Size
+    )
+
+    return @(
+        $Release.assets |
+            Where-Object {
+                [string]$_.name -ceq $AssetName -and
+                [int64]$_.size -eq $Size
+            }
+    ) | Select-Object -First 1
+}
+
+function Invoke-ReleaseAssetUpload {
+    param(
+        [Parameter(Mandatory = $true)]
+        [long]$ReleaseId,
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$AssetName,
+        [Parameter(Mandatory = $true)]
+        [string]$ContentType,
+        [ValidateRange(1, 10)]
+        [int]$MaximumAttempts = 3
+    )
+
+    $fileSize = [int64](Get-Item -LiteralPath $Path).Length
+    $escapedAssetName = [System.Uri]::EscapeDataString($AssetName)
+    $uploadUri = "https://uploads.github.com/repos/$Repository/releases/$ReleaseId/assets?name=$escapedAssetName"
+
+    for ($attempt = 1; $attempt -le $MaximumAttempts; $attempt++) {
+        try {
+            $uploadedAsset = Invoke-RestMethod `
+                -Method POST `
+                -Uri $uploadUri `
+                -Headers $apiHeaders `
+                -InFile $Path `
+                -ContentType $ContentType
+            if (
+                [string]$uploadedAsset.name -cne $AssetName -or
+                [int64]$uploadedAsset.size -ne $fileSize
+            ) {
+                throw "GitHub returned an unexpected asset after uploading $AssetName."
+            }
+            return $uploadedAsset
+        }
+        catch {
+            $uploadError = $_
+
+            # A connection can fail after GitHub persisted all bytes but before
+            # the response reached the runner. Re-read the draft before any
+            # retry so a matching name and byte size is accepted as success
+            # instead of creating a duplicate or failing on a name collision.
+            try {
+                $snapshot = Get-DraftReleaseSnapshot -ReleaseId $ReleaseId
+                $matchingAsset = Get-MatchingReleaseAsset `
+                    -Release $snapshot `
+                    -AssetName $AssetName `
+                    -Size $fileSize
+                if ($matchingAsset) {
+                    Write-Host "Confirmed release asset after an ambiguous upload response: $AssetName"
+                    return $matchingAsset
+                }
+            }
+            catch {
+                if ($_.Exception.Message -like "*is no longer a draft*") {
+                    throw
+                }
+                Write-Warning "Could not reconcile release assets after upload attempt $attempt for $AssetName."
+            }
+
+            if (
+                $attempt -ge $MaximumAttempts -or
+                -not (Test-IsRetryableGitHubFailure -ErrorRecord $uploadError)
+            ) {
+                throw $uploadError
+            }
+
+            $retryDelaySeconds = [Math]::Min(8, [Math]::Pow(2, $attempt))
+            Write-Warning "Release asset upload attempt $attempt failed for $AssetName. Retrying in $retryDelaySeconds seconds."
+            Start-Sleep -Seconds $retryDelaySeconds
+        }
+    }
+
+    throw "Release asset upload exhausted all attempts: $AssetName"
+}
+
+function Set-ReleaseAssetNameConfirmed {
+    param(
+        [Parameter(Mandatory = $true)]
+        [long]$ReleaseId,
+        [Parameter(Mandatory = $true)]
+        [long]$AssetId,
+        [Parameter(Mandatory = $true)]
+        [string]$AssetName,
+        [ValidateRange(1, 10)]
+        [int]$MaximumAttempts = 3
+    )
+
+    for ($attempt = 1; $attempt -le $MaximumAttempts; $attempt++) {
+        try {
+            $renamedAsset = Invoke-GitHubRest `
+                -Method PATCH `
+                -Uri "https://api.github.com/repos/$Repository/releases/assets/$AssetId" `
+                -Body @{ name = $AssetName }
+            if ([string]$renamedAsset.name -ceq $AssetName) {
+                return $renamedAsset
+            }
+            throw "GitHub returned an unexpected name while renaming release asset $AssetId."
+        }
+        catch {
+            $renameError = $_
+            $snapshot = Get-DraftReleaseSnapshot -ReleaseId $ReleaseId
+            $currentAsset = Get-ReleaseAssetById -Release $snapshot -AssetId $AssetId
+            if ($currentAsset -and [string]$currentAsset.name -ceq $AssetName) {
+                return $currentAsset
+            }
+            if (-not $currentAsset) {
+                throw "Release asset $AssetId disappeared while renaming it to $AssetName."
+            }
+            if (
+                $attempt -ge $MaximumAttempts -or
+                -not (Test-IsRetryableGitHubFailure -ErrorRecord $renameError)
+            ) {
+                throw $renameError
+            }
+            Start-Sleep -Seconds ([Math]::Min(8, [Math]::Pow(2, $attempt)))
+        }
+    }
+
+    throw "Release asset rename exhausted all attempts: $AssetId"
+}
+
+function Remove-ReleaseAssetConfirmed {
+    param(
+        [Parameter(Mandatory = $true)]
+        [long]$ReleaseId,
+        [Parameter(Mandatory = $true)]
+        [long]$AssetId,
+        [ValidateRange(1, 10)]
+        [int]$MaximumAttempts = 3
+    )
+
+    for ($attempt = 1; $attempt -le $MaximumAttempts; $attempt++) {
+        try {
+            Invoke-GitHubRest `
+                -Method DELETE `
+                -Uri "https://api.github.com/repos/$Repository/releases/assets/$AssetId" |
+                Out-Null
+            return
+        }
+        catch {
+            $deleteError = $_
+            $snapshot = Get-DraftReleaseSnapshot -ReleaseId $ReleaseId
+            $currentAsset = Get-ReleaseAssetById -Release $snapshot -AssetId $AssetId
+            if (-not $currentAsset) {
+                return
+            }
+            if (
+                $attempt -ge $MaximumAttempts -or
+                -not (Test-IsRetryableGitHubFailure -ErrorRecord $deleteError)
+            ) {
+                throw $deleteError
+            }
+            Start-Sleep -Seconds ([Math]::Min(8, [Math]::Pow(2, $attempt)))
+        }
+    }
+
+    throw "Release asset deletion exhausted all attempts: $AssetId"
+}
+
 function Publish-ReleaseAsset {
     param(
         [Parameter(Mandatory = $true)]
@@ -214,31 +486,108 @@ function Publish-ReleaseAsset {
     }
 
     $assetName = Split-Path -Path $Path -Leaf
-    $existingAsset = @($Release.assets | Where-Object { $_.name -eq $assetName }) | Select-Object -First 1
-    if ($existingAsset) {
-        if (-not $AllowAssetReplace.IsPresent) {
-            throw "Release asset already exists: $assetName. Re-run with -AllowAssetReplace only when intentionally replacing release assets."
-        }
-        Invoke-GitHubRest -Method DELETE -Uri "https://api.github.com/repos/$Repository/releases/assets/$($existingAsset.id)" | Out-Null
-        Write-Host "Deleted existing release asset before replacement: $assetName"
+    $fileSize = [int64](Get-Item -LiteralPath $Path).Length
+    $currentRelease = Get-DraftReleaseSnapshot -ReleaseId $Release.id
+    $existingAsset = @(
+        $currentRelease.assets |
+            Where-Object { [string]$_.name -ceq $assetName }
+    ) | Select-Object -First 1
+
+    if (-not $existingAsset) {
+        $uploadedAsset = Invoke-ReleaseAssetUpload `
+            -ReleaseId $Release.id `
+            -Path $Path `
+            -AssetName $assetName `
+            -ContentType $ContentType
+        Write-Host "Uploaded release asset: $($uploadedAsset.name)"
+        return
     }
 
-    $escapedAssetName = [System.Uri]::EscapeDataString($assetName)
-    $uploadUri = "https://uploads.github.com/repos/$Repository/releases/$($Release.id)/assets?name=$escapedAssetName"
+    if (-not $AllowAssetReplace.IsPresent) {
+        throw "Release asset already exists: $assetName. Re-run with -AllowAssetReplace only when intentionally replacing release assets."
+    }
 
-    Invoke-RestMethod `
-        -Method POST `
-        -Uri $uploadUri `
-        -Headers $apiHeaders `
-        -InFile $Path `
-        -ContentType $ContentType | Out-Null
+    # Keep the existing good asset available until a complete replacement has
+    # been uploaded and verified. Promotion uses reversible renames; the old
+    # asset is deleted only after the staged asset owns the final name.
+    $replacementId = [Guid]::NewGuid().ToString("N")
+    $extension = [System.IO.Path]::GetExtension($assetName)
+    $stagingName = ".netops-stage-$replacementId$extension"
+    $backupName = ".netops-backup-$replacementId$extension"
+    $stagedAsset = Invoke-ReleaseAssetUpload `
+        -ReleaseId $Release.id `
+        -Path $Path `
+        -AssetName $stagingName `
+        -ContentType $ContentType
 
-    Write-Host "Uploaded release asset: $assetName"
+    try {
+        $backupAsset = Set-ReleaseAssetNameConfirmed `
+            -ReleaseId $Release.id `
+            -AssetId $existingAsset.id `
+            -AssetName $backupName
+    }
+    catch {
+        $backupError = $_
+        try {
+            Remove-ReleaseAssetConfirmed -ReleaseId $Release.id -AssetId $stagedAsset.id
+        }
+        catch {
+            Write-Warning "Could not remove staged asset $stagingName after the backup rename failed. The draft was not published."
+        }
+        throw $backupError
+    }
+
+    try {
+        $promotedAsset = Set-ReleaseAssetNameConfirmed `
+            -ReleaseId $Release.id `
+            -AssetId $stagedAsset.id `
+            -AssetName $assetName
+        $verifiedRelease = Get-DraftReleaseSnapshot -ReleaseId $Release.id
+        $verifiedAsset = @(
+            $verifiedRelease.assets |
+                Where-Object {
+                    [int64]$_.id -eq [int64]$promotedAsset.id -and
+                    [string]$_.name -ceq $assetName -and
+                    [int64]$_.size -eq $fileSize
+                }
+        ) | Select-Object -First 1
+        if (-not $verifiedAsset) {
+            throw "Replacement asset could not be verified after promotion: $assetName"
+        }
+    }
+    catch {
+        $promotionError = $_
+        try {
+            Set-ReleaseAssetNameConfirmed `
+                -ReleaseId $Release.id `
+                -AssetId $backupAsset.id `
+                -AssetName $assetName | Out-Null
+        }
+        catch {
+            throw "Replacement of $assetName failed and the original asset rename could not be rolled back. The release remains a draft; the original asset is preserved as $backupName. Promotion error: $($promotionError.Exception.Message) Rollback error: $($_.Exception.Message)"
+        }
+
+        try {
+            Remove-ReleaseAssetConfirmed -ReleaseId $Release.id -AssetId $stagedAsset.id
+        }
+        catch {
+            Write-Warning "Could not remove staged asset $stagingName after rollback. The original asset was restored and the draft was not published."
+        }
+        throw $promotionError
+    }
+
+    # At this point the replacement is independently verified under the final
+    # name. It is now safe to remove the backup.
+    Remove-ReleaseAssetConfirmed -ReleaseId $Release.id -AssetId $backupAsset.id
+    Write-Host "Replaced release asset safely: $assetName"
 }
 
 Publish-ReleaseAsset -Release $release -Path $AssetPath
 if (-not [string]::IsNullOrWhiteSpace($ChecksumPath)) {
     Publish-ReleaseAsset -Release $release -Path $ChecksumPath -ContentType "text/plain"
+}
+foreach ($additionalPath in $validatedAdditionalAssetPaths) {
+    Publish-ReleaseAsset -Release $release -Path $additionalPath
 }
 
 if ($release.draft) {
