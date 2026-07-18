@@ -1,4 +1,11 @@
+import json
+import shutil
+import subprocess
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+import pytest
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -77,3 +84,130 @@ def test_asset_hardening_keeps_release_immutability_and_commit_binding():
     assert "target_commitish       = $TargetCommitish" in script
     assert "target_commitish = $TargetCommitish" in script
     assert "Published tag $TagName does not resolve to requested source commit" in script
+
+
+def test_versioned_release_notes_are_validated_before_mutation_and_published_verbatim():
+    script = _publish_script()
+
+    notes_validation = script.index("$releaseNotesBytes = [IO.File]::ReadAllBytes")
+    contract_validation = script.index(
+        "& python $releaseNotesValidatorPath --tag $TagName --project-root $projectRoot"
+    )
+    first_release_lookup = script.index("$release = Get-ReleaseByTag -Tag $TagName")
+    first_tag_mutation = script.index(
+        'Invoke-GitHubRest -Method POST -Uri "https://api.github.com/repos/$Repository/git/refs"'
+    )
+
+    assert contract_validation < notes_validation < first_release_lookup < first_tag_mutation
+    assert "$semanticReleaseTagPattern" in script
+    assert 'Join-Path $releaseNotesRoot "$TagName.md"' in script
+    assert "Release notes must be valid UTF-8" in script
+    assert "Release notes must contain all required user-facing sections" in script
+    assert "Release notes contain an empty section" in script
+    assert script.count("body") >= 2
+    assert script.count("= $releaseBody") >= 2
+    assert "generate_release_notes = $false" in script
+    assert "Draft release notes do not match" in script
+    assert "Published release notes do not match" in script
+    assert "$draftBody -cne $releaseBody" in script
+    assert "$publishedBody -cne $releaseBody" in script
+    draft_body_check = script.index("$draftBody =")
+    first_asset_upload = script.index("Publish-ReleaseAsset -Release $release")
+    publish_request = script.index("draft            = $false")
+    assert draft_body_check < first_asset_upload < publish_request
+
+
+def test_github_json_requests_use_explicit_utf8_bytes():
+    script = _publish_script()
+
+    assert "$jsonBytes = [Text.Encoding]::UTF8.GetBytes($json)" in script
+    assert "-Body $jsonBytes" in script
+    assert '-ContentType "application/json; charset=utf-8"' in script
+    assert "-Body $json -ContentType" not in script
+
+
+@pytest.mark.skipif(
+    shutil.which("powershell") is None,
+    reason="Windows PowerShell 5.1 is required for the encoding regression test.",
+)
+def test_windows_powershell_sends_korean_release_json_as_utf8_bytes(tmp_path):
+    received: dict[str, object] = {}
+
+    class CaptureHandler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers["Content-Length"])
+            received["content_type"] = self.headers["Content-Type"]
+            received["body"] = self.rfile.read(length)
+            response = b'{"ok":true}'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(response)))
+            self.end_headers()
+            self.wfile.write(response)
+
+        def log_message(self, _format, *args):
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), CaptureHandler)
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+    try:
+        script_path = PROJECT_ROOT / "scripts" / "publish_release.ps1"
+        escaped_script_path = str(script_path).replace("'", "''")
+        uri = f"http://127.0.0.1:{server.server_port}/capture"
+        powershell_script = tmp_path / "capture-release-json.ps1"
+        powershell_script.write_text(
+            "\n".join(
+                (
+                    "$ErrorActionPreference = 'Stop'",
+                    "$tokens = $null",
+                    "$parseErrors = $null",
+                    (
+                        "$ast = [System.Management.Automation.Language.Parser]::"
+                        f"ParseFile('{escaped_script_path}', "
+                        "[ref]$tokens, [ref]$parseErrors)"
+                    ),
+                    "if ($parseErrors.Count -gt 0) { throw $parseErrors[0] }",
+                    (
+                        "$functionAst = $ast.Find({ param($node) "
+                        "$node -is "
+                        "[System.Management.Automation.Language.FunctionDefinitionAst] "
+                        "-and $node.Name -eq 'Invoke-GitHubRest' }, $true)"
+                    ),
+                    "if ($null -eq $functionAst) { throw 'Function not found.' }",
+                    "$apiHeaders = @{}",
+                    "Invoke-Expression $functionAst.Extent.Text",
+                    (
+                        f"$null = Invoke-GitHubRest -Method POST -Uri '{uri}' "
+                        "-Body @{ body = '한글 릴리즈 노트'; name = '새 기능' }"
+                    ),
+                )
+            ),
+            encoding="utf-8-sig",
+        )
+
+        completed = subprocess.run(
+            [
+                shutil.which("powershell") or "powershell",
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(powershell_script),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        server_thread.join(timeout=5)
+
+    assert completed.returncode == 0, completed.stderr
+    assert received["content_type"] == "application/json; charset=utf-8"
+    payload = json.loads(received["body"].decode("utf-8"))
+    assert payload == {"body": "한글 릴리즈 노트", "name": "새 기능"}

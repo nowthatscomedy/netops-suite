@@ -173,6 +173,13 @@ jobs:
           enable-cache: true
           cache-dependency-glob: requirements-dev-lock.txt
 
+      - name: Validate Release Notes
+        if: steps.release_guard.outputs.should_release == 'true'
+        shell: powershell
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.tag_name }}
+        run: python scripts/validate_release_notes.py --tag $env:RELEASE_TAG
+
       - name: Scan Repository For Secrets
         if: steps.release_guard.outputs.should_release == 'true'
         shell: powershell

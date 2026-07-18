@@ -163,6 +163,10 @@ uv pip compile requirements-dev.txt --python-platform windows --python-version 3
 GitHub Actions 릴리즈 빌드는 `workflow_dispatch`로 수동 실행하며, 저장소 공개 전환이나 `main` push와
 릴리즈 게시를 분리합니다. 한 번 공개한 릴리즈와 asset은 교체하지 않습니다. 게시 전 draft 릴리즈를
 복구할 때만 `allow_asset_replace`를 명시적으로 켤 수 있습니다.
+릴리즈를 실행하기 전에 `release-notes/vX.Y.Z.md`를 작성해야 합니다. 이 파일은 이전 버전과 달라진 점,
+새 기능, 개선·수정, 설치 주의사항과 검증 결과를 포함하며 GitHub 릴리즈 본문으로 그대로 게시됩니다.
+대응하는 노트가 없거나 필수 섹션이 비어 있으면 태그와 초안을 만들기 전에 릴리즈를 중단합니다.
+작성 형식은 `release-notes/TEMPLATE.md`를 참고하세요.
 공개 설치 파일에는 `LICENSE`와 `THIRD_PARTY_NOTICES.md`를 포함해야 합니다.
 공식 GitHub 릴리즈는 기본적으로 Windows 코드서명을 필수로 검증합니다. 저장소 Actions secret에
 `WINDOWS_CODESIGN_CERT_BASE64`(PFX 파일의 Base64 값)와 `WINDOWS_CODESIGN_CERT_PASSWORD`를

@@ -34,6 +34,7 @@ Release verification is valid only when every command above exits successfully.
 ## Release Safety
 
 - GitHub Actions release builds are manual `workflow_dispatch` runs.
+- Every release requires a reviewed `release-notes/vX.Y.Z.md`; the workflow publishes that file as the GitHub release body and fails before mutation when it is missing or incomplete.
 - Published releases and their assets are immutable. `allow_asset_replace` is limited to explicitly repairing an unpublished draft release.
 - Installer downloads are SHA-256 checked for file integrity. Publisher trust is separate and should be verified with Windows code signing.
 - Before public release, run `gitleaks detect --source . --verbose --redact` and block release if history contains secrets.
