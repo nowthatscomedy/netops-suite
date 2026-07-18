@@ -160,11 +160,18 @@ jobs:
             throw "Draft release $($env:TAG_NAME) already exists and automatic replacement is disabled."
           }
 
-      - name: Setup Python
+      - name: Set up uv and Python
         if: steps.release_guard.outputs.should_release == 'true'
-        uses: actions/setup-python@v6
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
         with:
+          version: "0.11.29"
+          checksum: "a047d55651bc3e0ca24595b25ec4cfcb10f9dca9fb56514e661269b37d4fae68"
           python-version: "3.11.15"
+          activate-environment: true
+          venv-path: ${{ runner.temp }}/netops-suite-release-venv
+          no-project: true
+          enable-cache: true
+          cache-dependency-glob: requirements-dev-lock.txt
 
       - name: Scan Repository For Secrets
         if: steps.release_guard.outputs.should_release == 'true'
@@ -197,9 +204,8 @@ jobs:
         if: steps.release_guard.outputs.should_release == 'true'
         shell: powershell
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements-dev-lock.txt
-          python -m pip install "pyinstaller==6.21.0" "pyinstaller-hooks-contrib==2026.6"
+          uv pip install --require-hashes -r requirements-dev-lock.txt
+          uv pip install "pyinstaller==6.21.0" "pyinstaller-hooks-contrib==2026.6"
           winget install `
             --id JRSoftware.InnoSetup `
             --exact `
@@ -214,12 +220,12 @@ jobs:
         if: steps.release_guard.outputs.should_release == 'true'
         shell: powershell
         run: |
-          python -c "import pyftpdlib, OpenSSL, paramiko, tftpy, netmiko, msoffcrypto, xlrd; from telnetlib3 import telnetlib; print('NetOps Suite runtime dependencies OK')"
+          python -c "import sys; assert sys.version_info[:3] == (3, 11, 15), sys.version; import pyftpdlib, OpenSSL, paramiko, tftpy, netmiko, msoffcrypto, xlrd; from telnetlib3 import telnetlib; print('NetOps Suite runtime dependencies OK')"
 
       - name: Verify Installed Dependencies
         if: steps.release_guard.outputs.should_release == 'true'
         shell: powershell
-        run: python -m pip check
+        run: uv pip check
 
       - name: Audit Installed Dependencies
         if: steps.release_guard.outputs.should_release == 'true'

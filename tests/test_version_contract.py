@@ -22,7 +22,7 @@ def test_release_workflow_defaults_to_current_version():
 def test_release_workflow_gates_publish_and_binds_it_to_checked_out_commit():
     workflow = Path(".github/workflows/release.yml").read_text(encoding="utf-8")
 
-    assert "python -m pip check" in workflow
+    assert "uv pip check" in workflow
     assert "python scripts/audit_dependencies.py" in workflow
     assert "python -m ruff check ." in workflow
     assert "python -m compileall -q main.py app netops_suite qa scripts tests" in workflow
@@ -32,6 +32,12 @@ def test_release_workflow_gates_publish_and_binds_it_to_checked_out_commit():
     assert "gitleaks dir --no-banner --redact --exit-code 1" in workflow
     assert '"pyinstaller==6.21.0"' in workflow
     assert '"pyinstaller-hooks-contrib==2026.6"' in workflow
+    assert "astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990" in workflow
+    assert 'version: "0.11.29"' in workflow
+    assert (
+        'checksum: "a047d55651bc3e0ca24595b25ec4cfcb10f9dca9fb56514e661269b37d4fae68"'
+        in workflow
+    )
     assert 'python-version: "3.11.15"' in workflow
     assert "refs/heads/main" in workflow
     assert "python-dependencies.cdx.json" in workflow
@@ -92,7 +98,14 @@ def test_ci_workflow_runs_full_quality_gates():
     assert "pygments==2.20.0" in runtime_lock
     assert "requirements-dev-lock.txt" in install_script
     assert "requirements-dev-lock.txt" in workflow
-    assert "python -m pip check" in workflow
+    assert "uv pip check" in workflow
+    assert "astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990" in workflow
+    assert 'version: "0.11.29"' in workflow
+    assert (
+        'checksum: "a047d55651bc3e0ca24595b25ec4cfcb10f9dca9fb56514e661269b37d4fae68"'
+        in workflow
+    )
+    assert "activate-environment: true" in workflow
     assert "python scripts/audit_dependencies.py" in workflow
     assert "python -m ruff check ." in workflow
     assert "python -m compileall -q main.py app netops_suite qa scripts tests" in workflow
