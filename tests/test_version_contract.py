@@ -42,6 +42,7 @@ def test_release_workflow_gates_publish_and_binds_it_to_checked_out_commit():
     assert "refs/heads/main" in workflow
     assert "python-dependencies.cdx.json" in workflow
     assert "--requirements requirements-lock.txt" in workflow
+    assert "python scripts/validate_release_notes.py --tag $env:RELEASE_TAG" in workflow
     assert "AdditionalAssetPath = @($dependencySbom)" in workflow
     assert "JRSoftware.InnoSetup" in workflow
     assert "--version 6.7.3" in workflow
@@ -56,6 +57,9 @@ def test_release_workflow_gates_publish_and_binds_it_to_checked_out_commit():
     assert "-RequireCodeSigning" in workflow
     assert "Get-AuthenticodeSignature" in workflow
     assert "SignatureStatus]::Valid" in workflow
+    assert workflow.index("Validate Release Notes") < workflow.index(
+        "Scan Repository For Secrets"
+    )
 
 
 def test_release_workflow_does_not_interpolate_contexts_inside_shell_scripts():

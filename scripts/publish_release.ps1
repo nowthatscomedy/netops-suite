@@ -21,6 +21,11 @@ if (-not $env:GITHUB_TOKEN) {
     throw "The GITHUB_TOKEN environment variable is required."
 }
 
+$semanticReleaseTagPattern = '^v\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$'
+if ($TagName -notmatch $semanticReleaseTagPattern) {
+    throw "TagName must be a semantic version such as v1.0.0."
+}
+
 if ($TargetCommitish -notmatch '^[0-9a-fA-F]{40}$') {
     throw "TargetCommitish must be the exact 40-character source commit SHA for this release."
 }
@@ -64,6 +69,111 @@ foreach ($candidatePath in $assetPathsForNameValidation) {
     $assetNames[$candidateName] = $true
 }
 
+$projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
+$releaseNotesRoot = Join-Path $projectRoot "release-notes"
+$releaseNotesPath = Join-Path $releaseNotesRoot "$TagName.md"
+if (-not (Test-Path -LiteralPath $releaseNotesRoot -PathType Container)) {
+    throw "Release notes directory was not found: $releaseNotesRoot"
+}
+$releaseNotesRootItem = Get-Item -LiteralPath $releaseNotesRoot
+if ($releaseNotesRootItem.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+    throw "Release notes directory must not be a reparse point: $releaseNotesRoot"
+}
+if (-not (Test-Path -LiteralPath $releaseNotesPath -PathType Leaf)) {
+    throw "Versioned release notes were not found: $releaseNotesPath"
+}
+$releaseNotesValidatorPath = Join-Path $projectRoot "scripts\validate_release_notes.py"
+if (-not (Test-Path -LiteralPath $releaseNotesValidatorPath -PathType Leaf)) {
+    throw "Release notes validator was not found: $releaseNotesValidatorPath"
+}
+$releaseNotesValidatorItem = Get-Item -LiteralPath $releaseNotesValidatorPath
+if ($releaseNotesValidatorItem.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+    throw "Release notes validator must not be a reparse point: $releaseNotesValidatorPath"
+}
+& python $releaseNotesValidatorPath --tag $TagName --project-root $projectRoot
+if ($LASTEXITCODE -ne 0) {
+    throw "Versioned release notes validation failed for $TagName."
+}
+$releaseNotesItem = Get-Item -LiteralPath $releaseNotesPath
+if ($releaseNotesItem.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+    throw "Release notes file must not be a reparse point: $releaseNotesPath"
+}
+$resolvedReleaseNotesRoot = [IO.Path]::GetFullPath($releaseNotesRootItem.FullName)
+$resolvedReleaseNotesPath = [IO.Path]::GetFullPath($releaseNotesItem.FullName)
+$expectedNotesPrefix = $resolvedReleaseNotesRoot.TrimEnd(
+    [IO.Path]::DirectorySeparatorChar,
+    [IO.Path]::AltDirectorySeparatorChar
+) + [IO.Path]::DirectorySeparatorChar
+if (-not $resolvedReleaseNotesPath.StartsWith(
+    $expectedNotesPrefix,
+    [StringComparison]::OrdinalIgnoreCase
+)) {
+    throw "Release notes must stay inside $resolvedReleaseNotesRoot."
+}
+
+$releaseNotesBytes = [IO.File]::ReadAllBytes($resolvedReleaseNotesPath)
+if ($releaseNotesBytes.Length -eq 0 -or $releaseNotesBytes.Length -gt 100KB) {
+    throw "Release notes must be non-empty and no larger than 100 KiB."
+}
+if (
+    $releaseNotesBytes.Length -ge 3 -and
+    $releaseNotesBytes[0] -eq 0xEF -and
+    $releaseNotesBytes[1] -eq 0xBB -and
+    $releaseNotesBytes[2] -eq 0xBF
+) {
+    throw "Release notes must be UTF-8 without a byte-order mark."
+}
+try {
+    $strictUtf8 = [Text.UTF8Encoding]::new($false, $true)
+    $releaseBody = $strictUtf8.GetString($releaseNotesBytes)
+}
+catch {
+    throw "Release notes must be valid UTF-8: $resolvedReleaseNotesPath"
+}
+if ($releaseBody.Contains([char]0)) {
+    throw "Release notes must not contain NUL bytes."
+}
+$releaseBody = $releaseBody.Replace("`r`n", "`n").Replace("`r", "`n").Trim()
+if ($releaseBody.Length -lt 500) {
+    throw "Release notes are too short to be a detailed user-facing summary."
+}
+$firstReleaseNotesLine = @(
+    $releaseBody -split "`n" |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ }
+) | Select-Object -First 1
+$expectedReleaseNotesTitle = "# NetOps Suite $TagName"
+if ($firstReleaseNotesLine -ne $expectedReleaseNotesTitle) {
+    throw "Release notes must start with: $expectedReleaseNotesTitle"
+}
+if ($releaseBody -match '(?im)\b(?:TODO|TBD)\b') {
+    throw "Release notes still contain placeholder text."
+}
+$releaseNoteSections = [regex]::Matches($releaseBody, '(?m)^##\s+\S.*$')
+if ($releaseNoteSections.Count -lt 7) {
+    throw "Release notes must contain all required user-facing sections."
+}
+for ($sectionIndex = 0; $sectionIndex -lt $releaseNoteSections.Count; $sectionIndex++) {
+    $contentStart = $releaseNoteSections[$sectionIndex].Index +
+        $releaseNoteSections[$sectionIndex].Length
+    $contentEnd = if ($sectionIndex + 1 -lt $releaseNoteSections.Count) {
+        $releaseNoteSections[$sectionIndex + 1].Index
+    }
+    else {
+        $releaseBody.Length
+    }
+    if ($contentEnd -le $contentStart) {
+        throw "Release notes contain an empty section."
+    }
+    $sectionContent = $releaseBody.Substring(
+        $contentStart,
+        $contentEnd - $contentStart
+    ).Trim()
+    if ([string]::IsNullOrWhiteSpace($sectionContent)) {
+        throw "Release notes contain an empty section."
+    }
+}
+
 $apiHeaders = @{
     Authorization           = "Bearer $env:GITHUB_TOKEN"
     Accept                  = "application/vnd.github+json"
@@ -99,7 +209,13 @@ function Invoke-GitHubRest {
 
     if ($null -ne $Body) {
         $json = $Body | ConvertTo-Json -Depth 10
-        return Invoke-RestMethod -Method $Method -Uri $Uri -Headers $apiHeaders -Body $json -ContentType "application/json"
+        $jsonBytes = [Text.Encoding]::UTF8.GetBytes($json)
+        return Invoke-RestMethod `
+            -Method $Method `
+            -Uri $Uri `
+            -Headers $apiHeaders `
+            -Body $jsonBytes `
+            -ContentType "application/json; charset=utf-8"
     }
 
     return Invoke-RestMethod -Method $Method -Uri $Uri -Headers $apiHeaders
@@ -218,9 +334,20 @@ if (-not $release) {
         tag_name               = $TagName
         target_commitish       = $TargetCommitish
         name                   = $ReleaseName
+        body                   = $releaseBody
         draft                  = $true
         prerelease             = $prereleaseFlag
-        generate_release_notes = $true
+        generate_release_notes = $false
+    }
+}
+else {
+    $release = Invoke-GitHubRest -Method PATCH -Uri "https://api.github.com/repos/$Repository/releases/$($release.id)" -Body @{
+        tag_name         = $TagName
+        target_commitish = $TargetCommitish
+        name             = $ReleaseName
+        body             = $releaseBody
+        draft            = $true
+        prerelease       = $prereleaseFlag
     }
 }
 
@@ -230,6 +357,10 @@ if (-not $release.id) {
 
 if (-not $release.draft) {
     throw "Refusing to upload assets to an already-published release."
+}
+$draftBody = ([string]$release.body).Replace("`r`n", "`n").Replace("`r", "`n").Trim()
+if ($draftBody -cne $releaseBody) {
+    throw "Draft release notes do not match the validated versioned notes. The release was not published."
 }
 
 function Get-GitHubStatusCode {
@@ -595,8 +726,16 @@ if ($release.draft) {
         tag_name         = $TagName
         target_commitish = $TargetCommitish
         name             = $ReleaseName
+        body             = $releaseBody
         draft            = $false
         prerelease       = $prereleaseFlag
+    }
+    if ($release.draft) {
+        throw "GitHub returned a draft release after the publish request: $TagName"
+    }
+    $publishedBody = ([string]$release.body).Replace("`r`n", "`n").Replace("`r", "`n").Trim()
+    if ($publishedBody -cne $releaseBody) {
+        throw "Published release notes do not match the validated versioned notes."
     }
     if ($prereleaseFlag) {
         Write-Host "Published prerelease: $TagName"
