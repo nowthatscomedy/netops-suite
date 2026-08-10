@@ -6,10 +6,10 @@ from PySide6.QtWidgets import QCheckBox, QLabel, QMenu, QMessageBox, QSizePolicy
 
 
 _STATUS_STYLES = {
-    "info": ("#f3f4f6", "#344054", "#d0d5dd"),
-    "success": ("#ecfdf3", "#166534", "#bbf7d0"),
-    "warning": ("#fffbeb", "#92400e", "#fde68a"),
-    "error": ("#fef2f2", "#991b1b", "#fecaca"),
+    "info": ("#ffffff", "#344054", "#d0d5dd", "#98a2b3"),
+    "success": ("#ffffff", "#344054", "#d0d5dd", "#16a34a"),
+    "warning": ("#ffffff", "#344054", "#d0d5dd", "#d97706"),
+    "error": ("#ffffff", "#344054", "#d0d5dd", "#dc2626"),
 }
 
 _VISIBLE_CHECKBOX_STYLE = """
@@ -147,11 +147,11 @@ def make_inline_status(kind: str = "info", text: str = "") -> QLabel:
 
 
 def set_inline_status(label: QLabel, kind: str, text: str) -> None:
-    background, color, border = _STATUS_STYLES.get(kind, _STATUS_STYLES["info"])
+    background, color, border, accent = _STATUS_STYLES.get(kind, _STATUS_STYLES["info"])
     label.setText(text)
     label.setStyleSheet(
         f"background:{background}; color:{color}; border:1px solid {border}; "
-        "border-radius:4px; padding:5px 8px;"
+        f"border-left:3px solid {accent}; border-radius:4px; padding:5px 8px 5px 7px;"
     )
     label.setVisible(bool(text))
 

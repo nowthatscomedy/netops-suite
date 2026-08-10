@@ -97,8 +97,8 @@ def test_ci_workflow_runs_full_quality_gates():
     assert "pip-audit>=2.9,<3" in dev_requirements
     assert "--hash=sha256:" in runtime_lock
     assert "--hash=sha256:" in dev_lock
-    assert "cryptography==49.0.0" in runtime_lock
-    assert "pyopenssl==26.3.0" in runtime_lock
+    assert "cryptography==50.0.0" in runtime_lock
+    assert "pyopenssl==26.4.0" in runtime_lock
     assert "pygments==2.20.0" in runtime_lock
     assert "requirements-dev-lock.txt" in install_script
     assert "requirements-dev-lock.txt" in workflow

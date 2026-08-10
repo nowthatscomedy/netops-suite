@@ -35,6 +35,8 @@ from PySide6.QtWidgets import (
 import app.ui.tabs.ai_chat_tab as ai_chat_module
 from app.app_state import AppState
 from app.main_window import MainWindow
+from app.models.ai_models import KNOWN_AI_PROVIDERS
+from app.services.ai_agent_service import PROVIDER_SPECS
 from app.ui.common.theme import APP_STYLE_SHEET
 from app.ui.dialogs.inspector_profile_dialog import InspectorProfileDialog
 from app.ui.tabs.ai_chat_tab import AiChatTab
@@ -164,6 +166,11 @@ class OffscreenQaHarness:
 
         self._patchers = [
             patch(
+                "netops_suite.modules.config_builder.switch_configurator."
+                "desktop_impl.APP_STATE_PATH",
+                self.runtime_root / "config_builder" / ".desktop_state.json",
+            ),
+            patch(
                 "app.app_state.configure_logging",
                 lambda *_args, **_kwargs: self._qa_logger,
             ),
@@ -270,17 +277,85 @@ class OffscreenQaHarness:
         scenarios = self.config.get("scenarios")
         if not isinstance(scenarios, list) or not scenarios:
             raise ValueError("오프스크린 QA 시나리오가 비어 있습니다.")
-        known = {
+        known_scenarios = {
             name.removeprefix("_scenario_")
             for name in dir(self)
             if name.startswith("_scenario_")
         }
-        configured = [str(item.get("id", "")) for item in scenarios]
-        unknown = [scenario_id for scenario_id in configured if scenario_id not in known]
+        known_capture_handlers = {
+            name.removeprefix("_capture_handler_")
+            for name in dir(self)
+            if name.startswith("_capture_handler_")
+        }
+        configured: list[str] = []
+        unknown: list[str] = []
+        for index, item in enumerate(scenarios):
+            if not isinstance(item, dict):
+                raise ValueError(f"오프스크린 QA 시나리오 {index}가 객체가 아닙니다.")
+            scenario_id = str(item.get("id", "")).strip()
+            if not scenario_id:
+                raise ValueError(f"오프스크린 QA 시나리오 {index}의 ID가 비어 있습니다.")
+            configured.append(scenario_id)
+            capture_handler = str(item.get("capture_handler", "")).strip()
+            if capture_handler:
+                if capture_handler not in known_capture_handlers:
+                    unknown.append(f"{scenario_id} (handler={capture_handler})")
+            elif scenario_id not in known_scenarios:
+                unknown.append(scenario_id)
+            viewport = item.get("viewport", [1280, 800])
+            if (
+                not isinstance(viewport, list)
+                or len(viewport) != 2
+                or any(
+                    isinstance(value, bool)
+                    or not isinstance(value, int)
+                    or value <= 0
+                    for value in viewport
+                )
+            ):
+                raise ValueError(
+                    f"시나리오 {scenario_id}의 viewport는 양의 정수 2개여야 합니다."
+                )
         if unknown:
             raise ValueError(f"알 수 없는 오프스크린 QA 시나리오: {unknown}")
         if len(configured) != len(set(configured)):
             raise ValueError("오프스크린 QA 시나리오 ID가 중복되었습니다.")
+        guide_assets = [
+            str(item.get("guide_asset", "")).strip()
+            for item in scenarios
+            if str(item.get("guide_asset", "")).strip()
+        ]
+        if len(guide_assets) != len(set(guide_assets)):
+            raise ValueError("가이드 이미지 파일명이 중복되었습니다.")
+        invalid_assets = [
+            asset
+            for asset in guide_assets
+            if Path(asset).name != asset or Path(asset).suffix.casefold() != ".png"
+        ]
+        if invalid_assets:
+            raise ValueError(
+                f"가이드 이미지는 폴더 없는 PNG 파일명이어야 합니다: {invalid_assets}"
+            )
+        for item in scenarios:
+            if not str(item.get("guide_asset", "")).strip():
+                continue
+            scenario_id = str(item["id"])
+            if not str(item.get("capture_handler", "")).strip():
+                raise ValueError(
+                    f"가이드 이미지 시나리오에는 capture_handler가 필요합니다: {scenario_id}"
+                )
+            for key in ("expected_object_names", "source_paths"):
+                values = item.get(key)
+                if (
+                    not isinstance(values, list)
+                    or not values
+                    or any(not isinstance(value, str) or not value.strip() for value in values)
+                    or len(values) != len(set(values))
+                ):
+                    raise ValueError(
+                        f"가이드 이미지 시나리오 {scenario_id}의 {key}는 "
+                        "중복 없는 문자열 배열이어야 합니다."
+                    )
 
     def _install_offscreen_fonts(self) -> None:
         candidates = (
@@ -338,8 +413,13 @@ class OffscreenQaHarness:
         error = ""
         screenshot_path = ""
         try:
-            method = getattr(self, f"_scenario_{scenario_id}")
-            method()
+            capture_handler = str(scenario.get("capture_handler", "")).strip()
+            if capture_handler:
+                method = getattr(self, f"_capture_handler_{capture_handler}")
+                method(scenario)
+            else:
+                method = getattr(self, f"_scenario_{scenario_id}")
+                method()
             self._flush()
             screenshot_path = self._capture(title, self._active_capture_widget)
         except Exception:
@@ -411,6 +491,110 @@ class OffscreenQaHarness:
             )
         self._check(nav.focusPolicy() == Qt.FocusPolicy.StrongFocus, "키보드 포커스")
         self._check(nav.accessibleName() == "주요 화면", "내비게이션 접근성 이름")
+
+    def _scenario_guide_interface_overview(self) -> None:
+        self._show_guide_overview_page(0, "네트워크 설정")
+
+    def _scenario_guide_diagnostics_overview(self) -> None:
+        self._show_guide_overview_page(1, "연결 진단")
+
+    def _scenario_guide_wireless_overview(self) -> None:
+        self._show_guide_overview_page(2, "Wi-Fi 분석")
+
+    def _scenario_guide_inspector_overview(self) -> None:
+        self._show_guide_overview_page(3, "장비 점검/백업")
+
+    def _scenario_guide_config_builder_overview(self) -> None:
+        self._show_guide_overview_page(4, "CLI 설정 생성")
+
+    def _scenario_guide_assistant_overview(self) -> None:
+        self._show_guide_overview_page(5, "NetOps 어시스턴트")
+
+    def _scenario_guide_settings_overview(self) -> None:
+        self._show_guide_overview_page(6, "설정")
+
+    def _capture_handler_guide_overview(self, scenario: dict) -> None:
+        """Show and verify a top-level page declared by a guide scenario."""
+
+        window = self._require_window()
+        scenario_id = str(scenario["id"])
+        page_index = scenario.get("page_index")
+        expected_title = str(scenario.get("expected_title", "")).strip()
+        if isinstance(page_index, bool) or not isinstance(page_index, int):
+            raise AssertionError(
+                f"{scenario_id}: page_index는 정수여야 합니다."
+            )
+        if page_index < 0 or page_index >= window.tab_widget.count():
+            raise AssertionError(
+                f"{scenario_id}: page_index가 화면 범위를 벗어났습니다: {page_index}"
+            )
+        if not expected_title:
+            raise AssertionError(f"{scenario_id}: expected_title이 비어 있습니다.")
+
+        self._navigate_main(page_index)
+        current = window.tab_widget.currentWidget()
+        if scenario_id == "guide_assistant_overview" and isinstance(
+            current, AiChatTab
+        ):
+            current.ai_chat_tabs.setCurrentWidget(current.connection_page)
+            self._check(KNOWN_AI_PROVIDERS == ("codex",), "Codex 단일 제공자 계약")
+            self._check(current.provider_combo.count() == 1, "AI 서비스 항목 한 개")
+            self._check(
+                current.provider_combo.currentData() == "codex",
+                "Codex 제공자 선택",
+            )
+            self._check(
+                current.provider_combo.currentText()
+                == PROVIDER_SPECS["codex"].display_name,
+                "ChatGPT Codex 표시",
+            )
+            self._check(
+                not current.provider_combo.isEnabled(),
+                "Codex 단일 제공자 선택 잠금",
+            )
+            current._set_status("사용 가능", "Codex CLI 연결을 확인했습니다.")
+            self._flush()
+        self._check(
+            window.tab_widget.tabText(page_index) == expected_title,
+            f"가이드 화면 제목: {expected_title}",
+        )
+        self._check(
+            current is not None and current.isVisibleTo(window),
+            f"가이드 화면 표시: {expected_title}",
+        )
+
+        viewport = scenario["viewport"]
+        self._check(
+            window.width() == int(viewport[0]) and window.height() == int(viewport[1]),
+            f"가이드 캡처 뷰포트: {viewport[0]}×{viewport[1]}",
+        )
+        for object_name in scenario["expected_object_names"]:
+            candidates = []
+            if window.objectName() == object_name:
+                candidates.append(window)
+            candidates.extend(window.findChildren(QWidget, object_name))
+            self._check(
+                any(candidate.isVisibleTo(window) for candidate in candidates),
+                f"가이드 캡처 objectName 표시: {object_name}",
+            )
+
+    def _show_guide_overview_page(self, row: int, expected_title: str) -> None:
+        window = self._require_window()
+        self._navigate_main(row)
+        current = window.tab_widget.currentWidget()
+        self._check(
+            window.tab_widget.tabText(row) == expected_title,
+            f"가이드 화면 제목: {expected_title}",
+        )
+        self._check(
+            current is not None and current.isVisibleTo(window),
+            f"가이드 화면 표시: {expected_title}",
+        )
+        hint = current.findChild(QWidget, "stepHint") if current is not None else None
+        self._check(
+            hint is not None and hint.isVisibleTo(current),
+            f"가이드 작업 흐름 표시: {expected_title}",
+        )
 
     def _scenario_interface_refresh(self) -> None:
         window = self._require_window()
@@ -936,6 +1120,19 @@ class OffscreenQaHarness:
         pixmap = widget.grab()
         if pixmap.isNull() or pixmap.width() < 100 or pixmap.height() < 100:
             raise AssertionError(f"유효하지 않은 캡처입니다: {title}")
+        image = pixmap.toImage().convertToFormat(QImage.Format.Format_RGB32)
+        x_step = max(1, image.width() // 48)
+        y_step = max(1, image.height() // 36)
+        sampled_colors: set[int] = set()
+        for y in range(0, image.height(), y_step):
+            for x in range(0, image.width(), x_step):
+                sampled_colors.add(image.pixel(x, y))
+                if len(sampled_colors) >= 4:
+                    break
+            if len(sampled_colors) >= 4:
+                break
+        if len(sampled_colors) < 2:
+            raise AssertionError(f"빈 화면으로 보이는 캡처입니다: {title}")
         self._capture_index += 1
         slug = "".join(
             character.lower() if character.isalnum() else "-"

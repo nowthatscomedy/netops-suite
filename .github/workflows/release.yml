@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "Release tag name (example: v1.0.9)"
+        description: "Release tag name (example: v1.0.10)"
         required: true
-        default: "v1.0.9"
+        default: "v1.0.10"
       release_name:
         description: "Optional release title"
         required: false
@@ -238,6 +238,13 @@ jobs:
         if: steps.release_guard.outputs.should_release == 'true'
         shell: powershell
         run: python scripts/audit_dependencies.py
+
+      - name: Validate User Guide Bundle
+        if: steps.release_guard.outputs.should_release == 'true'
+        shell: powershell
+        run: |
+          python scripts/validate_guides.py
+          python scripts/generate_guides.py build --check
 
       - name: Lint Python Sources
         if: steps.release_guard.outputs.should_release == 'true'

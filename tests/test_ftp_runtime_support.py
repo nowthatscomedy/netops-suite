@@ -8,6 +8,8 @@ import app.services.ftp_server_service as ftp_server_module
 from app.services.ftp_client_service import FtpClientService
 from app.services.ftp_server_service import FtpServerService
 from app.utils.file_utils import build_app_paths
+from cryptography import x509
+from cryptography.hazmat.primitives import serialization
 
 
 def build_services(tmp_path: Path) -> tuple[FtpClientService, FtpServerService]:
@@ -45,6 +47,21 @@ def test_ftp_server_support_message_for_packaged_run_missing_dependency(tmp_path
     assert "설치본 실행" in result.message
     assert "손상" in result.message or "손상" in result.details
     assert "최신 설치본" in result.details
+
+
+def test_ftps_certificate_generation_is_compatible_with_locked_cryptography(tmp_path):
+    _client_service, server_service = build_services(tmp_path)
+
+    cert_path, key_path = server_service.ensure_ftps_certificate()
+    certificate = x509.load_pem_x509_certificate(cert_path.read_bytes())
+    private_key = serialization.load_pem_private_key(
+        key_path.read_bytes(),
+        password=None,
+    )
+
+    assert certificate.subject == certificate.issuer
+    assert certificate.public_key().public_numbers() == private_key.public_key().public_numbers()
+    assert server_service._certificate_fingerprint(cert_path)
 
 
 def test_release_pipeline_checks_ftp_runtime_dependencies():

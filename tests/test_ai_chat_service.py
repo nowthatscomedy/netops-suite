@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from threading import Event
@@ -13,6 +14,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
+    QLabel,
     QListWidget,
     QMessageBox,
     QPushButton,
@@ -51,12 +53,10 @@ from app.services.ai_agent_service import (
     decode_cli_output,
     diagnose_cli_error,
     extra_arg_options_from_help,
-    extract_assistant_text_from_cli_line,
     extract_cli_session_id,
     extract_error_from_cli_line,
-    extract_text_from_cli_line,
     is_blocking_cli_configuration_error,
-    model_options_for_provider,
+    is_authentication_cli_error,
     parse_cli_help_options,
     plan_netops_chat_action,
     repair_cli_configuration_error,
@@ -154,10 +154,10 @@ def _assert_body_has_no_internal_scroll(body: QWidget) -> None:
     assert all(scrollbar.maximum() == 0 for scrollbar in body.findChildren(QScrollBar))
 
 
-def test_ai_chat_config_normalizes_known_providers_without_secret_fields():
+def test_ai_chat_config_migrates_legacy_providers_to_codex_without_secret_fields():
     config = normalize_ai_chat_config(
         {
-            "active_provider": "claude",
+            "active_provider": "gemini",
             "auto_export": True,
             "providers": {
                 "codex": {
@@ -167,19 +167,28 @@ def test_ai_chat_config_normalizes_known_providers_without_secret_fields():
                     "reasoning_effort": "xhigh",
                     "speed": "fast",
                     "access_token": "must-not-survive",
-                }
+                },
+                "claude": {
+                    "command_path": "legacy-claude",
+                    "oauth_token": "must-not-survive",
+                },
+                "gemini": {
+                    "command_path": "legacy-gemini",
+                    "refresh_token": "must-not-survive",
+                },
             },
         }
     )
 
-    assert config["active_provider"] == "claude"
+    assert config["active_provider"] == "codex"
     assert config["auto_export"] is True
+    assert set(config["providers"]) == {"codex"}
     assert config["providers"]["codex"]["enabled"] is False
     assert config["providers"]["codex"]["command_path"] == "codex-dev"
     assert config["providers"]["codex"]["reasoning_effort"] == "xhigh"
     assert config["providers"]["codex"]["speed"] == "fast"
     assert "access_token" not in config["providers"]["codex"]
-    assert set(config["providers"]) == {"codex", "claude", "gemini"}
+
 
 
 def test_codex_chat_invocation_uses_stdin_and_keeps_model_after_exec_prefix():
@@ -214,6 +223,16 @@ def test_codex_help_invocation_targets_exec_help():
 
     assert invocation.args == ["-a", "never", "-s", "read-only", "exec", "--help"]
     assert invocation.working_dir == "C:/repo"
+
+
+def test_codex_windows_cmd_program_resolution_is_unchanged(tmp_path, monkeypatch):
+    shim = tmp_path / "codex.cmd"
+    shim.write_text("@echo off\n", encoding="utf-8")
+    monkeypatch.setattr(ai_service.sys, "platform", "win32")
+
+    program = resolve_provider_program(AiProviderConfig(key="codex", command_path=str(shim)))
+
+    assert program == str(shim)
 
 
 def test_codex_chat_invocation_maps_workspace_and_full_access_without_bypass(
@@ -276,18 +295,6 @@ def test_codex_chat_invocation_maps_workspace_and_full_access_without_bypass(
     assert "--add-dir" not in full.args
     assert "--dangerously-bypass-approvals-and-sandbox" not in full.args
 
-    claude = build_chat_invocation(
-        AiProviderConfig(key="claude", command_path="claude"),
-        "hello",
-        codex_sandbox="danger-full-access",
-        codex_workspace_root=str(workspace_root),
-        codex_writable_dirs=(str(inspector_dir),),
-    )
-    assert "-s" not in claude.args
-    assert "--add-dir" not in claude.args
-    assert "-C" not in claude.args
-
-
 def test_codex_chat_invocation_rejects_unknown_sandbox_mode():
     with pytest.raises(ValueError, match="Unsupported Codex sandbox mode"):
         build_chat_invocation(
@@ -301,13 +308,68 @@ def test_codex_windowsapps_alias_command_uses_real_candidate(monkeypatch):
     local_codex = r"C:\Users\me\AppData\Local\OpenAI\Codex\bin\codex.exe"
     config = AiProviderConfig(
         key="codex",
-        command_path=r"C:\Program Files\WindowsApps\OpenAI.Codex_x64__2p2nqsd0c76g0\codex.exe",
+        command_path=r"C:\Users\me\AppData\Local\Microsoft\WindowsApps\codex.exe",
     )
 
     monkeypatch.setattr(
         ai_service, "_provider_program_candidates", lambda _spec: [local_codex]
     )
 
+    assert resolve_provider_program(config) == local_codex
+
+
+def test_codex_auto_discovery_prefers_newest_versioned_local_cli(tmp_path, monkeypatch):
+    appdata = tmp_path / "Roaming"
+    local_appdata = tmp_path / "Local"
+    older_codex = (
+        local_appdata / "OpenAI" / "Codex" / "bin" / "old-hash" / "codex.exe"
+    )
+    latest_codex = (
+        local_appdata
+        / "OpenAI"
+        / "ChatGPT"
+        / "bin"
+        / "latest-hash"
+        / "codex.exe"
+    )
+    stale_codex = local_appdata / "OpenAI" / "Codex" / "bin" / "codex.exe"
+    older_codex.parent.mkdir(parents=True)
+    latest_codex.parent.mkdir(parents=True)
+    stale_codex.parent.mkdir(parents=True, exist_ok=True)
+    older_codex.write_text("", encoding="utf-8")
+    latest_codex.write_text("", encoding="utf-8")
+    stale_codex.write_text("", encoding="utf-8")
+    os.utime(older_codex, (1_700_000_000, 1_700_000_000))
+    os.utime(latest_codex, (1_800_000_000, 1_800_000_000))
+    monkeypatch.setattr(ai_service.sys, "platform", "win32")
+    monkeypatch.setenv("APPDATA", str(appdata))
+    monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
+    monkeypatch.setattr(ai_service.shutil, "which", lambda _name: None)
+
+    candidates = ai_service._provider_program_candidates(
+        ai_service.PROVIDER_SPECS["codex"]
+    )
+
+    assert candidates[:3] == [
+        str(latest_codex),
+        str(older_codex),
+        str(stale_codex),
+    ]
+    assert resolve_provider_program(AiProviderConfig(key="codex")) == str(latest_codex)
+
+
+def test_codex_windowsapps_package_resource_is_not_used(monkeypatch):
+    packaged_codex = (
+        r"C:\Program Files\WindowsApps\OpenAI.Codex_1.0_x64__family"
+        r"\app\resources\codex.exe"
+    )
+    local_codex = r"C:\Users\me\AppData\Local\OpenAI\ChatGPT\bin\hash\codex.exe"
+    config = AiProviderConfig(key="codex", command_path=packaged_codex)
+    monkeypatch.setattr(
+        ai_service, "_provider_program_candidates", lambda _spec: [local_codex]
+    )
+
+    assert ai_service._is_windowsapps_alias(packaged_codex) is True
     assert resolve_provider_program(config) == local_codex
 
 
@@ -325,6 +387,7 @@ def test_codex_auto_discovery_prefers_appdata_npm_wrapper_over_desktop_bundle(
     monkeypatch.setattr(ai_service.sys, "platform", "win32")
     monkeypatch.setenv("APPDATA", str(appdata))
     monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
+    monkeypatch.setattr(ai_service, "_versioned_local_codex_candidates", lambda _p: [])
     monkeypatch.setattr(ai_service.shutil, "which", lambda _name: None)
 
     candidates = ai_service._provider_program_candidates(
@@ -346,46 +409,20 @@ def test_codex_auto_discovery_falls_back_to_desktop_bundle_without_npm_wrapper(
     monkeypatch.setattr(ai_service.sys, "platform", "win32")
     monkeypatch.setenv("APPDATA", str(appdata))
     monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
+    monkeypatch.setattr(ai_service, "_versioned_local_codex_candidates", lambda _p: [])
     monkeypatch.setattr(ai_service.shutil, "which", lambda _name: None)
 
     assert resolve_provider_program(AiProviderConfig(key="codex")) == str(desktop_codex)
 
 
-def test_claude_and_gemini_prompt_invocations_use_argument_prompt_flag():
-    claude = build_chat_invocation(
-        AiProviderConfig(key="claude", command_path="claude"), "hello"
-    )
-    gemini = build_chat_invocation(
-        AiProviderConfig(key="gemini", command_path="gemini"), "hello"
-    )
-
-    assert claude.args[0] == "-p"
-    assert "hello" in claude.args[1]
-    assert "--output-format" in claude.args
-    assert gemini.args[0] == "-p"
-    assert "hello" in gemini.args[1]
-    assert "--output-format" in gemini.args
-    assert "stream-json" in gemini.args
-
-
-def test_chat_invocations_resume_exact_provider_sessions():
-    codex = build_chat_invocation(
+def test_codex_chat_invocation_resumes_exact_thread():
+    invocation = build_chat_invocation(
         AiProviderConfig(key="codex", command_path="codex", model="gpt-5"),
         "continue",
         session_id="codex-thread-id",
     )
-    claude = build_chat_invocation(
-        AiProviderConfig(key="claude", command_path="claude", model="sonnet"),
-        "continue",
-        session_id="claude-session-id",
-    )
-    gemini = build_chat_invocation(
-        AiProviderConfig(key="gemini", command_path="gemini", model="gemini-2.5-pro"),
-        "continue",
-        session_id="gemini-session-id",
-    )
 
-    assert codex.args == [
+    assert invocation.args == [
         "-a",
         "never",
         "-s",
@@ -399,70 +436,20 @@ def test_chat_invocations_resume_exact_provider_sessions():
         "codex-thread-id",
         "-",
     ]
-    assert codex.stdin_text.endswith("User request:\ncontinue")
-    assert claude.args[:4] == ["--resume", "claude-session-id", "--model", "sonnet"]
-    assert claude.args[4] == "-p"
-    assert claude.args[-3:] == ["--output-format", "stream-json", "--verbose"]
-    assert gemini.args[:4] == [
-        "--resume",
-        "gemini-session-id",
-        "--model",
-        "gemini-2.5-pro",
-    ]
-    assert gemini.args[4] == "-p"
-    assert gemini.args[-2:] == ["--output-format", "stream-json"]
+    assert invocation.stdin_text.endswith("User request:\ncontinue")
 
 
-def test_cli_session_ids_and_assistant_text_are_extracted_from_provider_events():
-    codex_init = json.dumps({"type": "thread.started", "thread_id": "codex-thread"})
-    claude_init = json.dumps(
-        {"type": "system", "subtype": "init", "session_id": "claude-session"}
-    )
-    gemini_init = json.dumps(
-        {"type": "init", "session_id": "gemini-session", "model": "gemini"}
+
+def test_codex_session_id_is_extracted_only_from_thread_started_event():
+    session_event = json.dumps(
+        {"type": "thread.started", "thread_id": "codex-thread"}
     )
 
-    assert extract_cli_session_id("codex", codex_init) == "codex-thread"
-    assert extract_cli_session_id("claude", claude_init) == "claude-session"
-    assert extract_cli_session_id("gemini", gemini_init) == "gemini-session"
+    assert extract_cli_session_id(session_event) == "codex-thread"
     assert (
-        extract_cli_session_id("codex", '{"type":"turn.started","thread_id":"wrong"}')
+        extract_cli_session_id('{"type":"turn.started","thread_id":"wrong"}')
         == ""
     )
-    assert extract_cli_session_id("gemini", '{"type":"init","session_id":""}') == ""
-
-    claude_assistant = json.dumps(
-        {
-            "type": "assistant",
-            "message": {"content": [{"type": "text", "text": "Claude reply"}]},
-            "session_id": "claude-session",
-        }
-    )
-    gemini_user = json.dumps(
-        {"type": "message", "role": "user", "content": "do not echo"}
-    )
-    gemini_assistant = json.dumps(
-        {"type": "message", "role": "assistant", "content": "Gemini reply"}
-    )
-
-    assert (
-        extract_assistant_text_from_cli_line("claude", claude_assistant)
-        == "Claude reply"
-    )
-    assert extract_assistant_text_from_cli_line("claude", claude_init) == ""
-    assert extract_assistant_text_from_cli_line("gemini", gemini_user) == ""
-    assert (
-        extract_assistant_text_from_cli_line("gemini", gemini_assistant)
-        == "Gemini reply"
-    )
-
-
-def test_cli_json_line_text_extraction_handles_common_stream_shapes():
-    assert (
-        extract_text_from_cli_line('{"content":[{"type":"text","text":"hi"}]}') == "hi"
-    )
-    assert extract_text_from_cli_line('{"delta":" there"}') == "there"
-    assert extract_text_from_cli_line("plain output") == "plain output"
 
 
 def test_cli_output_decodes_and_filters_windows_process_noise():
@@ -527,6 +514,18 @@ def test_codex_service_tier_config_error_gets_actionable_korean_diagnosis():
     assert 'service_tier = "priority"' in message
     assert "자동 변경하지 않고 그대로 보존" in message
     assert raw_error in message
+
+
+@pytest.mark.parametrize(
+    "detail",
+    [
+        "401 Unauthorized. Please log in.",
+        "Authentication required. Run codex login.",
+    ],
+)
+def test_codex_authentication_errors_are_identified(detail):
+    assert is_authentication_cli_error("codex", detail) is True
+    assert is_authentication_cli_error("codex", "network connection reset") is False
 
 
 def test_codex_newer_service_tier_is_preserved_when_an_older_cli_rejects_it(tmp_path):
@@ -631,7 +630,6 @@ def test_codex_nested_json_error_is_extracted_and_cache_warning_is_separated():
     )
 
     assert extract_error_from_cli_line(line) == message
-    assert extract_text_from_cli_line(line) == message
     diagnosis = diagnose_cli_error("codex", line)
     assert "새 버전이 필요" in diagnosis
     assert "모델 목록 새로고침" in diagnosis
@@ -647,15 +645,6 @@ def test_codex_nested_json_error_is_extracted_and_cache_warning_is_separated():
     )
     assert regular == "primary failure"
     assert separated_warning == warning
-
-
-def test_fallback_model_options_do_not_guess_codex_models_and_preserve_custom_model():
-    codex_options = model_options_for_provider("codex")
-    custom_options = model_options_for_provider("gemini", "my-custom-model")
-
-    assert codex_options == [("자동 선택 (권장)", "")]
-    assert ("사용자 설정: my-custom-model", "my-custom-model") in custom_options
-
 
 def test_netops_chat_action_planner_detects_common_tool_requests():
     ping = plan_netops_chat_action("8.8.8.8 ping 해줘")
@@ -1081,7 +1070,7 @@ def test_ai_chat_tab_builds_codex_runtime_options_and_attachments(
         tab._refresh_attachment_view()
 
         config = tab.current_provider_config()
-        context, attachment_args = tab._attachment_context_and_args(config.key)
+        context, attachment_args = tab._attachment_context_and_args()
         runtime_config = tab._runtime_provider_config(config, attachment_args)
         invocation = build_chat_invocation(
             runtime_config, "summarize", context=context, working_dir=str(tmp_path)
@@ -1123,7 +1112,7 @@ def test_ai_chat_tab_rejects_binary_attachment_context_and_keeps_active_context_
     tab = AiChatTab(state)
     try:
         tab._attachments = [binary]
-        context, attachment_args = tab._attachment_context_and_args("codex")
+        context, attachment_args = tab._attachment_context_and_args()
 
         assert attachment_args == []
         assert "텍스트로 읽을 수 없어" in context
@@ -1934,11 +1923,6 @@ def test_ai_chat_tab_blocks_reserved_direct_extra_args(qapp, tmp_path, monkeypat
             "-C",
             "--dangerously-bypass-approvals-and-sandbox",
         ]
-        tab._set_combo_data(tab.provider_combo, "claude")
-        assert tab._blocked_direct_extra_args(["-c", "-r", "session-id"]) == [
-            "-c",
-            "-r",
-        ]
     finally:
         tab.close()
 
@@ -2019,13 +2003,6 @@ def test_ai_chat_codex_permission_menu_scopes_workspace_and_confirms_full_access
         tab._set_running(False)
         assert tab.permission_button.isEnabled()
 
-        tab._set_combo_data(tab.provider_combo, "gemini")
-        qapp.processEvents()
-        assert tab.permission_button.isHidden()
-        tab._set_combo_data(tab.provider_combo, "codex")
-        qapp.processEvents()
-        assert not tab.permission_button.isHidden()
-
         tab.reset_session()
         assert tab._codex_permission_mode == "danger-full-access"
         assert tab.permission_button.text() == "전체 액세스"
@@ -2056,7 +2033,7 @@ def test_ai_chat_tab_uses_korean_labels_and_model_combo(qapp, tmp_path, monkeypa
         assert isinstance(tab.model_combo, QComboBox)
         assert isinstance(tab.transcript_scroll, QScrollArea)
         assert tab.check_button.text() == "상태 확인"
-        assert tab.login_button.text() == "로그인 터미널"
+        assert tab.login_button.text() == "로그인"
         assert tab.send_button.text() == "보내기"
         assert (
             tab.prompt_edit.placeholderText() == "NetOps 작업을 자연어로 입력하세요..."
@@ -2085,13 +2062,17 @@ def test_ai_chat_tab_uses_korean_labels_and_model_combo(qapp, tmp_path, monkeypa
         assert tab.raw_help_group.title() == "CLI 도움말 원문 보기"
         assert tab.raw_help_edit.isHidden()
 
-        tab._set_combo_data(tab.provider_combo, "gemini")
-        qapp.processEvents()
-
-        gemini_model_labels = [
-            tab.model_combo.itemText(index) for index in range(tab.model_combo.count())
-        ]
-        assert "Gemini 2.5 Pro" in gemini_model_labels
+        assert tab.provider_combo.count() == 1
+        assert tab.provider_combo.itemData(0) == "codex"
+        assert tab.provider_combo.currentText() == "ChatGPT Codex"
+        assert tab.provider_combo.isEnabled() is False
+        assert tab.provider_combo.accessibleName() == "AI 서비스: ChatGPT Codex"
+        assert not hasattr(tab, "_provider_auth_states")
+        connection_text = " ".join(
+            label.text() for label in tab.connection_page.findChildren(QLabel)
+        )
+        assert "Codex CLI는 별도로 설치한 뒤 아래에서 로그인" in connection_text
+        assert "설치·로그인은 아래에서 진행" not in connection_text
         button_texts = {button.text() for button in tab.findChildren(QPushButton)}
         assert "세션 초기화" in button_texts
         assert "대화 내용 저장" in button_texts
@@ -2460,7 +2441,7 @@ def test_ai_chat_login_preflight_starts_in_background_with_immediate_feedback(
         assert detached_calls == []
         assert tab._login_preflight_active is True
         assert tab.login_button.isEnabled() is False
-        assert tab.login_button.text() == "로그인 준비 중…"
+        assert tab.login_button.text() == "로그인 중…"
         assert "로그인 준비 중" in tab.status_label.text()
     finally:
         tab._finish_provider_login_preflight()
@@ -3089,7 +3070,7 @@ def test_ai_chat_session_reset_keeps_visible_history_attachments_and_draft(
     tab = AiChatTab(state)
     try:
         _show_chat_tab(qapp, tab, width=900, height=720)
-        tab._provider_session_ids = {"codex": "thread-one", "claude": "session-two"}
+        tab._provider_session_ids = {"codex": "thread-one"}
         tab._append_block("사용자", "이전 요청")
         tab._append_block("AI", "이전 답변")
         tab.prompt_edit.setPlainText("작성 중인 다음 요청")
@@ -3099,10 +3080,7 @@ def test_ai_chat_session_reset_keeps_visible_history_attachments_and_draft(
         tab._set_preparing(True)
         assert not tab.reset_session_button.isEnabled()
         tab.reset_session()
-        assert tab._provider_session_ids == {
-            "codex": "thread-one",
-            "claude": "session-two",
-        }
+        assert tab._provider_session_ids == {"codex": "thread-one"}
         assert notices == ["현재 요청이 끝난 뒤 세션을 초기화하세요."]
         tab._set_preparing(False)
         assert tab.reset_session_button.isEnabled()
@@ -3342,7 +3320,7 @@ def test_ai_chat_model_catalog_preserves_selection_and_rebuilds_supported_option
         tab.close()
 
 
-def test_ai_chat_new_catalog_does_not_auto_change_current_model_or_other_provider_ui(
+def test_ai_chat_new_catalog_does_not_auto_change_current_codex_model(
     qapp, tmp_path, monkeypatch
 ):
     monkeypatch.setattr(AiChatTab, "refresh_provider_status", lambda self: None)
@@ -3373,20 +3351,12 @@ def test_ai_chat_new_catalog_does_not_auto_change_current_model_or_other_provide
         assert tab.model_combo.currentData() == "selected-model"
         assert "목록에서 확인되지 않음" in tab.model_combo.currentText()
 
-        tab._set_combo_data(tab.provider_combo, "gemini")
-        qapp.processEvents()
-        gemini_values_before = [
-            tab.model_combo.itemData(index) for index in range(tab.model_combo.count())
-        ]
-        tab._active_model_catalog_request = ("codex", 2)
-        tab._accept_model_catalog_result("codex", 2, refreshed)
-        gemini_values_after = [
-            tab.model_combo.itemData(index) for index in range(tab.model_combo.count())
-        ]
-
-        assert tab.current_provider_key() == "gemini"
-        assert gemini_values_after == gemini_values_before
-        assert "new-default" not in gemini_values_after
+        assert tab.current_provider_key() == "codex"
+        assert tab.model_combo.currentData() == "selected-model"
+        assert "new-default" in {
+            tab.model_combo.itemData(index)
+            for index in range(tab.model_combo.count())
+        }
     finally:
         tab.close()
 

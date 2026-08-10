@@ -62,7 +62,7 @@ class PythonParserDialog(QDialog):
         warning.setObjectName("pythonParserTrustWarning")
         warning.setWordWrap(True)
         warning.setStyleSheet(
-            "background:transparent; color:#9a3412; border:0; "
+            "background:transparent; color:#475467; border:0; "
             "border-left:3px solid #fdba74; padding:4px 0 4px 9px;"
         )
         layout.addWidget(warning)

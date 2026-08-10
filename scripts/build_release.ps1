@@ -278,6 +278,16 @@ if ($appVersion -ne $normalizedVersion) {
 
 $codeSigningConfig = New-CodeSigningConfig
 
+Write-Host "Validating bundled user guides..."
+& python scripts\validate_guides.py
+if ($LASTEXITCODE -ne 0) {
+    throw "User guide validation failed."
+}
+& python scripts\generate_guides.py build --check
+if ($LASTEXITCODE -ne 0) {
+    throw "User guide bundle is missing or stale."
+}
+
 $buildDir = Join-Path $repoRoot "build"
 $distDir = Join-Path $repoRoot "dist"
 $stagingDir = Join-Path $buildDir "staging"
@@ -286,6 +296,11 @@ $stagingLogsDir = Join-Path $stagingDir "logs"
 $stagingLogsExportsDir = Join-Path $stagingLogsDir "exports"
 $stagingInspectorRuntimeDir = Join-Path $stagingDir "inspector_runtime"
 $releaseDir = Join-Path $distDir "release"
+$guideBundleDir = Join-Path $repoRoot "app\resources\guides"
+
+if (-not (Test-Path -LiteralPath $guideBundleDir -PathType Container)) {
+    throw "Generated user guide bundle was not found: $guideBundleDir"
+}
 
 if ($Clean) {
     foreach ($path in @($buildDir, $distDir)) {
@@ -364,6 +379,7 @@ $pyInstallerArgs = @(
     "--add-data=$(Format-PyInstallerBundleArg -Source $stagingConfigDir -Destination 'config')",
     "--add-data=$(Format-PyInstallerBundleArg -Source $stagingLogsDir -Destination 'logs')",
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'assets\icons') -Destination 'assets/icons')",
+    "--add-data=$(Format-PyInstallerBundleArg -Source $guideBundleDir -Destination 'app/resources/guides')",
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'netops_suite\modules\inspector\vendor_profiles') -Destination 'netops_suite/modules/inspector/vendor_profiles')",
     "--add-data=$(Format-PyInstallerBundleArg -Source $stagingInspectorRuntimeDir -Destination 'netops_suite/modules/inspector_runtime')",
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'netops_suite\modules\config_builder\profiles') -Destination 'netops_suite/modules/config_builder/profiles')",

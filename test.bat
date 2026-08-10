@@ -11,6 +11,12 @@ if errorlevel 1 exit /b %errorlevel%
 "%PYTHON%" scripts\audit_dependencies.py
 if errorlevel 1 exit /b %errorlevel%
 
+"%PYTHON%" scripts\validate_guides.py
+if errorlevel 1 exit /b %errorlevel%
+
+"%PYTHON%" scripts\generate_guides.py build --check
+if errorlevel 1 exit /b %errorlevel%
+
 "%PYTHON%" -m ruff check .
 if errorlevel 1 exit /b %errorlevel%
 

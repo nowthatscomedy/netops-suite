@@ -740,11 +740,10 @@ def test_settings_path_and_ai_cli_controls_have_contextual_accessible_names(
                 == f"입력된 {label}를 파일 탐색기에서 엽니다."
             )
 
-        provider_labels = {
-            "codex": "ChatGPT Codex",
-            "claude": "Claude Code",
-            "gemini": "Gemini CLI",
-        }
+        provider_labels = {"codex": "ChatGPT Codex"}
+        assert set(tab.ai_cli_path_edits) == set(provider_labels)
+        assert set(tab.ai_cli_browse_buttons) == set(provider_labels)
+        assert set(tab.ai_cli_status_labels) == set(provider_labels)
         for key, label in provider_labels.items():
             assert tab.ai_cli_path_edits[key].accessibleName() == f"{label} 실행 파일"
             assert tab.ai_cli_path_edits[key].accessibleDescription()

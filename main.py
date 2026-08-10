@@ -44,6 +44,18 @@ def _run_release_smoke_test() -> int:
             apply_app_theme(app)
             state = AppState()
             window = MainWindow(state)
+            guide_catalog = getattr(window, "guide_catalog", None)
+            if guide_catalog is None or not guide_catalog.is_available:
+                raise RuntimeError("Bundled user guide catalog is unavailable.")
+            welcome_entry = guide_catalog.get("getting-started")
+            if welcome_entry is None:
+                raise RuntimeError("Bundled getting-started guide is unavailable.")
+            welcome_markdown, welcome_error = guide_catalog.read_markdown(welcome_entry)
+            if welcome_markdown is None:
+                raise RuntimeError(
+                    "Bundled getting-started guide could not be read: "
+                    f"{welcome_error or 'unknown error'}"
+                )
             app.processEvents()
             window.shutdown()
             window = None

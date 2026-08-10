@@ -552,7 +552,7 @@ class FtpDiagnosticsMixin:
         self.ftp_server_bind_host_edit.setPlaceholderText("예: 0.0.0.0")
         self.ftp_server_bind_warning_label = QLabel("0.0.0.0 = 모든 네트워크 인터페이스에 공개")
         self.ftp_server_bind_warning_label.setWordWrap(True)
-        self.ftp_server_bind_warning_label.setStyleSheet("color:#b45309;")
+        self.ftp_server_bind_warning_label.setStyleSheet("color:#475467;")
         self.ftp_server_port_edit = QLineEdit()
         self.ftp_server_port_edit.setPlaceholderText("2121")
         self.ftp_server_root_edit = QLineEdit()
@@ -775,7 +775,7 @@ class FtpDiagnosticsMixin:
             label.hide()
             return
         label.setText(support.message)
-        label.setStyleSheet("color:#b71c1c;")
+        label.setStyleSheet("color:#475467;")
         label.show()
 
     def _show_ftp_support_warning(self, title: str, support: OperationResult) -> None:

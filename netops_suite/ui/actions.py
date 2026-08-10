@@ -145,7 +145,7 @@ def _standard_icon(kind: ActionKind):
 
 
 def _style_for(kind: ActionKind) -> str:
-    background, color, border, hover = _PALETTE.get(kind, ("#f8fafc", "#1f2937", "#cbd5e1", "#eef2f7"))
+    background, color, border, hover = _PALETTE.get(kind, _NEUTRAL_PALETTE)
     return f"""
 QPushButton {{
     background: {background};

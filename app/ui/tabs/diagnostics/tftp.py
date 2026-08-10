@@ -199,7 +199,7 @@ class TftpDiagnosticsMixin:
         self.tftp_server_bind_host_edit.setPlaceholderText("예: 0.0.0.0")
         self.tftp_server_bind_warning_label = QLabel("0.0.0.0 = 모든 네트워크 인터페이스에 공개")
         self.tftp_server_bind_warning_label.setWordWrap(True)
-        self.tftp_server_bind_warning_label.setStyleSheet("color:#b45309;")
+        self.tftp_server_bind_warning_label.setStyleSheet("color:#475467;")
         self.tftp_server_port_edit = QLineEdit()
         self.tftp_server_port_edit.setPlaceholderText("69")
         self.tftp_server_root_edit = QLineEdit()
@@ -290,7 +290,7 @@ class TftpDiagnosticsMixin:
             label.hide()
             return
         label.setText(support.message)
-        label.setStyleSheet("color:#b71c1c;")
+        label.setStyleSheet("color:#475467;")
         label.show()
 
     def _show_tftp_support_warning(self, title: str, support: OperationResult) -> None:

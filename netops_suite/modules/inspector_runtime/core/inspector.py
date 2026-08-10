@@ -1042,10 +1042,21 @@ class NetworkInspector:
             self.logger.info("장비 점검 완료")
             self._print_cli_status(f"장비 점검 완료 (성공 {success_count} / 실패 {fail_count})")
 
-    def run_custom_commands(self, commands: list[str]):
+    def run_custom_commands(self, commands_by_device: dict[str, list[str]]):
         """사용자 명령어 목록을 장비에 순차 실행합니다."""
         self.logger.info("사용자 명령 실행 시작")
         self._print_cli_status("사용자 명령 실행을 시작합니다.")
+
+        missing_devices = [
+            str(device.get('ip', '')).strip()
+            for device in self.devices
+            if str(device.get('ip', '')).strip() not in commands_by_device
+        ]
+        if missing_devices:
+            raise ValueError(
+                "장비별 사용자 명령을 찾을 수 없습니다: "
+                + ", ".join(missing_devices)
+            )
 
         total_devices = len(self.devices)
         completed_devices = 0
@@ -1058,7 +1069,13 @@ class NetworkInspector:
             for device in self.devices:
                 if self._is_cancelled():
                     break
-                future = executor.submit(self._run_custom_commands_device, device, commands)
+                device_ip = str(device.get('ip', '')).strip()
+                commands = commands_by_device[device_ip]
+                future = executor.submit(
+                    self._run_custom_commands_device,
+                    device,
+                    commands,
+                )
                 future_to_device[future] = device
 
             for future in as_completed(future_to_device):

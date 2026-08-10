@@ -104,10 +104,10 @@ class ToolsDiagnosticsMixin:
         summary_grid = QGridLayout()
         self.subnet_calc_summary_labels: dict[str, QLabel] = {}
         cards = [
-            ("network_address", "네트워크 주소", "#1b5e20"),
-            ("host_range", "사용 가능 범위", "#1565c0"),
-            ("broadcast_address", "브로드캐스트", "#ef6c00"),
-            ("usable_hosts", "사용 가능 호스트", "#6a1b9a"),
+            ("network_address", "네트워크 주소", "#182230"),
+            ("host_range", "사용 가능 범위", "#182230"),
+            ("broadcast_address", "브로드캐스트", "#182230"),
+            ("usable_hosts", "사용 가능 호스트", "#182230"),
         ]
         for index, (key, title, color) in enumerate(cards):
             card, value_label = self._build_subnet_metric_card(title, color)
@@ -378,14 +378,14 @@ class ToolsDiagnosticsMixin:
             details = calculate_subnet_details(ip_text, prefix_text)
         except ValidationError as exc:
             self.subnet_calc_status_label.setText(str(exc))
-            self.subnet_calc_status_label.setStyleSheet("color:#b71c1c;")
+            self.subnet_calc_status_label.setStyleSheet("color:#475467;")
             self._clear_subnet_calc_results()
             return
 
         self.subnet_calc_status_label.setText(
             f"계산 완료: {details['address_scope']} | 네트워크 {details['network_address']} | 사용 가능 호스트 {details['usable_hosts']}"
         )
-        self.subnet_calc_status_label.setStyleSheet("color:#166534;")
+        self.subnet_calc_status_label.setStyleSheet("color:#475467;")
         self._populate_subnet_calc_results(details)
 
     def refresh_subnet_calc_interfaces(self) -> None:
@@ -440,7 +440,7 @@ class ToolsDiagnosticsMixin:
             self.subnet_calc_status_label.setStyleSheet("color:#475467;")
         else:
             self.subnet_calc_status_label.setText("사용 가능한 인터페이스를 찾지 못했습니다.")
-            self.subnet_calc_status_label.setStyleSheet("color:#b71c1c;")
+            self.subnet_calc_status_label.setStyleSheet("color:#475467;")
             self._clear_subnet_calc_results()
 
     def use_selected_subnet_calc_interface(self) -> None:

@@ -1,0 +1,1039 @@
+{
+  "schema_version": 1,
+  "default_locale": "ko",
+  "supported_locales": [
+    "ko"
+  ],
+  "required_sections": [
+    "목적",
+    "사전 준비 및 권한",
+    "입력 및 선택 사항",
+    "사용 방법",
+    "성공 확인",
+    "결과 및 저장 위치",
+    "주의사항",
+    "문제 해결"
+  ],
+  "guides": [
+    {
+      "id": "getting-started",
+      "parent_id": null,
+      "title": "NetOps Suite 빠른 시작",
+      "locale": "ko",
+      "path": "docs/user/ko/getting-started.md",
+      "anchor": "overview",
+      "route": "getting-started",
+      "source_paths": [
+        "app/main_window.py",
+        "README.md"
+      ],
+      "keywords": [
+        "빠른 시작",
+        "처음 사용",
+        "메뉴",
+        "권한",
+        "저장 위치",
+        "시작 방법",
+        "메뉴 안내",
+        "NetOps 사용법",
+        "어디서 시작",
+        "기능 둘러보기",
+        "NetOps Suite 빠른 시작"
+      ],
+      "risk": "low",
+      "qa_capture_ids": [
+        "main_navigation"
+      ],
+      "capability_ids": [
+        "getting-started"
+      ]
+    },
+    {
+      "id": "installation",
+      "parent_id": "getting-started",
+      "title": "설치, 실행 및 업데이트",
+      "locale": "ko",
+      "path": "docs/user/ko/installation.md",
+      "anchor": "installation",
+      "route": "installation",
+      "source_paths": [
+        "installer/netops-suite.iss",
+        "scripts/run_dev.ps1",
+        "app/services/update_service.py"
+      ],
+      "keywords": [
+        "설치",
+        "실행",
+        "업데이트",
+        "Windows",
+        "개발 환경",
+        "실행 오류",
+        "프로그램 설치",
+        "새 버전 확인",
+        "업데이트 확인",
+        "설치, 실행 및 업데이트"
+      ],
+      "risk": "medium",
+      "qa_capture_ids": [],
+      "capability_ids": [
+        "installation"
+      ]
+    },
+    {
+      "id": "interface",
+      "parent_id": "getting-started",
+      "title": "네트워크 설정",
+      "locale": "ko",
+      "path": "docs/user/ko/interface.md",
+      "anchor": "interface",
+      "route": "interface",
+      "source_paths": [
+        "app/ui/tabs/interface_tab.py",
+        "app/services/network_interface_service.py",
+        "app/models/profile_models.py"
+      ],
+      "keywords": [
+        "인터페이스",
+        "어댑터",
+        "DHCP",
+        "고정 IP",
+        "게이트웨이",
+        "DNS",
+        "IP 프로파일",
+        "네트워크 어댑터",
+        "DNS 설정",
+        "IP 변경",
+        "게이트웨이 설정",
+        "DNS 변경",
+        "어댑터 조회",
+        "네트워크 설정"
+      ],
+      "risk": "high",
+      "qa_capture_ids": [
+        "guide_interface_overview"
+      ],
+      "capability_ids": [
+        "interface"
+      ]
+    },
+    {
+      "id": "diagnostics",
+      "parent_id": "getting-started",
+      "title": "연결 진단",
+      "locale": "ko",
+      "path": "docs/user/ko/diagnostics.md",
+      "anchor": "diagnostics",
+      "route": "diagnostics",
+      "source_paths": [
+        "app/ui/tabs/diagnostics_tab.py",
+        "app/ui/tabs/diagnostics/core.py"
+      ],
+      "keywords": [
+        "진단",
+        "빠른 진단",
+        "연결",
+        "네트워크 도구",
+        "네트워크 진단",
+        "연결 확인",
+        "인터넷 안됨",
+        "네트워크 문제 확인",
+        "연결 진단"
+      ],
+      "risk": "medium",
+      "qa_capture_ids": [
+        "guide_diagnostics_overview"
+      ],
+      "capability_ids": [
+        "diagnostics"
+      ]
+    },
+    {
+      "id": "diagnostics.ping",
+      "parent_id": "diagnostics",
+      "title": "멀티 Ping",
+      "locale": "ko",
+      "path": "docs/user/ko/diagnostics.md",
+      "anchor": "ping",
+      "route": "diagnostics.ping",
+      "source_paths": [
+        "app/ui/tabs/diagnostics/ping.py",
+        "app/services/ping_service.py"
+      ],
+      "keywords": [
+        "Ping",
+        "ICMP",
+        "손실률",
+        "RTT",
+        "연속 실행",
+        "ping",
+        "핑",
+        "통신 확인",
+        "여러 장비 ping",
+        "외부 연결 확인",
+        "멀티 Ping"
+      ],
+      "risk": "medium",
+      "qa_capture_ids": [
+        "multi_ping"
+      ],
+      "capability_ids": [
+        "diagnostics.ping"
+      ]
+    },
+    {
+      "id": "diagnostics.tcp",
+      "parent_id": "diagnostics",
+      "title": "포트 확인 (TCPing)",
+      "locale": "ko",
+      "path": "docs/user/ko/diagnostics.md",
+      "anchor": "tcp",
+      "route": "diagnostics.tcp",
+      "source_paths": [
+        "app/ui/tabs/diagnostics/tcp.py",
+        "app/services/tcp_check_service.py"
+      ],
+      "keywords": [
+        "TCPing",
+        "포트",
+        "TCP",
+        "방화벽",
+        "연속 실행",
+        "tcping",
+        "TCP 포트",
+        "포트 열림",
+        "방화벽 포트",
+        "포트 연결 확인",
+        "여러 장비 포트 확인",
+        "포트 확인 (TCPing)"
+      ],
+      "risk": "medium",
+      "qa_capture_ids": [
+        "multi_tcp"
+      ],
+      "capability_ids": [
+        "diagnostics.tcp"
+      ]
+    },
+    {
+      "id": "diagnostics.dns",
+      "parent_id": "diagnostics",
+      "title": "DNS 조회 (nslookup)",
+      "locale": "ko",
+      "path": "docs/user/ko/diagnostics.md",
+      "anchor": "dns",
+      "route": "diagnostics.dns",
+      "source_paths": [
+        "app/ui/tabs/diagnostics/dns.py",
+        "app/services/dns_service.py"
+      ],
+      "keywords": [
+        "DNS",
+        "nslookup",
+        "A",
+        "AAAA",
+        "CNAME",
+        "MX",
+        "PTR",
+        "도메인 조회",
+        "DNS 캐시",
+        "도메인 IP 확인",
+        "레코드 조회",
+        "DNS 캐시 초기화",
+        "DNS 조회 (nslookup)"
+      ],
+      "risk": "medium",
+      "qa_capture_ids": [
+        "dns_and_commands"
+      ],
+      "capability_ids": [
+        "diagnostics.dns"
+      ]
+    },
+    {
+      "id": "diagnostics.trace",
+      "parent_id": "diagnostics",
+      "title": "경로 추적 (tracert/pathping)",
+      "locale": "ko",
+      "path": "docs/user/ko/diagnostics.md",
+      "anchor": "trace",
+      "route": "diagnostics.trace",
+      "source_paths": [
+        "app/ui/tabs/diagnostics/trace.py",
+        "app/services/trace_service.py"
+      ],
+      "keywords": [
+        "tracert",
+        "pathping",
+        "경로 추적",
+        "홉",
+        "손실률",
+        "traceroute",
+        "어디서 끊기는지",
+        "네트워크 경로 확인",
+        "경로 추적 (tracert/pathping)"
+      ],
+      "risk": "medium",
+      "qa_capture_ids": [],
+      "capability_ids": [
+        "diagnostics.trace"
+      ]
+    },
+    {
+      "id": "diagnostics.iperf",
+      "parent_id": "diagnostics",
+      "title": "대역폭 측정 (iperf3)",
+      "locale": "ko",
+      "path": "docs/user/ko/diagnostics.md",
+      "anchor": "iperf",
+      "route": "diagnostics.iperf",
+      "source_paths": [
+        "app/ui/tabs/diagnostics/iperf.py",
+        "app/services/iperf_service.py",
+        "app/services/public_iperf_service.py"
+      ],
+      "keywords": [
+        "iperf3",
+        "대역폭",
+        "처리량",
+        "UDP",
+        "Reverse",
+        "공개 서버",
+        "iperf",
+        "속도 측정",
+        "네트워크 성능 측정",
+        "UDP 테스트",
+        "공개 iperf 서버",
+        "대역폭 측정 (iperf3)"
+      ],
+      "risk": "high",
+      "qa_capture_ids": [],
+      "capability_ids": [
+        "diagnostics.iperf"
+      ]
+    },
+    {
+      "id": "diagnostics.arp",
+      "parent_id": "diagnostics",
+      "title": "같은 대역 장비 찾기 (ARP 스캔)",
+      "locale": "ko",
+      "path": "docs/user/ko/diagnostics.md",
+      "anchor": "arp",
+      "route": "diagnostics.arp",
+      "source_paths": [
+        "app/ui/tabs/diagnostics/tools.py",
+        "app/services/arp_scan_service.py"
+      ],
+      "keywords": [
+        "ARP",
+        "스캔",
+        "장비 찾기",
+        "IP 충돌",
+        "중복 MAC",
+        "ARP 스캔",
+        "같은 네트워크 장비 검색",
+        "사용 중인 IP 확인",
+        "같은 대역 장비 찾기 (ARP 스캔)"
+      ],
+      "risk": "high",
+      "qa_capture_ids": [],
+      "capability_ids": [
+        "diagnostics.arp"
+      ]
+    },
+    {
+      "id": "diagnostics.subnet",
+      "parent_id": "diagnostics",
+      "title": "서브넷 계산기",
+      "locale": "ko",
+      "path": "docs/user/ko/diagnostics.md",
+      "anchor": "subnet",
+      "route": "diagnostics.subnet",
+      "source_paths": [
+        "app/ui/tabs/diagnostics/tools.py",
+        "app/ui/tabs/diagnostics/core.py"
+      ],
+      "keywords": [
+        "서브넷",
+        "CIDR",
+        "프리픽스",
+        "네트워크 주소",
+        "브로드캐스트",
+        "네트워크 주소 계산",
+        "호스트 범위 계산",
+        "서브넷 계산기"
+      ],
+      "risk": "low",
+      "qa_capture_ids": [
+        "quick_subnet"
+      ],
+      "capability_ids": [
+        "diagnostics.subnet"
+      ]
+    },
+    {
+      "id": "diagnostics.oui",
+      "parent_id": "diagnostics",
+      "title": "MAC 제조사 조회 (OUI)",
+      "locale": "ko",
+      "path": "docs/user/ko/diagnostics.md",
+      "anchor": "oui",
+      "route": "diagnostics.oui",
+      "source_paths": [
+        "app/ui/tabs/diagnostics/tools.py",
+        "app/services/oui_service.py"
+      ],
+      "keywords": [
+        "OUI",
+        "MAC",
+        "BSSID",
+        "제조사",
+        "IEEE",
+        "MAC 제조사",
+        "BSSID 제조사",
+        "IEEE 제조사",
+        "MAC 주소 제조사 확인",
+        "OUI 데이터 갱신",
+        "MAC 제조사 조회 (OUI)"
+      ],
+      "risk": "low",
+      "qa_capture_ids": [
+        "oui_lookup"
+      ],
+      "capability_ids": [
+        "diagnostics.oui"
+      ]
+    },
+    {
+      "id": "diagnostics.transfer",
+      "parent_id": "diagnostics",
+      "title": "파일 전송",
+      "locale": "ko",
+      "path": "docs/user/ko/transfer.md",
+      "anchor": "transfer",
+      "route": "diagnostics.transfer",
+      "source_paths": [
+        "app/ui/tabs/diagnostics/ftp.py",
+        "app/ui/tabs/diagnostics/scp.py",
+        "app/ui/tabs/diagnostics/tftp.py"
+      ],
+      "keywords": [
+        "파일 전송",
+        "클라이언트",
+        "임시 서버",
+        "업로드",
+        "다운로드",
+        "파일 업로드",
+        "파일 다운로드",
+        "임시 파일 서버",
+        "장비와 파일 전송",
+        "FTP SFTP SCP TFTP"
+      ],
+      "risk": "high",
+      "qa_capture_ids": [
+        "file_transfer_routing"
+      ],
+      "capability_ids": [
+        "diagnostics.transfer"
+      ]
+    },
+    {
+      "id": "diagnostics.transfer.ftp.client",
+      "parent_id": "diagnostics.transfer",
+      "title": "FTP 클라이언트",
+      "locale": "ko",
+      "path": "docs/user/ko/transfer.md",
+      "anchor": "ftp-client",
+      "route": "diagnostics.transfer.ftp.client",
+      "source_paths": [
+        "app/ui/tabs/diagnostics/ftp.py",
+        "app/services/ftp_client_service.py"
+      ],
+      "keywords": [
+        "FTP",
+        "클라이언트",
+        "패시브",
+        "원격 파일",
+        "FTP 접속",
+        "FTP 업로드",
+        "FTP 다운로드",
+        "FTP 원격 파일 관리",
+        "FTP 클라이언트"
+      ],
+      "risk": "high",
+      "qa_capture_ids": [
+        "file_transfer_routing"
+      ],
+      "capability_ids": [
+        "diagnostics.transfer.ftp.client"
+      ]
+    },
+    {
+      "id": "diagnostics.transfer.ftp.server",
+      "parent_id": "diagnostics.transfer",
+      "title": "FTP 임시 서버",
+      "locale": "ko",
+      "path": "docs/user/ko/transfer.md",
+      "anchor": "ftp-server",
+      "route": "diagnostics.transfer.ftp.server",
+      "source_paths": [
+        "app/ui/tabs/diagnostics/ftp.py",
+        "app/services/ftp_server_service.py"
+      ],
+      "keywords": [
+        "FTP 서버",
+        "임시 서버",
+        "공유 루트",
+        "익명",
+        "읽기 전용",
+        "임시 FTP",
+        "FTP 공유",
+        "FTP 임시 서버 열기",
+        "FTP 임시 서버"
+      ],
+      "risk": "high",
+      "qa_capture_ids": [
+        "file_transfer_routing"
+      ],
+      "capability_ids": [
+        "diagnostics.transfer.ftp.server"
+      ]
+    },
+    {
+      "id": "diagnostics.transfer.ftps.client",
+      "parent_id": "diagnostics.transfer",
+      "title": "FTPS 클라이언트",
+      "locale": "ko",
+      "path": "docs/user/ko/transfer.md",
+      "anchor": "ftps-client",
+      "route": "diagnostics.transfer.ftps.client",
+      "source_paths": [
+        "app/ui/tabs/diagnostics/ftp.py",
+        "app/services/ftp_client_service.py"
+      ],
+      "keywords": [
+        "FTPS",
+        "TLS",
+        "인증서",
+        "클라이언트",
+        "FTPS 접속",
+        "TLS FTP",
+        "FTPS 업로드",
+        "인증서를 확인하며 FTP 전송",
+        "FTPS 클라이언트"
+      ],
+      "risk": "high",
+      "qa_capture_ids": [
+        "file_transfer_routing"
+      ],
+      "capability_ids": [
+        "diagnostics.transfer.ftps.client"
+      ]
+    },
+    {
+      "id": "diagnostics.transfer.ftps.server",
+      "parent_id": "diagnostics.transfer",
+      "title": "FTPS 임시 서버",
+      "locale": "ko",
+      "path": "docs/user/ko/transfer.md",
+      "anchor": "ftps-server",
+      "route": "diagnostics.transfer.ftps.server",
+      "source_paths": [
+        "app/ui/tabs/diagnostics/ftp.py",
+        "app/services/ftp_server_service.py"
+      ],
+      "keywords": [
+        "FTPS 서버",
+        "TLS",
+        "자체 서명 인증서",
+        "지문",
+        "TLS FTP 서버",
+        "암호화된 FTP 임시 서버 열기",
+        "FTPS 임시 서버"
+      ],
+      "risk": "high",
+      "qa_capture_ids": [
+        "file_transfer_routing"
+      ],
+      "capability_ids": [
+        "diagnostics.transfer.ftps.server"
+      ]
+    },
+    {
+      "id": "diagnostics.transfer.sftp.client",
+      "parent_id": "diagnostics.transfer",
+      "title": "SFTP 클라이언트",
+      "locale": "ko",
+      "path": "docs/user/ko/transfer.md",
+      "anchor": "sftp-client",
+      "route": "diagnostics.transfer.sftp.client",
+      "source_paths": [
+        "app/ui/tabs/diagnostics/ftp.py",
+        "app/services/ftp_client_service.py"
+      ],
+      "keywords": [
+        "SFTP",
+        "SSH",
+        "호스트 키",
+        "지문",
+        "클라이언트",
+        "SFTP 접속",
+        "SFTP 업로드",
+        "SFTP 다운로드",
+        "SSH 기반 파일 전송",
+        "호스트 키 확인",
+        "SFTP 클라이언트"
+      ],
+      "risk": "high",
+      "qa_capture_ids": [
+        "file_transfer_routing"
+      ],
+      "capability_ids": [
+        "diagnostics.transfer.sftp.client"
+      ]
+    },
+    {
+      "id": "diagnostics.transfer.sftp.server",
+      "parent_id": "diagnostics.transfer",
+      "title": "SFTP 임시 서버",
+      "locale": "ko",
+      "path": "docs/user/ko/transfer.md",
+      "anchor": "sftp-server",
+      "route": "diagnostics.transfer.sftp.server",
+      "source_paths": [
+        "app/ui/tabs/diagnostics/ftp.py",
+        "app/services/ftp_server_service.py"
+      ],
+      "keywords": [
+        "SFTP 서버",
+        "SSH 호스트 키",
+        "공유 루트",
+        "지문",
+        "SSH 파일 서버",
+        "SFTP 임시 서버 열기",
+        "SFTP 임시 서버"
+      ],
+      "risk": "high",
+      "qa_capture_ids": [
+        "file_transfer_routing"
+      ],
+      "capability_ids": [
+        "diagnostics.transfer.sftp.server"
+      ]
+    },
+    {
+      "id": "diagnostics.transfer.scp.client",
+      "parent_id": "diagnostics.transfer",
+      "title": "SCP 클라이언트",
+      "locale": "ko",
+      "path": "docs/user/ko/transfer.md",
+      "anchor": "scp-client",
+      "route": "diagnostics.transfer.scp.client",
+      "source_paths": [
+        "app/ui/tabs/diagnostics/scp.py",
+        "app/services/scp_client_service.py"
+      ],
+      "keywords": [
+        "SCP",
+        "SSH",
+        "업로드",
+        "다운로드",
+        "호스트 키",
+        "SCP 업로드",
+        "SCP 다운로드",
+        "SCP 전송",
+        "SSH SCP 파일 복사",
+        "SCP 클라이언트"
+      ],
+      "risk": "high",
+      "qa_capture_ids": [
+        "file_transfer_routing"
+      ],
+      "capability_ids": [
+        "diagnostics.transfer.scp.client"
+      ]
+    },
+    {
+      "id": "diagnostics.transfer.scp.server",
+      "parent_id": "diagnostics.transfer",
+      "title": "SCP 임시 서버",
+      "locale": "ko",
+      "path": "docs/user/ko/transfer.md",
+      "anchor": "scp-server",
+      "route": "diagnostics.transfer.scp.server",
+      "source_paths": [
+        "app/ui/tabs/diagnostics/scp.py",
+        "app/services/scp_server_service.py"
+      ],
+      "keywords": [
+        "SCP 서버",
+        "임시 서버",
+        "읽기 전용",
+        "서버 키",
+        "임시 SCP",
+        "SCP 임시 서버 열기",
+        "SCP 임시 서버"
+      ],
+      "risk": "high",
+      "qa_capture_ids": [
+        "file_transfer_routing"
+      ],
+      "capability_ids": [
+        "diagnostics.transfer.scp.server"
+      ]
+    },
+    {
+      "id": "diagnostics.transfer.tftp.client",
+      "parent_id": "diagnostics.transfer",
+      "title": "TFTP 클라이언트",
+      "locale": "ko",
+      "path": "docs/user/ko/transfer.md",
+      "anchor": "tftp-client",
+      "route": "diagnostics.transfer.tftp.client",
+      "source_paths": [
+        "app/ui/tabs/diagnostics/tftp.py",
+        "app/services/tftp_service.py"
+      ],
+      "keywords": [
+        "TFTP",
+        "UDP 69",
+        "업로드",
+        "다운로드",
+        "재시도",
+        "TFTP 업로드",
+        "TFTP 다운로드",
+        "TFTP 파일 전송",
+        "TFTP 클라이언트"
+      ],
+      "risk": "high",
+      "qa_capture_ids": [
+        "file_transfer_routing"
+      ],
+      "capability_ids": [
+        "diagnostics.transfer.tftp.client"
+      ]
+    },
+    {
+      "id": "diagnostics.transfer.tftp.server",
+      "parent_id": "diagnostics.transfer",
+      "title": "TFTP 임시 서버",
+      "locale": "ko",
+      "path": "docs/user/ko/transfer.md",
+      "anchor": "tftp-server",
+      "route": "diagnostics.transfer.tftp.server",
+      "source_paths": [
+        "app/ui/tabs/diagnostics/tftp.py",
+        "app/services/tftp_service.py"
+      ],
+      "keywords": [
+        "TFTP 서버",
+        "UDP",
+        "공유 루트",
+        "읽기 전용",
+        "임시 TFTP",
+        "TFTP 임시 서버 열기",
+        "TFTP 임시 서버"
+      ],
+      "risk": "high",
+      "qa_capture_ids": [
+        "file_transfer_routing"
+      ],
+      "capability_ids": [
+        "diagnostics.transfer.tftp.server"
+      ]
+    },
+    {
+      "id": "diagnostics.commands",
+      "parent_id": "diagnostics",
+      "title": "명령 출력",
+      "locale": "ko",
+      "path": "docs/user/ko/diagnostics.md",
+      "anchor": "commands",
+      "route": "diagnostics.commands",
+      "source_paths": [
+        "app/ui/tabs/diagnostics/tools.py",
+        "app/services/powershell_service.py",
+        "app/services/public_ip_service.py"
+      ],
+      "keywords": [
+        "명령 출력",
+        "ipconfig",
+        "route print",
+        "arp -a",
+        "공인 IP",
+        "DNS 캐시",
+        "내 PC 네트워크 정보",
+        "라우팅 테이블",
+        "ARP 테이블"
+      ],
+      "risk": "medium",
+      "qa_capture_ids": [
+        "dns_and_commands"
+      ],
+      "capability_ids": [
+        "diagnostics.commands"
+      ]
+    },
+    {
+      "id": "wireless",
+      "parent_id": "getting-started",
+      "title": "Wi-Fi 분석",
+      "locale": "ko",
+      "path": "docs/user/ko/wireless.md",
+      "anchor": "wireless",
+      "route": "wireless",
+      "source_paths": [
+        "app/ui/tabs/wireless_tab.py",
+        "app/services/wireless_service.py"
+      ],
+      "keywords": [
+        "Wi-Fi",
+        "SSID",
+        "BSSID",
+        "채널",
+        "신호",
+        "주변 AP",
+        "와이파이",
+        "WiFi",
+        "무선 채널",
+        "무선 신호 확인",
+        "주변 와이파이 검색",
+        "채널 혼잡 확인",
+        "Wi-Fi 분석"
+      ],
+      "risk": "low",
+      "qa_capture_ids": [
+        "guide_wireless_overview"
+      ],
+      "capability_ids": [
+        "wireless"
+      ]
+    },
+    {
+      "id": "inspector",
+      "parent_id": "getting-started",
+      "title": "장비 점검 및 백업",
+      "locale": "ko",
+      "path": "docs/user/ko/inspector.md",
+      "anchor": "inspector",
+      "route": "inspector",
+      "source_paths": [
+        "app/ui/tabs/inspector_tab.py",
+        "netops_suite/modules/inspector/service.py",
+        "netops_suite/modules/inspector/vendor_profiles",
+        "netops_suite/modules/inspector_runtime/core/command_patterns.py",
+        "netops_suite/modules/inspector_runtime/core/inspector.py",
+        "netops_suite/modules/inspector_runtime/vendors"
+      ],
+      "keywords": [
+        "장비 점검",
+        "백업",
+        "SSH",
+        "Telnet",
+        "Excel",
+        "사용자 명령",
+        "장비 백업",
+        "점검 백업",
+        "스위치 백업",
+        "SSH 장비 목록",
+        "Telnet 장비 목록",
+        "커스텀 명령",
+        "호스트네임",
+        "hostname",
+        "스위치 이름 변경",
+        "장비 이름 변경",
+        "여러 네트워크 장비 점검",
+        "장비 구성 백업",
+        "Excel 장비 접속",
+        "장비마다 다른 명령",
+        "여러 장비 호스트네임 수정",
+        "Excel 값으로 명령 치환",
+        "장비 점검 및 백업",
+        "장비 점검 및 백업 · 사용자 명령"
+      ],
+      "risk": "high",
+      "qa_capture_ids": [
+        "guide_inspector_overview"
+      ],
+      "capability_ids": [
+        "inspector",
+        "inspector.user-commands"
+      ]
+    },
+    {
+      "id": "config-builder",
+      "parent_id": "getting-started",
+      "title": "CLI 설정 생성",
+      "locale": "ko",
+      "path": "docs/user/ko/config-builder.md",
+      "anchor": "config-builder",
+      "route": "config-builder",
+      "source_paths": [
+        "app/ui/tabs/config_builder_tab.py",
+        "netops_suite/modules/config_builder/service.py",
+        "netops_suite/modules/config_builder/switch_configurator/desktop_impl.py"
+      ],
+      "keywords": [
+        "CLI 설정",
+        "YAML 프로파일",
+        "CSV",
+        "XLSX",
+        "Jinja2",
+        "샘플",
+        "설정 생성",
+        "Config Builder",
+        "장비 설정 파일 만들기",
+        "CSV로 설정 생성",
+        "XLSX로 설정 생성",
+        "CLI 설정 생성"
+      ],
+      "risk": "medium",
+      "qa_capture_ids": [
+        "guide_config_builder_overview"
+      ],
+      "capability_ids": [
+        "config-builder"
+      ]
+    },
+    {
+      "id": "assistant",
+      "parent_id": "getting-started",
+      "title": "NetOps 어시스턴트",
+      "locale": "ko",
+      "path": "docs/user/ko/assistant.md",
+      "anchor": "assistant",
+      "route": "assistant",
+      "source_paths": [
+        "app/ui/tabs/ai_chat_tab.py",
+        "app/models/ai_models.py",
+        "app/services/ai_agent_service.py",
+        "app/services/ai_model_catalog_service.py",
+        "app/assistant/policy.py",
+        "app/assistant/capabilities.py",
+        "app/assistant/grounding.py"
+      ],
+      "keywords": [
+        "NetOps 어시스턴트",
+        "Codex",
+        "Codex CLI",
+        "AI",
+        "권한",
+        "승인",
+        "AI 채팅",
+        "AI 모델",
+        "Codex 연결 설정",
+        "Codex 로그인",
+        "권한 모드",
+        "대화 내보내기"
+      ],
+      "risk": "high",
+      "qa_capture_ids": [
+        "guide_assistant_overview"
+      ],
+      "capability_ids": [
+        "assistant"
+      ]
+    },
+    {
+      "id": "settings",
+      "parent_id": "getting-started",
+      "title": "설정",
+      "locale": "ko",
+      "path": "docs/user/ko/settings.md",
+      "anchor": "settings",
+      "route": "settings",
+      "source_paths": [
+        "app/ui/tabs/settings_tab.py",
+        "app/models/ai_models.py",
+        "app/services/ai_agent_service.py",
+        "app/app_state.py",
+        "app/utils/file_utils.py"
+      ],
+      "keywords": [
+        "설정",
+        "업데이트",
+        "저장 위치",
+        "도구 연동",
+        "iperf3",
+        "OUI",
+        "초기화",
+        "앱 설정",
+        "환경 설정",
+        "NetOps 설정 변경",
+        "iperf3 경로",
+        "OUI 데이터",
+        "업데이트 설정"
+      ],
+      "risk": "high",
+      "qa_capture_ids": [
+        "guide_settings_overview"
+      ],
+      "capability_ids": [
+        "settings"
+      ]
+    },
+    {
+      "id": "data-security",
+      "parent_id": "getting-started",
+      "title": "데이터 및 보안",
+      "locale": "ko",
+      "path": "docs/user/ko/data-security.md",
+      "anchor": "data-security",
+      "route": "data-security",
+      "source_paths": [
+        "app/utils/file_utils.py",
+        "app/ui/tabs/inspector_tab.py",
+        "app/ui/tabs/ai_chat_tab.py"
+      ],
+      "keywords": [
+        "보안",
+        "민감 정보",
+        "비밀번호",
+        "로그",
+        "암호화 키",
+        "데이터 보관",
+        "로그 보관",
+        "데이터 저장 위치",
+        "비밀번호 보호",
+        "로그 개인정보",
+        "데이터 및 보안"
+      ],
+      "risk": "low",
+      "qa_capture_ids": [],
+      "capability_ids": [
+        "data-security"
+      ]
+    },
+    {
+      "id": "troubleshooting",
+      "parent_id": "getting-started",
+      "title": "문제 해결",
+      "locale": "ko",
+      "path": "docs/user/ko/troubleshooting.md",
+      "anchor": "troubleshooting",
+      "route": "troubleshooting",
+      "source_paths": [
+        "app/services/logging_service.py",
+        "app/ui/tabs/settings_tab.py",
+        "README.md"
+      ],
+      "keywords": [
+        "문제 해결",
+        "오류",
+        "로그",
+        "시작 실패",
+        "저장 실패",
+        "진단",
+        "오류 해결",
+        "로그 확인",
+        "NetOps가 안 됨",
+        "기능 실행 실패",
+        "진단 로그"
+      ],
+      "risk": "low",
+      "qa_capture_ids": [],
+      "capability_ids": [
+        "troubleshooting"
+      ]
+    }
+  ]
+}

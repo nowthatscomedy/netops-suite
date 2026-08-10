@@ -25,7 +25,7 @@ from app.services.ai_agent_service import (
     safe_env_for_cli,
 )
 from app.utils.file_utils import load_json, save_json
-from app.utils.process_utils import no_window_creationflags
+from app.utils.process_utils import no_window_creationflags, terminate_process_tree
 
 
 MODEL_VALUE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}\Z")
@@ -37,9 +37,6 @@ class AiModelCatalogError(RuntimeError):
 
 
 class ModelCatalogAdapter(Protocol):
-    provider_key: str
-    supports_live_discovery: bool
-
     def cli_identity(
         self,
         service: "AiModelCatalogService",
@@ -60,9 +57,6 @@ class ModelCatalogAdapter(Protocol):
 
 
 class CodexModelCatalogAdapter:
-    provider_key = "codex"
-    supports_live_discovery = True
-
     def cli_identity(
         self,
         service: "AiModelCatalogService",
@@ -70,8 +64,7 @@ class CodexModelCatalogAdapter:
         deadline: float,
         cancel_event: threading.Event | None,
     ) -> tuple[str, str]:
-        program = resolve_provider_program(config)
-        return program, service._read_cli_version(program, deadline, cancel_event)
+        return service._provider_cli_identity(config, deadline, cancel_event)
 
     def discover(
         self,
@@ -83,33 +76,6 @@ class CodexModelCatalogAdapter:
         deadline: float,
     ) -> AiModelCatalog:
         return service._discover_codex(cli_path, cli_version, cancel_event, deadline)
-
-
-class FallbackModelCatalogAdapter:
-    supports_live_discovery = False
-
-    def __init__(self, provider_key: str) -> None:
-        self.provider_key = provider_key
-
-    def cli_identity(
-        self,
-        service: "AiModelCatalogService",
-        config: AiProviderConfig,
-        deadline: float,
-        cancel_event: threading.Event | None,
-    ) -> tuple[str, str]:
-        return "", ""
-
-    def discover(
-        self,
-        service: "AiModelCatalogService",
-        config: AiProviderConfig,
-        cli_path: str,
-        cli_version: str,
-        cancel_event: threading.Event | None,
-        deadline: float,
-    ) -> AiModelCatalog:
-        return service.fallback_catalog(self.provider_key, config.model)
 
 
 class AiModelCatalogService:
@@ -130,13 +96,12 @@ class AiModelCatalogService:
         self.cache_path = Path(cache_path)
         self.adapters: dict[str, ModelCatalogAdapter] = adapters or {
             "codex": CodexModelCatalogAdapter(),
-            "claude": FallbackModelCatalogAdapter("claude"),
-            "gemini": FallbackModelCatalogAdapter("gemini"),
         }
 
     def load_catalog(
         self, provider_key: str, current_model: str = ""
     ) -> AiModelCatalog:
+        self._adapter_for(provider_key)
         payload = load_json(self.cache_path, {})
         if isinstance(payload, dict) and payload.get("version") == self.CACHE_VERSION:
             providers = payload.get("providers", {})
@@ -162,6 +127,7 @@ class AiModelCatalogService:
     def fallback_catalog(
         self, provider_key: str, current_model: str = ""
     ) -> AiModelCatalog:
+        self._adapter_for(provider_key)
         models: list[AiModelDescriptor] = []
         for label, model in FALLBACK_MODEL_OPTIONS.get(provider_key, ()):
             if not model:
@@ -186,8 +152,6 @@ class AiModelCatalogService:
         cli_version: str = "",
         now: datetime | None = None,
     ) -> bool:
-        if catalog.provider_key != "codex":
-            return False
         if catalog.source not in {"live", "cache"} or not catalog.models:
             return True
         if cli_path and self._normalized_path(
@@ -238,10 +202,6 @@ class AiModelCatalogService:
         self._raise_if_cancelled(cancel_event)
         adapter = self._adapter_for(config.key)
         program, cli_version = self.cli_identity(config, deadline, cancel_event)
-        if not adapter.supports_live_discovery:
-            return adapter.discover(
-                self, config, program, cli_version, cancel_event, deadline
-            )
         if (
             current_catalog is not None
             and not force
@@ -311,6 +271,11 @@ class AiModelCatalogService:
             providers = payload.get("providers")
             if not isinstance(providers, dict):
                 providers = {}
+            providers = {
+                key: value
+                for key, value in providers.items()
+                if key in KNOWN_AI_PROVIDERS
+            }
             stored = AiModelCatalog(
                 provider_key=cacheable.provider_key,
                 models=list(cacheable.models),
@@ -561,6 +526,16 @@ class AiModelCatalogService:
         if process.poll() is not None:
             return
         try:
+            pid = int(getattr(process, "pid", 0) or 0)
+        except (TypeError, ValueError):
+            pid = 0
+        if terminate_process_tree(pid):
+            try:
+                process.wait(timeout=2)
+                return
+            except (OSError, subprocess.TimeoutExpired, ValueError):
+                pass
+        try:
             process.terminate()
             process.wait(timeout=1)
         except (OSError, subprocess.TimeoutExpired):
@@ -744,6 +719,20 @@ class AiModelCatalogService:
             return ""
         finally:
             self._stop_process(process)
+
+    def _provider_cli_identity(
+        self,
+        config: AiProviderConfig,
+        deadline: float,
+        cancel_event: threading.Event | None,
+    ) -> tuple[str, str]:
+        provider_program = resolve_provider_program(config)
+        cli_version = self._read_cli_version(
+            provider_program,
+            deadline,
+            cancel_event,
+        )
+        return provider_program, cli_version
 
     @classmethod
     def _validated_catalog(

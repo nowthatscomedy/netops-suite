@@ -8,6 +8,12 @@ NetOps Suite는 Windows 현장 네트워크 작업을 한 앱에서 처리하기
 - 64비트 Windows 10 버전 1809(빌드 17763) 이상
 - 공식 릴리스 빌드 환경: Python 3.11, Inno Setup 6
 
+## 사용자 가이드
+
+앱의 사이드바 `도움말` 또는 `F1`을 누르면 현재 화면에 맞는 오프라인 가이드를
+열 수 있습니다. 저장소에서는 [처음 시작하기](docs/user/ko/getting-started.md)에서
+기능별 가이드로 이동할 수 있습니다.
+
 ## 주요 기능
 
 ### 인터페이스
@@ -48,10 +54,25 @@ NetOps Suite는 Windows 현장 네트워크 작업을 한 앱에서 처리하기
 - Excel 장비 목록 불러오기와 스키마 검증
 - SSH / Telnet 기반 점검, 백업, 점검+백업
 - TXT / Excel 사용자 명령 일괄 실행
+- 사용자 명령의 장비별 Excel 변수 치환
 - 장비별 진행률과 세션 로그
 - 결과 Excel, 설정 백업 TXT, raw command output 저장
 - 벤더 / 모델 / OS별 장비 점검 프로파일 작성
 - 줄 번호 / 값 번호 기반 쉬운 파싱과 정규식 / Python 고급 추출 지원
+
+사용자 명령 파일에서는 장비 목록 Excel의 열을 `{{ variable_name }}` 형식으로
+참조할 수 있습니다. 예를 들어 장비 목록에 `interface`, `vlan_id` 열을 추가한 뒤
+다음 명령 파일을 선택하면 각 장비 행의 값으로 치환하여 실행합니다.
+
+```text
+show interface {{ interface }}
+show vlan {{ vlan_id }}
+```
+
+변수명에는 영문 소문자, 숫자, 언더바만 사용할 수 있으며 숫자로 시작할 수 없습니다.
+필터나 조건문은 지원하지 않고, 열 또는 값이 누락된 경우 장비 연결 전에 전체 실행을
+차단합니다. `password`, `enable_password`는 변수로 사용할 수 없습니다. 실제 치환된
+명령은 결과 Excel, 세션 로그, raw output에 기록될 수 있으므로 민감한 값을 넣지 마세요.
 
 ### 설정 생성
 
@@ -127,6 +148,9 @@ NetOps Suite는 Windows 현장 네트워크 작업을 한 앱에서 처리하기
 
 ```powershell
 python -m ruff check .
+python scripts/validate_guides.py
+python scripts/generate_guides.py sync-capabilities --check
+python scripts/generate_guides.py build --check
 python -m pytest
 python -m compileall main.py app netops_suite qa scripts tests
 python scripts/run_offscreen_qa.py
@@ -146,7 +170,7 @@ gitleaks dir --no-banner --redact .
 ```powershell
 pip install -r requirements-dev-lock.txt
 pip install "pyinstaller==6.21.0" "pyinstaller-hooks-contrib==2026.6"
-powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.0.9 -Clean
+powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.0.10 -Clean
 ```
 
 Windows 설치 파일 빌드에는 Inno Setup 6가 필요합니다.
@@ -179,7 +203,7 @@ GitHub Actions 릴리즈 빌드는 `workflow_dispatch`로 수동 실행하며, �
 ```powershell
 $env:WINDOWS_CODESIGN_CERT_PATH = "C:\path\codesign.pfx"
 $env:WINDOWS_CODESIGN_CERT_PASSWORD = "<pfx password>"
-powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.0.9 -Clean -RequireCodeSigning
+powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.0.10 -Clean -RequireCodeSigning
 ```
 
 ## 프로젝트 구조

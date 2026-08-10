@@ -82,24 +82,22 @@ from app.models.ai_models import (
     AiModelCatalog,
     AiModelDescriptor,
     AiProviderConfig,
-    KNOWN_AI_PROVIDERS,
     normalize_ai_chat_config,
 )
 from app.services.ai_agent_service import (
     CliHelpOption,
     NetOpsChatAction,
     PROVIDER_SPECS,
+    ProviderEventAccumulator,
     build_chat_invocation,
     build_help_invocation,
     build_login_invocation,
     build_status_invocation,
     decode_cli_output,
     diagnose_cli_error,
-    extract_assistant_text_from_cli_line,
-    extract_cli_session_id,
-    extract_error_from_cli_line,
     extra_arg_options_from_help,
     inspect_provider,
+    is_authentication_cli_error,
     is_blocking_cli_configuration_error,
     plan_netops_chat_action,
     provider_configs_from_app_config,
@@ -111,6 +109,7 @@ from app.services.ai_agent_service import (
 from app.services.ai_model_catalog_service import AiModelCatalogService
 from app.ui.common import JobRunner, make_step_hint
 from app.utils.file_utils import timestamped_export_path
+from app.utils.process_utils import terminate_process_tree
 from netops_suite.modules.config_builder import ConfigBuilderService
 from netops_suite.modules.inspector import InspectorService
 from netops_suite.ui.actions import ActionKind, make_action_button
@@ -159,6 +158,21 @@ MAX_ATTACHMENT_CONTEXT_CHARS = 360_000
 MAX_INTERNAL_CONTEXT_SECTION_CHARS = 6_000
 MAX_INTERNAL_CONTEXT_TOTAL_CHARS = 28_000
 CUSTOM_MODEL_ID_RE = re.compile(r"[A-Za-z0-9._:/-]{1,128}\Z")
+
+
+def _terminate_qprocess_tree(process: Any) -> None:
+    try:
+        pid = int(process.processId())
+    except (AttributeError, RuntimeError, TypeError, ValueError):
+        pid = 0
+    if terminate_process_tree(pid):
+        return
+    try:
+        process.kill()
+    except RuntimeError:
+        pass
+
+
 MODEL_DESCRIPTOR_ROLE = int(Qt.ItemDataRole.UserRole) + 1
 REASONING_EFFORT_LABELS = {
     "none": "없음 (추론 사용 안 함)",
@@ -198,6 +212,10 @@ NETWORK_STATUS_KOREAN_SHORT_RE = re.compile(r"(?<![가-힣])(랜|핑)(?![가-힣
 INSPECTOR_CONTEXT_KEYWORDS = (
     "장비 점검",
     "장비 백업",
+    "사용자 명령",
+    "호스트네임",
+    "hostname",
+    "장비마다",
     "점검/백업",
     "점검 백업",
     "대상 장비 목록",
@@ -1109,6 +1127,8 @@ class MessageBodyView(QTextBrowser):
 
 class AiChatTab(QWidget):
     tool_settings_requested = Signal(str)
+    feature_requested = Signal(str)
+    guide_requested = Signal(str)
 
     def __init__(self, state: AppState, parent=None) -> None:
         super().__init__(parent)
@@ -1165,6 +1185,12 @@ class AiChatTab(QWidget):
         self._context_operation_label = ""
         self._login_preflight_active = False
         self._pending_prompt_payload: dict[str, Any] | None = None
+        (
+            self._grounding_service,
+            self._grounding_state,
+        ) = self._create_grounding_components()
+        self._active_response_handoff: dict[str, str] = {}
+        self._provider_event_accumulators: dict[int, ProviderEventAccumulator] = {}
         self._assistant_registry = build_netops_tool_registry()
         paths = getattr(self.state, "paths", None)
         logs_dir = Path(getattr(paths, "logs_dir", getattr(paths, "root", Path.cwd())))
@@ -1182,7 +1208,6 @@ class AiChatTab(QWidget):
         self._render_timer.setInterval(50)
         self._render_timer.timeout.connect(self._flush_transcript_render)
         self._deferred_timers: list[QTimer] = []
-        self._active_provider = self._ai_config().get("active_provider", "codex")
         self._build_ui()
         self._load_config_into_ui()
         self.refresh_provider_status()
@@ -1230,8 +1255,9 @@ class AiChatTab(QWidget):
             provider_layout.setColumnStretch(column, 1)
 
         self.provider_combo = NoWheelComboBox()
-        for key in KNOWN_AI_PROVIDERS:
-            self.provider_combo.addItem(PROVIDER_SPECS[key].display_name, key)
+        self.provider_combo.addItem(PROVIDER_SPECS["codex"].display_name, "codex")
+        self.provider_combo.setEnabled(False)
+        self.provider_combo.setAccessibleName("AI 서비스: ChatGPT Codex")
         # Kept as an internal mirror for existing runtime helpers. The editable path now lives in Settings.
         self.command_edit = QLineEdit(self)
         self.command_edit.hide()
@@ -1255,7 +1281,9 @@ class AiChatTab(QWidget):
         self.extra_args_edit.setPlaceholderText(
             "보통은 비워 두세요. 아래에서 필요한 기능을 선택할 수 있습니다."
         )
-        self.provider_combo.setToolTip("요청을 처리할 AI CLI 서비스를 선택합니다.")
+        self.provider_combo.setToolTip(
+            "NetOps 어시스턴트는 ChatGPT Codex CLI를 사용합니다."
+        )
         self.model_combo.setToolTip(
             "사용할 모델을 선택합니다. 자동 선택은 CLI의 기본 모델을 사용합니다."
         )
@@ -1271,7 +1299,8 @@ class AiChatTab(QWidget):
         tool_settings_layout.setContentsMargins(0, 0, 0, 0)
         tool_settings_layout.setSpacing(8)
         tool_settings_label = QLabel(
-            "실행 파일 경로와 설치 상태는 설정 > 도구 연동에서 관리합니다."
+            "Codex CLI는 별도로 설치한 뒤 아래에서 로그인하고, "
+            "실행 파일 경로는 설정 > 도구 연동에서 관리합니다."
         )
         tool_settings_label.setWordWrap(True)
         self.tool_settings_button = make_action_button(
@@ -1328,7 +1357,9 @@ class AiChatTab(QWidget):
         provider_actions.setContentsMargins(4, 0, 4, 0)
         provider_actions.setSpacing(8)
         self.check_button = make_action_button("상태 확인", ActionKind.REFRESH)
-        self.login_button = make_action_button("로그인 터미널", ActionKind.START)
+        self.login_button = make_action_button(
+            "로그인", ActionKind.START, object_name="aiProviderSetupButton"
+        )
         self.save_button = make_action_button("설정 저장", ActionKind.SAVE)
         provider_actions.addWidget(self.check_button)
         provider_actions.addWidget(self.login_button)
@@ -1595,7 +1626,6 @@ class AiChatTab(QWidget):
         self.ai_chat_tabs.addTab(options_page, "고급 옵션")
         self.ai_chat_tabs.currentChanged.connect(self._handle_ai_chat_tab_changed)
 
-        self.provider_combo.currentIndexChanged.connect(self._handle_provider_changed)
         self.model_combo.currentIndexChanged.connect(self._handle_model_changed)
         self.reasoning_combo.currentIndexChanged.connect(self.save_current_config)
         self.speed_combo.currentIndexChanged.connect(self.save_current_config)
@@ -1707,10 +1737,7 @@ class AiChatTab(QWidget):
         return menu
 
     def _show_permission_menu(self, _checked: bool = False) -> None:
-        if (
-            self.current_provider_key() != "codex"
-            or not self.permission_button.isEnabled()
-        ):
+        if not self.permission_button.isEnabled():
             return
         if self._permission_menu is not None:
             self._permission_menu.close()
@@ -1771,8 +1798,7 @@ class AiChatTab(QWidget):
     def _update_permission_button(self) -> None:
         if not hasattr(self, "permission_button"):
             return
-        is_codex = self.current_provider_key() == "codex"
-        self.permission_button.setVisible(is_codex)
+        self.permission_button.setVisible(True)
         mode = self._codex_permission_mode
         self.permission_button.setText(CODEX_PERMISSION_BUTTON_TITLES[mode])
         self.permission_button.setIcon(self._permission_icon(mode))
@@ -1886,22 +1912,12 @@ class AiChatTab(QWidget):
         return root / "config" / "ai_model_catalog_cache.json"
 
     def _load_config_into_ui(self) -> None:
-        for key in KNOWN_AI_PROVIDERS:
-            config = self._providers.get(key, AiProviderConfig(key=key))
-            self._model_catalogs[key] = self._model_catalog_service.load_catalog(
-                key, config.model
-            )
-        self._set_combo_data(self.provider_combo, self._active_provider)
-        self._load_provider_fields(self.current_provider_key())
-
-    def _handle_provider_changed(self, _index: int = -1) -> None:
-        self._active_provider = self.current_provider_key()
-        self._reset_help_options()
-        self._load_provider_fields(self._active_provider)
-        self.save_current_config()
-        self.refresh_provider_status()
-        if self.ai_chat_tabs.currentWidget() is self.connection_page:
-            self._ensure_model_catalog_fresh(self._active_provider)
+        config = self._providers.get("codex", AiProviderConfig(key="codex"))
+        self._model_catalogs["codex"] = self._model_catalog_service.load_catalog(
+            "codex", config.model
+        )
+        self._set_combo_data(self.provider_combo, "codex")
+        self._load_provider_fields("codex")
 
     def _load_provider_fields(self, key: str) -> None:
         config = self._providers.get(key, AiProviderConfig(key=key))
@@ -1972,7 +1988,6 @@ class AiChatTab(QWidget):
         self.model_combo.blockSignals(False)
         config = self._providers.get(key, AiProviderConfig(key=key))
         normalized_reasoning, normalized_speed = self._rebuild_model_dependent_controls(
-            key,
             self._effective_model_descriptor(),
             config.reasoning_effort,
             config.speed,
@@ -1993,7 +2008,6 @@ class AiChatTab(QWidget):
         key = self.current_provider_key()
         existing = self._providers.get(key, AiProviderConfig(key=key))
         normalized_reasoning, normalized_speed = self._rebuild_model_dependent_controls(
-            key,
             self._effective_model_descriptor(),
             existing.reasoning_effort,
             existing.speed,
@@ -2024,7 +2038,6 @@ class AiChatTab(QWidget):
 
     def _rebuild_model_dependent_controls(
         self,
-        key: str,
         descriptor: AiModelDescriptor | None,
         current_reasoning: str,
         current_speed: str,
@@ -2033,48 +2046,42 @@ class AiChatTab(QWidget):
         self.reasoning_combo.clear()
         self.reasoning_combo.addItem("자동 선택 (권장)", "")
 
-        if key == "codex":
-            if descriptor is None or descriptor.source in {"custom", "fallback"}:
-                supported_reasoning = list(REASONING_EFFORT_ORDER)
-            else:
-                supported_reasoning = [
-                    value
-                    for value in descriptor.supported_reasoning_efforts
-                    if value in REASONING_EFFORT_LABELS
-                ]
-            for value in supported_reasoning:
-                self.reasoning_combo.addItem(REASONING_EFFORT_LABELS[value], value)
-            self._set_combo_data(
-                self.reasoning_combo,
-                current_reasoning
-                if self.reasoning_combo.findData(current_reasoning) >= 0
-                else "",
-            )
-        self.reasoning_combo.blockSignals(False)
-        normalized_reasoning = (
-            str(self.reasoning_combo.currentData() or "") if key == "codex" else ""
+        if descriptor is None or descriptor.source in {"custom", "fallback"}:
+            supported_reasoning = list(REASONING_EFFORT_ORDER)
+        else:
+            supported_reasoning = [
+                value
+                for value in descriptor.supported_reasoning_efforts
+                if value in REASONING_EFFORT_LABELS
+            ]
+        for value in supported_reasoning:
+            self.reasoning_combo.addItem(REASONING_EFFORT_LABELS[value], value)
+        self._set_combo_data(
+            self.reasoning_combo,
+            current_reasoning
+            if self.reasoning_combo.findData(current_reasoning) >= 0
+            else "",
         )
+        self.reasoning_combo.blockSignals(False)
+        normalized_reasoning = str(self.reasoning_combo.currentData() or "")
 
         self.speed_combo.blockSignals(True)
         self.speed_combo.clear()
         self.speed_combo.addItem("자동 선택 (권장)", "")
-        if key == "codex":
-            support_unknown = descriptor is None or descriptor.source in {
-                "custom",
-                "fallback",
-            }
-            if support_unknown or "fast" in descriptor.speed_tiers:
-                self.speed_combo.addItem(SPEED_LABELS["fast"], "fast")
-            if current_speed == "flex":
-                self.speed_combo.addItem(SPEED_LABELS["flex"], "flex")
-            self._set_combo_data(
-                self.speed_combo,
-                current_speed if self.speed_combo.findData(current_speed) >= 0 else "",
-            )
-        self.speed_combo.blockSignals(False)
-        normalized_speed = (
-            str(self.speed_combo.currentData() or "") if key == "codex" else ""
+        support_unknown = descriptor is None or descriptor.source in {
+            "custom",
+            "fallback",
+        }
+        if support_unknown or "fast" in descriptor.speed_tiers:
+            self.speed_combo.addItem(SPEED_LABELS["fast"], "fast")
+        if current_speed == "flex":
+            self.speed_combo.addItem(SPEED_LABELS["flex"], "flex")
+        self._set_combo_data(
+            self.speed_combo,
+            current_speed if self.speed_combo.findData(current_speed) >= 0 else "",
         )
+        self.speed_combo.blockSignals(False)
+        normalized_speed = str(self.speed_combo.currentData() or "")
         return normalized_reasoning, normalized_speed
 
     def _update_model_detail(self) -> None:
@@ -2144,8 +2151,6 @@ class AiChatTab(QWidget):
                 )
         if catalog.cli_version:
             parts.append(catalog.cli_version)
-        if catalog.provider_key != "codex" and catalog.source == "fallback":
-            parts.append("실시간 조회는 아직 지원하지 않음")
         self.model_catalog_status_label.setText(" · ".join(parts))
         self.model_catalog_status_label.setToolTip("")
 
@@ -2188,24 +2193,15 @@ class AiChatTab(QWidget):
         self._handle_model_changed()
 
     def _sync_codex_controls(self) -> None:
-        is_codex = self.current_provider_key() == "codex"
-        self.reasoning_combo.setEnabled(is_codex)
-        self.speed_combo.setEnabled(is_codex)
+        self.reasoning_combo.setEnabled(True)
+        self.speed_combo.setEnabled(True)
 
     def _refresh_model_catalog_manually(self) -> None:
-        self._ensure_model_catalog_fresh(self.current_provider_key(), force=True)
+        self._ensure_model_catalog_fresh(force=True)
 
-    def _ensure_model_catalog_fresh(
-        self, provider_key: str | None = None, *, force: bool = False
-    ) -> None:
-        key = provider_key or self.current_provider_key()
-        if key not in KNOWN_AI_PROVIDERS:
-            return
-        config = (
-            self.current_provider_config()
-            if key == self.current_provider_key()
-            else self._providers.get(key, AiProviderConfig(key=key))
-        )
+    def _ensure_model_catalog_fresh(self, *, force: bool = False) -> None:
+        key = "codex"
+        config = self.current_provider_config()
         catalog = self._model_catalogs.get(
             key
         ) or self._model_catalog_service.load_catalog(key, config.model)
@@ -2223,13 +2219,6 @@ class AiChatTab(QWidget):
             return
 
         self._pending_model_catalog_refreshes.pop(key, None)
-        if key != "codex":
-            catalog = self._model_catalog_service.fallback_catalog(key, config.model)
-            self._model_catalogs[key] = catalog
-            if key == self.current_provider_key():
-                self._populate_model_combo(key, config.model)
-            return
-
         health = inspect_provider(config)
         if not health.installed:
             if key == self.current_provider_key():
@@ -2325,13 +2314,11 @@ class AiChatTab(QWidget):
         force = self._pending_model_catalog_refreshes.pop(key)
         self._run_later(
             0,
-            lambda key=key, force=force: self._ensure_model_catalog_fresh(
-                key, force=force
-            ),
+            lambda force=force: self._ensure_model_catalog_fresh(force=force),
         )
 
     def current_provider_key(self) -> str:
-        return str(self.provider_combo.currentData() or "codex")
+        return "codex"
 
     def current_provider_config(self) -> AiProviderConfig:
         key = self.current_provider_key()
@@ -2344,15 +2331,13 @@ class AiChatTab(QWidget):
             model=str(self.model_combo.currentData() or ""),
             reasoning_effort=(
                 str(self.reasoning_combo.currentData() or "")
-                if key == "codex"
-                and str(self.reasoning_combo.currentData() or "")
+                if str(self.reasoning_combo.currentData() or "")
                 in {"", *REASONING_EFFORT_ORDER}
                 else ""
             ),
             speed=(
                 str(self.speed_combo.currentData() or "")
-                if key == "codex"
-                and str(self.speed_combo.currentData() or "") in {"", "fast", "flex"}
+                if str(self.speed_combo.currentData() or "") in {"", "fast", "flex"}
                 else ""
             ),
             role_prompt="",
@@ -2402,9 +2387,6 @@ class AiChatTab(QWidget):
 
     def restore_ui_state(self, ui_state: dict | None) -> None:
         state = ui_state if isinstance(ui_state, dict) else {}
-        active_provider = str(state.get("active_provider", "") or "")
-        if active_provider in KNOWN_AI_PROVIDERS:
-            self._set_combo_data(self.provider_combo, active_provider)
         if state.get("draft_prompt"):
             self.prompt_edit.setPlainText(str(state.get("draft_prompt", "")))
 
@@ -2580,12 +2562,23 @@ class AiChatTab(QWidget):
         )
         return f"{kind}, {self._format_bytes(size)}"
 
+    def _update_provider_login_controls(self) -> None:
+        if not hasattr(self, "login_button"):
+            return
+        setup_active = self._login_preflight_active
+        button_text = "로그인 중…" if setup_active else "로그인"
+        busy = self._process is not None or self._context_collecting
+        self.login_button.setText(button_text)
+        self.login_button.setEnabled(not setup_active and not busy)
+        if hasattr(self, "send_button"):
+            self.send_button.setEnabled(not setup_active and not busy)
+
     def refresh_provider_status(self, allow_repair: bool = False) -> None:
         self._stop_status_process()
         config = self.current_provider_config()
         health = inspect_provider(config)
         if not health.installed:
-            self._set_status("CLI 없음", health.detail)
+            self._set_status("설치 필요", health.detail)
             return
 
         invocation = build_status_invocation(config, str(self.state.paths.root))
@@ -2640,11 +2633,8 @@ class AiChatTab(QWidget):
                 self._run_later(0, self.refresh_cli_help_options)
             self._run_later(
                 0,
-                lambda provider_key=provider_key, force=allow_repair: (
-                    self._ensure_model_catalog_fresh(
-                        provider_key,
-                        force=force,
-                    )
+                lambda force=allow_repair: self._ensure_model_catalog_fresh(
+                    force=force
                 ),
             )
             return
@@ -2684,7 +2674,7 @@ class AiChatTab(QWidget):
         self._status_timeout_timer = None
         try:
             if process.state() != QProcess.ProcessState.NotRunning:
-                process.kill()
+                _terminate_qprocess_tree(process)
                 self._set_status(
                     "상태 확인 시간 초과", "상태 확인 명령이 끝나지 않았습니다."
                 )
@@ -2798,7 +2788,7 @@ class AiChatTab(QWidget):
         self._help_timeout_timer = None
         try:
             if process.state() != QProcess.ProcessState.NotRunning:
-                process.kill()
+                _terminate_qprocess_tree(process)
                 self.help_status_label.setText("help 명령 시간이 초과되었습니다.")
         except RuntimeError:
             if self._help_process is process:
@@ -2945,12 +2935,10 @@ class AiChatTab(QWidget):
         blocked: list[str] = []
         for token in tokens:
             normalized = token.split("=", 1)[0]
-            is_claude_continue = (
-                self.current_provider_key() == "claude" and normalized == "-c"
-            )
             if (
-                normalized in BLOCKED_DIRECT_EXTRA_ARG_FLAGS or is_claude_continue
-            ) and normalized not in blocked:
+                normalized in BLOCKED_DIRECT_EXTRA_ARG_FLAGS
+                and normalized not in blocked
+            ):
                 blocked.append(normalized)
         return blocked
 
@@ -3002,8 +2990,6 @@ class AiChatTab(QWidget):
 
     @staticmethod
     def _codex_runtime_config_args(config: AiProviderConfig) -> list[str]:
-        if config.key != "codex":
-            return []
         args: list[str] = []
         reasoning_effort = config.reasoning_effort.strip()
         if reasoning_effort in REASONING_EFFORT_ORDER:
@@ -3013,7 +2999,7 @@ class AiChatTab(QWidget):
             args.extend(["-c", f'service_tier="{speed}"'])
         return args
 
-    def _attachment_context_and_args(self, provider_key: str) -> tuple[str, list[str]]:
+    def _attachment_context_and_args(self) -> tuple[str, list[str]]:
         sections: list[str] = []
         args: list[str] = []
         used_chars = 0
@@ -3022,15 +3008,10 @@ class AiChatTab(QWidget):
                 sections.append(f"첨부 파일을 찾지 못했습니다: {path}")
                 continue
             suffix = path.suffix.lower()
-            if provider_key == "codex" and suffix in IMAGE_ATTACHMENT_EXTENSIONS:
+            if suffix in IMAGE_ATTACHMENT_EXTENSIONS:
                 args.extend(["--image", str(path)])
                 sections.append(
                     f"이미지 첨부: {path} ({self._safe_file_size(path)}). CLI --image 인자로 함께 전달됨."
-                )
-                continue
-            if suffix in IMAGE_ATTACHMENT_EXTENSIONS:
-                sections.append(
-                    f"이미지 첨부: {path} ({self._safe_file_size(path)}). 현재 제공자에는 경로만 공유됨."
                 )
                 continue
 
@@ -3152,6 +3133,112 @@ class AiChatTab(QWidget):
         except (OSError, ValueError):
             return text
 
+    @staticmethod
+    def _create_grounding_components() -> tuple[object | None, object | None]:
+        """Create the optional capability router without coupling the UI to its internals."""
+
+        try:
+            from app.assistant.grounding import (
+                AssistantGroundingService,
+                ConversationGroundingState,
+            )
+        except (ImportError, AttributeError):
+            return None, None
+        try:
+            return AssistantGroundingService(), ConversationGroundingState()
+        except (OSError, TypeError, ValueError):
+            return None, None
+
+    def _ground_user_prompt(self, prompt: str) -> object | None:
+        service = self._grounding_service
+        state = self._grounding_state
+        if service is None or state is None:
+            return None
+        try:
+            from app.assistant.grounding import AssistantGroundingRequest
+
+            request = AssistantGroundingRequest(
+                user_message=prompt,
+                state=state,
+                external_alternative_consent=False,
+            )
+            snapshot = service.ground(request)
+            logger = getattr(self.state, "logger", None)
+            if logger is not None:
+                action = getattr(snapshot, "action", "")
+                support_level = getattr(snapshot, "support_level", "")
+                logger.info(
+                    "Assistant grounding: feature_id=%s action=%s support_level=%s consent_required=%s",
+                    str(getattr(snapshot, "feature_id", "") or "-"),
+                    str(getattr(action, "value", action) or "none"),
+                    str(getattr(support_level, "value", support_level) or "unsupported"),
+                    bool(getattr(snapshot, "consent_required", False)),
+                )
+            return snapshot
+        except Exception as exc:
+            logger = getattr(self.state, "logger", None)
+            if logger is not None:
+                logger.warning(
+                    "Assistant capability grounding failed; continuing without a handoff: %s",
+                    type(exc).__name__,
+                )
+            return None
+
+    @staticmethod
+    def _grounding_handoff(snapshot: object | None) -> dict[str, str]:
+        if snapshot is None or bool(getattr(snapshot, "ambiguous", False)):
+            return {}
+        feature_id = str(getattr(snapshot, "feature_id", "") or "").strip()
+        guide_id = str(getattr(snapshot, "guide_id", "") or "").strip()
+        route = str(getattr(snapshot, "route", "") or "").strip()
+        public_name = str(getattr(snapshot, "public_name", "") or "").strip()
+        route_root = route.casefold().replace("_", "-").split(".", 1)[0]
+        if route_root not in {
+            "interface",
+            "diagnostics",
+            "wireless",
+            "inspector",
+            "config-builder",
+            "assistant",
+            "settings",
+        }:
+            feature_id = ""
+            route = ""
+        if not feature_id and not guide_id and not route:
+            return {}
+        return {
+            "feature_id": feature_id,
+            "guide_id": guide_id,
+            "route": route,
+            "public_name": public_name,
+        }
+
+    @staticmethod
+    def _grounding_prompt_context(snapshot: object | None) -> str:
+        if snapshot is None:
+            return ""
+        public_context = str(
+            getattr(snapshot, "public_context", "") or ""
+        ).strip()
+        if not public_context:
+            return ""
+        instructions = [
+            "[NetOps Suite 공개 기능 안내]",
+            public_context,
+            "",
+            "응답 규칙:",
+            "- 위 공개 기능 안내를 우선 근거로 사용하고, 화면에 표시되는 공개 명칭만 사용하세요.",
+            "- 내부 식별자, enum 값, 소스 경로, 존재가 확인되지 않은 버튼이나 절차를 노출하거나 만들어내지 마세요.",
+            "- NetOps Suite로 해결 가능한 요청에는 스크립트나 외부 도구를 먼저 제안하지 마세요.",
+            "- 현재 지원 범위, 정확한 화면 절차, 성공 확인, 실패 시 중단 방법 순서로 답하세요.",
+        ]
+        if bool(getattr(snapshot, "consent_required", False)):
+            instructions.append(
+                "- 스크립트 또는 외부 절차 사용에 대한 이번 요청의 동의가 아직 없습니다. "
+                "대안을 작성하지 말고 내부 지원 범위와 한계를 설명한 뒤 동의를 먼저 물으세요."
+            )
+        return "\n".join(instructions)
+
     def _should_collect_internal_network_context(self, prompt: str) -> bool:
         return "network" in self._netops_context_categories(prompt)
 
@@ -3240,6 +3327,7 @@ class AiChatTab(QWidget):
                         "아래 내용은 NetOps Suite 내부 기능과 저장 상태를 바탕으로 수집한 컨텍스트입니다.",
                         "답변은 이 컨텍스트를 근거로 한국어로 작성하세요.",
                         "NetOps Suite가 이미 제공하는 기능을 우선 활용하도록 안내하고, 민감정보는 요구하거나 노출하지 마세요.",
+                        "내부 식별자, enum 값, 소스 경로는 답변에 노출하지 말고 실제 화면에 표시되는 공개 명칭만 사용하세요.",
                         "실패한 항목이 있으면 외부 도구 차단이 아니라 해당 NetOps 내부 수집 항목의 실패로 설명하세요.",
                     ]
                 ),
@@ -3384,12 +3472,15 @@ class AiChatTab(QWidget):
             profiles = service.supported_profile_definitions()
             lines = [
                 f"지원 프로파일: {len(profiles)}개",
-                f"사용자 custom_rules.yaml: {self._safe_context_path(service.custom_rules_path)}",
-                f"사용자 custom_parsers 폴더: {self._safe_context_path(service.custom_parsers_dir)}",
                 "장비 목록 필수 컬럼: ip, vendor, os, connection_type, port, password",
                 "선택 컬럼: username, enable_password",
-                "실행 모드: inspection, backup, inspection_backup, custom_commands",
-                "프로파일 생성 요청 시 custom_rules.yaml 형식으로 inspection_commands, backup_commands, parsing_rules, connection_overrides를 작성하세요.",
+                "사용자 정의 점검 프로파일 저장 형식: custom_rules.yaml",
+                "화면의 작업 선택: 점검, 백업, 점검+백업, 사용자 명령",
+                "사용자 명령은 TXT 파일을 권장하며 {{ new_hostname }}처럼 장비 목록 Excel의 같은 이름 열을 장비별로 치환할 수 있습니다.",
+                "실행 전 '먼저 검증'에서 대상 장비 수, 명령 수와 치환 변수를 확인합니다.",
+                "현재 화면에서는 장비 목록의 개별 행을 선택할 수 없으며 유효한 전체 행이 대상입니다.",
+                "프롬프트가 바뀌는 설정 모드 명령과 호스트네임 변경은 안전한 실행이 검증되지 않았으므로 직접 적용 가능하다고 안내하지 마세요.",
+                "사용자 정의 점검 프로파일은 앱의 장비 프로파일 관리 화면에서 작성합니다.",
             ]
             for profile in profiles[:16]:
                 lines.append(
@@ -3397,8 +3488,7 @@ class AiChatTab(QWidget):
                     f"{profile.get('display_name') or profile.get('key')}: "
                     f"commands={profile.get('command_count', 0)}, "
                     f"backup={'yes' if profile.get('has_backup') else 'no'}, "
-                    f"columns={len(profile.get('output_columns') or [])}, "
-                    f"source={profile.get('source', '-')}"
+                    f"columns={len(profile.get('output_columns') or [])}"
                 )
             if len(profiles) > 16:
                 lines.append(f"... 프로파일 {len(profiles) - 16}개 생략")
@@ -3928,8 +4018,7 @@ class AiChatTab(QWidget):
             return
 
         self._login_preflight_active = True
-        self.login_button.setEnabled(False)
-        self.login_button.setText("로그인 준비 중…")
+        self._update_provider_login_controls()
         self._set_status(
             "로그인 준비 중", "Codex CLI 설정과 로그인 명령을 확인하고 있습니다."
         )
@@ -3988,26 +4077,32 @@ class AiChatTab(QWidget):
             return
         self._launch_provider_login(result["config"])
 
-    def _launch_provider_login(self, config: AiProviderConfig) -> None:
-        invocation = build_login_invocation(config, str(self.state.paths.root))
-        command = subprocess.list2cmdline([invocation.program, *invocation.args])
-        if sys.platform == "win32":
-            started = QProcess.startDetached(
-                "cmd.exe", ["/k", command], invocation.working_dir
+    def _launch_provider_login(self, config: AiProviderConfig) -> bool:
+        try:
+            invocation = build_login_invocation(config, str(self.state.paths.root))
+        except ValueError:
+            detail = (
+                "Codex 로그인 실행 파일을 확인하지 못했습니다. "
+                "설정에서 실제 Codex CLI 실행 파일 경로를 지정하세요."
             )
-        else:
-            started = QProcess.startDetached(
-                invocation.program, invocation.args, invocation.working_dir
-            )
+            self._set_status("로그인 실행 실패", detail)
+            QMessageBox.warning(self, "로그인 실행 실패", detail)
+            return False
+        command_parts = [invocation.program, *invocation.args]
+        command = subprocess.list2cmdline(command_parts)
+        started = QProcess.startDetached(
+            invocation.program, invocation.args, invocation.working_dir
+        )
         ok = bool(started[0]) if isinstance(started, tuple) else bool(started)
         if not ok:
             self._set_status("로그인 실행 실패", "로그인 터미널을 열지 못했습니다.")
             QMessageBox.warning(
                 self, "로그인 실행 실패", "로그인 터미널을 열지 못했습니다."
             )
-            return
+            return False
         self._set_status("로그인 터미널 열림", invocation.program)
         self._append_block("시스템", f"로그인 터미널을 열었습니다.\n{command}")
+        return True
 
     def _fail_provider_login_preflight(self, message: str) -> None:
         detail = str(message or "로그인 준비 중 오류가 발생했습니다.")
@@ -4016,10 +4111,7 @@ class AiChatTab(QWidget):
 
     def _finish_provider_login_preflight(self) -> None:
         self._login_preflight_active = False
-        self.login_button.setText("로그인 터미널")
-        self.login_button.setEnabled(
-            self._process is None and not self._context_collecting
-        )
+        self._update_provider_login_controls()
 
     def _login_preflight_error(self, config: AiProviderConfig) -> str:
         invocation = build_status_invocation(config, str(self.state.paths.root))
@@ -4076,20 +4168,15 @@ class AiChatTab(QWidget):
             )
             return
         netops_action = plan_netops_chat_action(prompt)
-        health = inspect_provider(config) if netops_action is None else None
-        if health is not None and not health.installed:
-            QMessageBox.warning(self, "CLI 없음", health.detail)
-            self._set_status("CLI 없음", health.detail)
-            return
+        health = None
 
         try:
-            attachment_context, attachment_args = self._attachment_context_and_args(
-                config.key
-            )
+            attachment_context, attachment_args = self._attachment_context_and_args()
         except ValueError as exc:
             QMessageBox.warning(self, "요청 실행 불가", str(exc))
             return
 
+        grounding_snapshot = self._ground_user_prompt(prompt)
         self.save_current_config()
         sent_attachments = list(self._attachments)
         payload = {
@@ -4098,8 +4185,18 @@ class AiChatTab(QWidget):
             "attachment_context": attachment_context,
             "attachment_args": attachment_args,
             "sent_attachments": sent_attachments,
+            "grounding_snapshot": grounding_snapshot,
         }
         self._ensure_user_prompt_message(payload)
+        if self._should_answer_directly_from_grounding(grounding_snapshot):
+            self._append_direct_grounding_response(payload, grounding_snapshot)
+            return
+        health = inspect_provider(config) if netops_action is None else None
+        if health is not None and not health.installed:
+            QMessageBox.warning(self, "CLI 없음", health.detail)
+            self._set_status("CLI 없음", health.detail)
+            self._release_payload_temporary_attachments(payload)
+            return
         if netops_action is not None:
             action_approved = self._confirm_netops_chat_action(netops_action)
             if not action_approved:
@@ -4179,6 +4276,32 @@ class AiChatTab(QWidget):
 
         self._start_prompt_process(payload, "")
 
+    @staticmethod
+    def _should_answer_directly_from_grounding(snapshot: object | None) -> bool:
+        if snapshot is None:
+            return False
+        if bool(getattr(snapshot, "ambiguous", False)):
+            return True
+        return bool(
+            getattr(snapshot, "consent_required", False)
+            and str(getattr(snapshot, "feature_id", "") or "").strip()
+        )
+
+    def _append_direct_grounding_response(
+        self, payload: dict[str, Any], snapshot: object
+    ) -> None:
+        response = str(getattr(snapshot, "user_response", "") or "").strip()
+        if not response:
+            response = str(getattr(snapshot, "public_context", "") or "").strip()
+        self._active_response_handoff = self._grounding_handoff(snapshot)
+        try:
+            self._append_block("NetOps", response)
+        finally:
+            self._active_response_handoff = {}
+        self._release_payload_temporary_attachments(payload)
+        self._clear_working_status()
+        self._set_status("NetOps 기능 안내", "내부 지원 범위를 먼저 확인했습니다.")
+
     def _next_context_request_id(self) -> int:
         self._context_request_generation += 1
         return self._context_request_generation
@@ -4204,6 +4327,7 @@ class AiChatTab(QWidget):
         health = inspect_provider(config)
         if not health.installed:
             self._clear_working_status()
+            self._active_response_handoff = {}
             self._set_status("NetOps 기능 완료", f"AI CLI 없음: {health.detail}")
             self._append_block(
                 "시스템",
@@ -4290,34 +4414,36 @@ class AiChatTab(QWidget):
         attachment_context = str(payload.get("attachment_context", "") or "")
         attachment_args = list(payload.get("attachment_args", []))
         sent_attachments = list(payload.get("sent_attachments", []))
+        grounding_snapshot = payload.get("grounding_snapshot")
+        grounding_context = self._grounding_prompt_context(grounding_snapshot)
         combined_context = "\n\n".join(
-            part for part in (attachment_context, internal_context.strip()) if part
+            part
+            for part in (
+                attachment_context,
+                internal_context.strip(),
+                grounding_context,
+            )
+            if part
         )
         session_id = self._provider_session_ids.get(config.key, "")
 
         try:
             runtime_config = self._runtime_provider_config(config, attachment_args)
-            working_dir = str(self.state.paths.root)
-            invocation_access: dict[str, object] = {}
-            if config.key == "codex":
-                (
-                    sandbox_mode,
-                    workspace_root,
-                    writable_dirs,
-                    working_dir,
-                ) = self._codex_invocation_access()
-                invocation_access = {
-                    "codex_sandbox": sandbox_mode,
-                    "codex_workspace_root": workspace_root,
-                    "codex_writable_dirs": writable_dirs,
-                }
+            (
+                sandbox_mode,
+                workspace_root,
+                writable_dirs,
+                working_dir,
+            ) = self._codex_invocation_access()
             invocation = build_chat_invocation(
                 runtime_config,
                 prompt,
                 context=combined_context,
                 working_dir=working_dir,
                 session_id=session_id,
-                **invocation_access,
+                codex_sandbox=sandbox_mode,
+                codex_workspace_root=workspace_root,
+                codex_writable_dirs=writable_dirs,
             )
         except ValueError as exc:
             self._clear_working_status()
@@ -4331,6 +4457,9 @@ class AiChatTab(QWidget):
         self._cli_error_text = ""
         self._stderr_text = ""
         self._stream_message_index = None
+        self._active_response_handoff = self._grounding_handoff(
+            grounding_snapshot
+        )
         self._ensure_user_prompt_message(payload)
         self.prompt_edit.setEnabled(True)
         self._set_working_status(
@@ -4341,6 +4470,9 @@ class AiChatTab(QWidget):
 
         process = QProcess(self)
         self._process = process
+        self._provider_event_accumulators[id(process)] = ProviderEventAccumulator(
+            config.key
+        )
         process.setProperty("provider_key", config.key)
         process.setProperty("response_title", self._assistant_response_title(config))
         process.setProperty("resume_session_id", session_id)
@@ -4417,26 +4549,31 @@ class AiChatTab(QWidget):
         if self._process is not process:
             return
         self._stdout_buffer += bytes(process.readAllStandardOutput())
+        accumulator = self._provider_event_accumulators.get(id(process))
+        managed_accumulator = accumulator is not None
+        if accumulator is None:
+            accumulator = ProviderEventAccumulator(
+                str(process.property("provider_key") or self.current_provider_key())
+            )
         while b"\n" in self._stdout_buffer:
             line, rest = self._stdout_buffer.split(b"\n", 1)
             self._stdout_buffer = rest
             decoded_line = decode_cli_output(line.rstrip(b"\r"))
-            provider_key = str(
-                process.property("provider_key") or self.current_provider_key()
-            )
-            session_id = extract_cli_session_id(provider_key, decoded_line)
-            if session_id:
-                process.setProperty("session_id_candidate", session_id)
-            if should_ignore_cli_output_text(decoded_line):
-                continue
-            cli_error = extract_error_from_cli_line(decoded_line)
-            if cli_error:
-                self._cli_error_text = cli_error
-                continue
-            chunk = extract_assistant_text_from_cli_line(provider_key, decoded_line)
-            if chunk and not should_ignore_cli_output_text(chunk):
+            completed = accumulator.feed_line(decoded_line)
+            if not managed_accumulator and not completed:
+                # Compatibility for direct/legacy process adapters that bypass
+                # _start_prompt_process. Production processes always retain an
+                # accumulator until an explicit turn completion or process exit.
+                completed = accumulator.finish()
+            if accumulator.session_id:
+                process.setProperty(
+                    "session_id_candidate", accumulator.session_id
+                )
+            if accumulator.error_text:
+                self._cli_error_text = accumulator.error_text
+            if completed and not should_ignore_cli_output_text(completed):
                 self._append_stream(
-                    chunk + "\n", self._response_title_for_process(process)
+                    completed + "\n", self._response_title_for_process(process)
                 )
 
     def _read_stderr(self, process: QProcess) -> None:
@@ -4446,6 +4583,7 @@ class AiChatTab(QWidget):
 
     def _finish_prompt(self, process: QProcess, exit_code: int) -> None:
         if self._process is not process:
+            self._provider_event_accumulators.pop(id(process), None)
             self._release_process_temporary_attachments(process)
             process.deleteLater()
             return
@@ -4457,19 +4595,30 @@ class AiChatTab(QWidget):
         session_id_candidate = str(
             process.property("session_id_candidate") or ""
         ).strip()
+        accumulator = self._provider_event_accumulators.pop(id(process), None)
         self._release_process_temporary_attachments(process)
         process.deleteLater()
         tail_text = decode_cli_output(self._stdout_buffer.strip())
-        tail_session_id = extract_cli_session_id(provider_key, tail_text)
-        if tail_session_id:
-            session_id_candidate = tail_session_id
-        tail_error = extract_error_from_cli_line(tail_text)
-        if tail_error:
-            self._cli_error_text = tail_error
-        else:
-            tail = extract_assistant_text_from_cli_line(provider_key, tail_text)
-            if tail and not should_ignore_cli_output_text(tail):
-                self._append_stream(tail + "\n", response_title)
+        self._stdout_buffer = b""
+        if accumulator is None:
+            accumulator = ProviderEventAccumulator(provider_key)
+        completed = accumulator.feed_line(tail_text) if tail_text else ""
+        if accumulator.session_id:
+            session_id_candidate = accumulator.session_id
+        if accumulator.error_text:
+            self._cli_error_text = accumulator.error_text
+        if (
+            not self._cli_error_text
+            and accumulator.diagnostic_text
+            and is_authentication_cli_error(
+                provider_key, accumulator.diagnostic_text
+            )
+        ):
+            self._cli_error_text = accumulator.diagnostic_text
+        if not completed:
+            completed = accumulator.finish()
+        if completed and not should_ignore_cli_output_text(completed):
+            self._append_stream(completed + "\n", response_title)
         if exit_code == 0 and not self._cli_error_text:
             if session_id_candidate:
                 self._provider_session_ids[provider_key] = session_id_candidate
@@ -4481,8 +4630,10 @@ class AiChatTab(QWidget):
             detail = (
                 self._cli_error_text.strip()
                 or stderr_detail
+                or accumulator.diagnostic_text.strip()
                 or f"CLI가 종료 코드 {exit_code}로 끝났습니다."
             )
+            authentication_error = is_authentication_cli_error(provider_key, detail)
             if cache_warning and not self._cli_error_text and not stderr_detail:
                 detail = (
                     "Codex 모델 캐시가 현재 CLI 버전과 호환되지 않습니다. "
@@ -4497,7 +4648,9 @@ class AiChatTab(QWidget):
                     detail = f"{repair.message}\n\n{detail}"
             self._append_block("오류", detail)
             status_text = (
-                "CLI 설정 자동 복구"
+                "로그인 필요"
+                if authentication_error
+                else "CLI 설정 자동 복구"
                 if repair.repaired
                 else "CLI 설정 오류"
                 if is_blocking_cli_configuration_error(provider_key, detail)
@@ -4506,19 +4659,27 @@ class AiChatTab(QWidget):
             self._set_status(status_text, detail[:500])
         self._cli_error_text = ""
         self._stream_message_index = None
+        self._active_response_handoff = {}
         self._set_running(False)
 
     def _fail_prompt(self, process: QProcess, message: str) -> None:
         if self._process is not process:
+            self._provider_event_accumulators.pop(id(process), None)
             self._release_process_temporary_attachments(process)
             return
+        provider_key = str(
+            process.property("provider_key") or self.current_provider_key()
+        )
+        authentication_error = is_authentication_cli_error(provider_key, message)
         self._append_block("오류", message)
-        self._set_status("실패", message)
+        self._set_status("로그인 필요" if authentication_error else "실패", message)
         self._process = None
+        self._provider_event_accumulators.pop(id(process), None)
         self._cancel_named_timer("_prompt_timeout_timer")
         self._release_process_temporary_attachments(process)
         process.deleteLater()
         self._stream_message_index = None
+        self._active_response_handoff = {}
         self._set_running(False)
 
     def _timeout_prompt(self, process: QProcess) -> None:
@@ -4527,12 +4688,14 @@ class AiChatTab(QWidget):
         self._prompt_timeout_timer = None
         try:
             if process.state() != QProcess.ProcessState.NotRunning:
-                process.kill()
+                _terminate_qprocess_tree(process)
                 self._clear_working_status()
+                self._active_response_handoff = {}
                 self._append_block("시스템", "요청 시간이 초과되어 중지했습니다.")
         except RuntimeError:
             if self._process is process:
                 self._process = None
+                self._provider_event_accumulators.pop(id(process), None)
                 self._release_process_temporary_attachments(process)
                 self._clear_working_status()
 
@@ -4548,6 +4711,7 @@ class AiChatTab(QWidget):
             self._pending_prompt_payload = None
             self._set_preparing(False)
             self._clear_working_status()
+            self._active_response_handoff = {}
             self._release_payload_temporary_attachments(payload)
             operation_label = self._context_operation_label
             self._context_operation_label = ""
@@ -4565,15 +4729,17 @@ class AiChatTab(QWidget):
             return
         process = self._process
         self._process = None
+        self._provider_event_accumulators.pop(id(process), None)
         self._cancel_named_timer("_prompt_timeout_timer")
         try:
             process.blockSignals(True)
             if process.state() != QProcess.ProcessState.NotRunning:
-                process.kill()
+                _terminate_qprocess_tree(process)
         except RuntimeError:
             pass
         self._release_process_temporary_attachments(process)
         process.deleteLater()
+        self._active_response_handoff = {}
         self._append_block("시스템", "사용자가 요청을 중지했습니다.")
         self._set_status("중지됨")
         self._set_running(False)
@@ -4620,6 +4786,11 @@ class AiChatTab(QWidget):
             )
             return
         self._provider_session_ids.clear()
+        grounding_state = self._grounding_state
+        reset_grounding = getattr(grounding_state, "reset", None)
+        if callable(reset_grounding):
+            reset_grounding()
+        self._active_response_handoff = {}
         self._stream_message_index = None
         self._clear_working_status()
         self._append_block(
@@ -4630,6 +4801,8 @@ class AiChatTab(QWidget):
 
     def shutdown(self) -> None:
         self._clear_working_status()
+        self._active_response_handoff = {}
+        self._login_preflight_active = False
         self._model_catalog_cancel_event.set()
         self._pending_model_catalog_refreshes.clear()
         self._context_request_generation += 1
@@ -4640,6 +4813,7 @@ class AiChatTab(QWidget):
         self._context_collection_cancelled = True
         self._pending_prompt_payload = None
         self._context_collecting = False
+        self._provider_event_accumulators.clear()
         self._cancel_deferred_timers()
         self._stop_status_process()
         self._stop_help_process()
@@ -4648,7 +4822,7 @@ class AiChatTab(QWidget):
             try:
                 process.blockSignals(True)
                 if process.state() != QProcess.ProcessState.NotRunning:
-                    process.kill()
+                    _terminate_qprocess_tree(process)
             except RuntimeError:
                 pass
             self._release_process_temporary_attachments(process)
@@ -4718,7 +4892,7 @@ class AiChatTab(QWidget):
             self._render_deferred = False
             self._render_transcript()
         if self.ai_chat_tabs.currentWidget() is self.connection_page:
-            self._ensure_model_catalog_fresh(self.current_provider_key())
+            self._ensure_model_catalog_fresh()
 
     def _stop_status_process(self) -> None:
         self._cancel_named_timer("_status_timeout_timer")
@@ -4729,7 +4903,7 @@ class AiChatTab(QWidget):
         try:
             process.blockSignals(True)
             if process.state() != QProcess.ProcessState.NotRunning:
-                process.kill()
+                _terminate_qprocess_tree(process)
         except RuntimeError:
             pass
         process.deleteLater()
@@ -4743,7 +4917,7 @@ class AiChatTab(QWidget):
         try:
             process.blockSignals(True)
             if process.state() != QProcess.ProcessState.NotRunning:
-                process.kill()
+                _terminate_qprocess_tree(process)
         except RuntimeError:
             pass
         process.deleteLater()
@@ -4759,10 +4933,12 @@ class AiChatTab(QWidget):
     def _set_running(self, running: bool) -> None:
         if not running:
             self._clear_working_status()
-        self.send_button.setEnabled(not running)
+        self.send_button.setEnabled(
+            not running
+            and not self._login_preflight_active
+        )
         self.stop_button.setEnabled(running)
-        self.check_button.setEnabled(not running)
-        self.login_button.setEnabled(not running and not self._login_preflight_active)
+        self.check_button.setEnabled(not running and not self._login_preflight_active)
         self.save_button.setEnabled(not running)
         self.model_refresh_button.setEnabled(
             not running and self._active_model_catalog_request is None
@@ -4777,13 +4953,18 @@ class AiChatTab(QWidget):
                 self.clear_attachments_button.setEnabled(False)
             else:
                 self._update_attachment_buttons()
+        self._update_provider_login_controls()
 
     def _set_preparing(self, preparing: bool) -> None:
         self._context_collecting = preparing
-        self.send_button.setEnabled(not preparing)
+        self.send_button.setEnabled(
+            not preparing
+            and not self._login_preflight_active
+        )
         self.stop_button.setEnabled(preparing)
-        self.check_button.setEnabled(not preparing)
-        self.login_button.setEnabled(not preparing and not self._login_preflight_active)
+        self.check_button.setEnabled(
+            not preparing and not self._login_preflight_active
+        )
         self.save_button.setEnabled(not preparing)
         self.model_refresh_button.setEnabled(
             not preparing and self._active_model_catalog_request is None
@@ -4799,6 +4980,7 @@ class AiChatTab(QWidget):
                 self.clear_attachments_button.setEnabled(False)
             else:
                 self._update_attachment_buttons()
+        self._update_provider_login_controls()
 
     def _assistant_response_title(self, config: AiProviderConfig | None = None) -> str:
         if config is None:
@@ -4885,9 +5067,10 @@ class AiChatTab(QWidget):
             return
         display_title = self._assistant_response_title() if title == "AI" else title
         self._stream_message_index = None
-        self._messages.append(
-            {"title": display_title, "body": text, "time": self._time_text()}
-        )
+        message = {"title": display_title, "body": text, "time": self._time_text()}
+        if title in {"AI", "NetOps"}:
+            self._attach_active_handoff(message)
+        self._messages.append(message)
         self._request_transcript_render(immediate=True)
 
     def _append_stream(self, chunk: str, title: str = "") -> None:
@@ -4900,12 +5083,28 @@ class AiChatTab(QWidget):
             or self._stream_message_index >= len(self._messages)
             or self._messages[self._stream_message_index].get("title") != response_title
         ):
-            self._messages.append(
-                {"title": response_title, "body": "", "time": self._time_text()}
-            )
+            message = {
+                "title": response_title,
+                "body": "",
+                "time": self._time_text(),
+            }
+            self._attach_active_handoff(message)
+            self._messages.append(message)
             self._stream_message_index = len(self._messages) - 1
         self._messages[self._stream_message_index]["body"] += chunk
         self._request_transcript_render(immediate=False)
+
+    def _attach_active_handoff(self, message: dict[str, str]) -> None:
+        for key, value in self._active_response_handoff.items():
+            if value:
+                message[f"handoff_{key}"] = value
+
+    @staticmethod
+    def _message_handoff(message: dict[str, str]) -> dict[str, str]:
+        return {
+            key: str(message.get(f"handoff_{key}", "") or "").strip()
+            for key in ("feature_id", "guide_id", "route", "public_name")
+        }
 
     def _plain_transcript_text(self) -> str:
         return "\n\n".join(
@@ -4961,7 +5160,12 @@ class AiChatTab(QWidget):
             timestamp = message.get("time", "")
             kind = self._message_kind(title)
             self._add_message_widget(
-                title, timestamp, body, kind, message_index=message_index
+                title,
+                timestamp,
+                body,
+                kind,
+                message_index=message_index,
+                handoff=self._message_handoff(message),
             )
         if self._working_status_text:
             self._add_working_status_widget()
@@ -5121,6 +5325,7 @@ class AiChatTab(QWidget):
         kind: str,
         *,
         message_index: int,
+        handoff: dict[str, str] | None = None,
     ) -> None:
         background, border, text_color, align = self._message_styles(kind)
 
@@ -5190,6 +5395,50 @@ class AiChatTab(QWidget):
 
         bubble_layout.addLayout(meta_row)
         bubble_layout.addWidget(text)
+        handoff = dict(handoff or {})
+        feature_target = handoff.get("route") or handoff.get("feature_id") or ""
+        guide_id = handoff.get("guide_id", "")
+        public_name = handoff.get("public_name") or "추천된 NetOps"
+        if feature_target or guide_id:
+            handoff_row = QHBoxLayout()
+            handoff_row.setContentsMargins(0, 4, 0, 0)
+            handoff_row.setSpacing(6)
+            if feature_target:
+                feature_button = make_action_button(
+                    "기능 열기",
+                    ActionKind.OPEN,
+                    tooltip=f"{public_name} 화면으로 이동합니다.",
+                    object_name="aiChatOpenFeatureButton",
+                )
+                feature_button.setAccessibleName(f"{public_name} 기능 열기")
+                feature_button.setAccessibleDescription(
+                    "추천된 NetOps Suite 기능 화면으로 이동합니다."
+                )
+                feature_button.clicked.connect(
+                    lambda _checked=False, target=feature_target: (
+                        self.feature_requested.emit(target)
+                    )
+                )
+                handoff_row.addWidget(feature_button)
+            if guide_id:
+                guide_button = make_action_button(
+                    "가이드 열기",
+                    ActionKind.OPEN,
+                    tooltip=f"{public_name} 사용 가이드를 엽니다.",
+                    object_name="aiChatOpenGuideButton",
+                )
+                guide_button.setAccessibleName(f"{public_name} 가이드 열기")
+                guide_button.setAccessibleDescription(
+                    "추천된 NetOps Suite 사용 가이드를 엽니다."
+                )
+                guide_button.clicked.connect(
+                    lambda _checked=False, target=guide_id: (
+                        self.guide_requested.emit(target)
+                    )
+                )
+                handoff_row.addWidget(guide_button)
+            handoff_row.addStretch(1)
+            bubble_layout.addLayout(handoff_row)
         bubble.setMinimumHeight(bubble_layout.sizeHint().height())
 
         if align == "right":

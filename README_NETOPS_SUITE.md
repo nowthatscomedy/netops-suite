@@ -25,6 +25,8 @@ The main window title is `NetOps Suite`. Runtime data uses `%LOCALAPPDATA%\NetOp
 ```powershell
 python -m ruff check .
 python -m compileall -q main.py app netops_suite tests
+python scripts/validate_guides.py
+python scripts/generate_guides.py build --check
 python -m pytest -q
 python -m pip check
 ```

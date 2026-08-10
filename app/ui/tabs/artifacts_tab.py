@@ -50,7 +50,7 @@ class ArtifactsTab(QWidget):
         notice = QLabel("결과 파일에는 장비 IP, 설정 백업, 원본 명령 출력(raw output) 등 민감정보가 포함될 수 있습니다. 외부 공유 전 IP/계정/설정값을 확인하세요.")
         notice.setWordWrap(True)
         notice.setStyleSheet(
-            "background:transparent; color:#9a3412; padding:4px 0 4px 9px; "
+            "background:transparent; color:#475467; padding:4px 0 4px 9px; "
             "border:0; border-left:3px solid #fdba74;"
         )
         layout.addWidget(notice)

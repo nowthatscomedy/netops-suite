@@ -53,7 +53,7 @@ class TraceDiagnosticsMixin:
         form.addRow("", button_row)
         self.pathping_hint_label = QLabel("pathping은 홉별 손실률을 측정하므로 수 분 걸릴 수 있습니다.")
         self.pathping_hint_label.setWordWrap(True)
-        self.pathping_hint_label.setStyleSheet("color:#92400e;")
+        self.pathping_hint_label.setStyleSheet("color:#475467;")
         form.addRow("", self.pathping_hint_label)
         layout.addWidget(group)
 

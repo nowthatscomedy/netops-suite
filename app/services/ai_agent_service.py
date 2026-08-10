@@ -7,15 +7,15 @@ import re
 import shutil
 import sys
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from app.models.ai_models import AiProviderConfig, CliInvocation
+from app.services.logging_service import redact_log_text
 
 
-MAX_ARGUMENT_PROMPT_CHARS = 28000
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 IPV4_RE = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
 CIDR_RE = re.compile(
@@ -57,6 +57,89 @@ CODEX_NONINTERACTIVE_GLOBAL_ARGS = ("-a", "never", "-s", "read-only")
 CODEX_SANDBOX_MODES = frozenset({"read-only", "workspace-write", "danger-full-access"})
 DNS_RECORD_TYPES = ("AAAA", "CNAME", "PTR", "TXT", "MX", "NS", "A")
 DEFAULT_EXTERNAL_PING_TARGETS = ("8.8.8.8", "1.1.1.1", "google.com")
+MAX_PROVIDER_DIAGNOSTIC_CHARS = 4000
+
+PROVIDER_EVENT_FINAL_TEXT = "final_text"
+PROVIDER_EVENT_PROGRESS = "progress"
+PROVIDER_EVENT_TOOL = "tool"
+PROVIDER_EVENT_REASONING = "reasoning"
+PROVIDER_EVENT_ERROR = "error"
+PROVIDER_EVENT_SESSION = "session"
+
+NETOPS_ASSISTANT_ROLE_PROMPT = """당신은 NetOps Suite 안에서 동작하는 사용자 도우미입니다.
+검증된 NetOps 내부 기능 계약과 번들 사용자 가이드를 외부 스크립트보다 먼저 사용하세요.
+사용자에게 보이는 공개 화면명만 사용하고 내부 enum, 소스 경로, 존재가 확인되지 않은 버튼을 노출하거나 추측하지 마세요.
+기능이 부분 지원이면 가능한 내부 절차와 한계를 먼저 설명하고, 이번 요청의 명시적 동의 전에는 스크립트나 외부 절차를 작성하지 마세요.
+파일 검색, 도구 호출, 내부 추론과 진행 과정을 답변으로 내보내지 말고 최종 사용자 답변만 작성하세요."""
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderEvent:
+    """A provider-neutral CLI event safe for UI routing.
+
+    ``text`` is intentionally separated from ``kind`` so callers can keep
+    reasoning, tool output, and progress details out of chat transcripts.
+    """
+
+    provider_key: str
+    kind: str
+    text: str = ""
+    session_id: str = ""
+    raw_type: str = ""
+    turn_complete: bool = False
+
+
+@dataclass(slots=True)
+class ProviderEventAccumulator:
+    """Buffer assistant candidates until a provider turn is complete.
+
+    Codex may emit more than one completed ``agent_message`` item while it is
+    working. Only the last candidate is returned when ``turn.completed`` is
+    observed (or when :meth:`finish` is called after process exit).
+    """
+
+    provider_key: str
+    session_id: str = ""
+    error_text: str = ""
+    diagnostic_text: str = ""
+    _candidate: str = ""
+
+    def feed(self, event: ProviderEvent | None) -> str:
+        if event is None:
+            return ""
+
+        if event.kind == PROVIDER_EVENT_SESSION and event.session_id:
+            self.session_id = event.session_id
+        elif event.kind == PROVIDER_EVENT_ERROR and event.text:
+            self.error_text = event.text
+            self._candidate = ""
+            return ""
+        elif event.kind == PROVIDER_EVENT_FINAL_TEXT and event.text:
+            self._candidate = event.text
+
+        if event.turn_complete:
+            return self.finish()
+        return ""
+
+    def feed_line(self, line: str) -> str:
+        event = parse_provider_event(line)
+        if (
+            event is not None
+            and event.kind == PROVIDER_EVENT_PROGRESS
+            and event.raw_type == "plain"
+        ):
+            diagnostic = redact_log_text(sanitize_cli_text(line)).strip()
+            if diagnostic:
+                combined = "\n".join(
+                    part for part in (self.diagnostic_text, diagnostic) if part
+                )
+                self.diagnostic_text = combined[-MAX_PROVIDER_DIAGNOSTIC_CHARS:]
+        return self.feed(event)
+
+    def finish(self) -> str:
+        completed = self._candidate.strip()
+        self._candidate = ""
+        return completed
 
 
 @dataclass(frozen=True, slots=True)
@@ -964,6 +1047,33 @@ def diagnose_cli_error(provider_key: str, detail: str) -> str:
     return text
 
 
+def is_authentication_cli_error(provider_key: str, detail: str) -> bool:
+    """Return whether a provider failure means its official CLI must log in again."""
+
+    if provider_key not in PROVIDER_SPECS:
+        return False
+    text = (extract_error_from_cli_line(detail) or detail).strip().casefold()
+    if not text:
+        return False
+    common_markers = (
+        "not logged in",
+        "not authenticated",
+        "authentication required",
+        "authentication failed",
+        "please log in",
+        "please login",
+        "login required",
+        "unauthorized",
+        "invalid_grant",
+        "oauth token",
+        "401 unauthorized",
+        "로그인이 필요",
+        "인증이 필요",
+    )
+    provider_markers = {"codex": ("codex login",)}
+    return any(marker in text for marker in (*common_markers, *provider_markers[provider_key]))
+
+
 def is_blocking_cli_configuration_error(provider_key: str, detail: str) -> bool:
     text = detail.strip()
     return provider_key == "codex" and (
@@ -1221,15 +1331,8 @@ class CliProviderSpec:
     login_args: tuple[str, ...]
     status_args: tuple[str, ...]
     help_args: tuple[str, ...]
-    output_format: str
-    prompt_mode: str
-    global_args: tuple[str, ...] = field(default_factory=tuple)
-    prompt_flag: str = ""
-    model_flag: str = "--model"
-    docs_url: str = ""
+    global_args: tuple[str, ...] = ()
     install_hint: str = ""
-    chat_args_before_prompt: tuple[str, ...] = field(default_factory=tuple)
-    chat_args_after_prompt: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1259,41 +1362,8 @@ PROVIDER_SPECS: dict[str, CliProviderSpec] = {
         login_args=("login",),
         status_args=("login", "status"),
         help_args=("exec", "--help"),
-        output_format="jsonl",
-        prompt_mode="stdin",
         global_args=CODEX_NONINTERACTIVE_GLOBAL_ARGS,
-        chat_args_before_prompt=("exec", "--json"),
-        chat_args_after_prompt=("-",),
-        docs_url="https://developers.openai.com/codex",
         install_hint="Codex CLI를 설치한 뒤 codex login을 실행하세요.",
-    ),
-    "claude": CliProviderSpec(
-        key="claude",
-        display_name="Claude Code",
-        executable="claude",
-        login_args=("auth", "login"),
-        status_args=("auth", "status", "--text"),
-        help_args=("--help",),
-        output_format="stream-json",
-        prompt_mode="argument",
-        prompt_flag="-p",
-        chat_args_after_prompt=("--output-format", "stream-json", "--verbose"),
-        docs_url="https://docs.anthropic.com/en/docs/claude-code",
-        install_hint="Claude Code를 설치한 뒤 claude auth login을 실행하세요.",
-    ),
-    "gemini": CliProviderSpec(
-        key="gemini",
-        display_name="Gemini CLI",
-        executable="gemini",
-        login_args=(),
-        status_args=("--version",),
-        help_args=("--help",),
-        output_format="stream-json",
-        prompt_mode="argument",
-        prompt_flag="-p",
-        chat_args_after_prompt=("--output-format", "stream-json"),
-        docs_url="https://google-gemini.github.io/gemini-cli/",
-        install_hint="Gemini CLI를 설치한 뒤 gemini를 실행해 Google 로그인을 완료하세요.",
     ),
 }
 
@@ -1301,24 +1371,6 @@ PROVIDER_SPECS: dict[str, CliProviderSpec] = {
 # Static choices are a recovery path only. Live provider catalogs drive the normal model picker.
 FALLBACK_MODEL_OPTIONS: dict[str, tuple[tuple[str, str], ...]] = {
     "codex": (("자동 선택 (권장)", ""),),
-    "claude": (
-        ("자동 선택 (권장)", ""),
-        ("Fable 자동 별칭", "fable"),
-        ("Opus 자동 별칭", "opus"),
-        ("Sonnet 자동 별칭", "sonnet"),
-        ("Claude Opus 4.8", "claude-opus-4-8"),
-        ("Claude Sonnet 5", "claude-sonnet-5"),
-        ("Claude Haiku 4.5", "claude-haiku-4-5"),
-    ),
-    "gemini": (
-        ("자동 선택 (권장)", ""),
-        ("Gemini 3 Pro 미리보기", "gemini-3-pro-preview"),
-        ("Gemini 3 Flash 미리보기", "gemini-3-flash-preview"),
-        ("Gemini Flash 최신", "gemini-flash-latest"),
-        ("Gemini 3.5 Flash", "gemini-3.5-flash"),
-        ("Gemini 2.5 Pro", "gemini-2.5-pro"),
-        ("Gemini 2.5 Flash", "gemini-2.5-flash"),
-    ),
 }
 
 
@@ -1327,16 +1379,6 @@ def provider_spec(key: str) -> CliProviderSpec:
         return PROVIDER_SPECS[key]
     except KeyError as exc:
         raise ValueError(f"Unknown AI provider: {key}") from exc
-
-
-def model_options_for_provider(
-    key: str, current_model: str = ""
-) -> list[tuple[str, str]]:
-    options = list(FALLBACK_MODEL_OPTIONS.get(key, (("자동 선택 (권장)", ""),)))
-    selected = current_model.strip()
-    if selected and selected not in {value for _label, value in options}:
-        options.append((f"사용자 설정: {selected}", selected))
-    return options
 
 
 def provider_configs_from_app_config(
@@ -1391,7 +1433,7 @@ def inspect_provider(config: AiProviderConfig) -> ProviderHealth:
         key=config.key,
         display_name=spec.display_name,
         executable=spec.executable,
-        resolved_path=str(resolved or ""),
+        resolved_path=str(resolved or "") if installed else "",
         installed=installed,
         detail=detail,
     )
@@ -1405,8 +1447,10 @@ def _provider_program_candidates(spec: CliProviderSpec) -> list[str]:
         if spec.key == "codex":
             candidates.extend(
                 [
+                    *_versioned_local_codex_candidates(local_appdata),
                     str(Path(appdata) / "npm" / "codex.cmd") if appdata else "",
                     shutil.which("codex.cmd") or "",
+                    shutil.which("codex.exe") or "",
                 ]
             )
             if local_appdata:
@@ -1416,6 +1460,13 @@ def _provider_program_candidates(spec: CliProviderSpec) -> list[str]:
                             Path(local_appdata)
                             / "OpenAI"
                             / "Codex"
+                            / "bin"
+                            / "codex.exe"
+                        ),
+                        str(
+                            Path(local_appdata)
+                            / "OpenAI"
+                            / "ChatGPT"
                             / "bin"
                             / "codex.exe"
                         ),
@@ -1432,15 +1483,6 @@ def _provider_program_candidates(spec: CliProviderSpec) -> list[str]:
                         ),
                     ]
                 )
-        if spec.key in {"claude", "gemini"}:
-            command_name = f"{spec.executable}.cmd"
-            candidates.extend(
-                [
-                    shutil.which(command_name) or "",
-                    str(Path(appdata) / "npm" / command_name) if appdata else "",
-                    shutil.which(spec.executable) or "",
-                ]
-            )
     candidates.append(shutil.which(spec.executable) or "")
     candidates.append(spec.executable)
 
@@ -1456,6 +1498,32 @@ def _provider_program_candidates(spec: CliProviderSpec) -> list[str]:
         if Path(text).exists() or shutil.which(text):
             unique.append(text)
     return unique
+
+
+def _versioned_local_codex_candidates(local_appdata: str) -> list[str]:
+    """Find runnable ChatGPT-managed CLIs, newest copy first.
+
+    Desktop updates keep the currently bundled CLI in a versioned directory while
+    the stable ``bin/codex.exe`` path can temporarily remain on an older release.
+    """
+
+    if not local_appdata:
+        return []
+    discovered: list[tuple[int, str]] = []
+    for product_name in ("ChatGPT", "Codex"):
+        bin_dir = Path(local_appdata) / "OpenAI" / product_name / "bin"
+        try:
+            candidates = list(bin_dir.glob("*/codex.exe"))
+        except OSError:
+            continue
+        for candidate in candidates:
+            try:
+                if candidate.is_file():
+                    discovered.append((candidate.stat().st_mtime_ns, str(candidate)))
+            except OSError:
+                continue
+    discovered.sort(key=lambda item: (item[0], item[1].casefold()), reverse=True)
+    return [path for _mtime, path in discovered]
 
 
 def _is_windowsapps_alias(path: str) -> bool:
@@ -1513,71 +1581,49 @@ def build_chat_invocation(
     codex_workspace_root: str = "",
     codex_writable_dirs: tuple[str, ...] = (),
 ) -> CliInvocation:
-    spec = provider_spec(config.key)
+    provider_spec(config.key)
+    program = resolve_provider_program(config)
+    configured_role = (role_prompt or config.role_prompt).strip()
+    effective_role = "\n\n".join(
+        part for part in (configured_role, NETOPS_ASSISTANT_ROLE_PROMPT) if part
+    )
     composed_prompt = compose_agent_prompt(
-        prompt, role_prompt=role_prompt or config.role_prompt, context=context
+        prompt, role_prompt=effective_role, context=context
     )
     resume_session_id = session_id.strip()
-    args: list[str]
-    if config.key == "codex":
-        sandbox = str(codex_sandbox or "read-only").strip()
-        if sandbox not in CODEX_SANDBOX_MODES:
-            raise ValueError(f"Unsupported Codex sandbox mode: {sandbox}")
-        args = ["-a", "never", "-s", sandbox]
-        workspace_root = str(codex_workspace_root or "").strip()
-        if workspace_root:
-            args.extend(("-C", workspace_root))
-        if sandbox == "workspace-write":
-            seen_writable_dirs: set[str] = set()
-            for raw_path in codex_writable_dirs:
-                path = str(raw_path or "").strip()
-                key = path.casefold()
-                if not path or key in seen_writable_dirs:
-                    continue
-                seen_writable_dirs.add(key)
-                args.extend(("--add-dir", path))
-    else:
-        args = [*spec.global_args]
-    if config.key == "codex" and resume_session_id:
+    sandbox = str(codex_sandbox or "read-only").strip()
+    if sandbox not in CODEX_SANDBOX_MODES:
+        raise ValueError(f"Unsupported Codex sandbox mode: {sandbox}")
+    args = ["-a", "never", "-s", sandbox]
+    workspace_root = str(codex_workspace_root or "").strip()
+    if workspace_root:
+        args.extend(("-C", workspace_root))
+    if sandbox == "workspace-write":
+        seen_writable_dirs: set[str] = set()
+        for raw_path in codex_writable_dirs:
+            path = str(raw_path or "").strip()
+            key = path.casefold()
+            if not path or key in seen_writable_dirs:
+                continue
+            seen_writable_dirs.add(key)
+            args.extend(("--add-dir", path))
+    if resume_session_id:
         args.extend(("exec", "resume", "--skip-git-repo-check", "--json"))
     else:
-        if resume_session_id:
-            args.extend(("--resume", resume_session_id))
-        if config.key == "codex":
-            args.extend(("exec", "--skip-git-repo-check", "--json"))
-        else:
-            args.extend(spec.chat_args_before_prompt)
+        args.extend(("exec", "--skip-git-repo-check", "--json"))
     if config.model.strip():
-        args.extend([spec.model_flag, config.model.strip()])
+        args.extend(["--model", config.model.strip()])
     args.extend(config.extra_args)
-    stdin_text = ""
-
-    if spec.prompt_mode == "stdin":
-        if config.key == "codex" and resume_session_id:
-            args.extend((resume_session_id, "-"))
-        else:
-            args.extend(spec.chat_args_after_prompt)
-        stdin_text = composed_prompt
-    elif spec.prompt_mode == "argument":
-        if len(composed_prompt) > MAX_ARGUMENT_PROMPT_CHARS:
-            raise ValueError(
-                f"{spec.display_name} prompt is too long for argument-based CLI mode. "
-                "Use a shorter prompt or configure a stdin-capable command override."
-            )
-        if spec.prompt_flag:
-            args.append(spec.prompt_flag)
-        args.append(composed_prompt)
-        args.extend(spec.chat_args_after_prompt)
+    if resume_session_id:
+        args.extend((resume_session_id, "-"))
     else:
-        raise ValueError(
-            f"Unsupported prompt mode for {spec.display_name}: {spec.prompt_mode}"
-        )
+        args.append("-")
 
     return CliInvocation(
         provider_key=config.key,
-        program=resolve_provider_program(config),
+        program=program,
         args=args,
-        stdin_text=stdin_text,
+        stdin_text=composed_prompt,
         working_dir=working_dir,
         timeout_seconds=config.timeout_seconds,
     )
@@ -1689,58 +1735,120 @@ def compose_agent_prompt(
     return "\n\n".join(sections).strip()
 
 
-def extract_text_from_cli_line(line: str) -> str:
+def parse_provider_event(line: str) -> ProviderEvent | None:
+    """Normalize one Codex JSONL record without making it displayable by default."""
     stripped = sanitize_cli_text(line).strip()
     if not stripped:
-        return ""
-    error_message = extract_error_from_cli_line(stripped)
-    if error_message:
-        return error_message
+        return None
+
     try:
         payload = json.loads(stripped)
     except json.JSONDecodeError:
-        return stripped
-    found = _collect_text_fragments(payload)
-    return sanitize_cli_text("".join(found)).strip()
-
-
-def extract_assistant_text_from_cli_line(provider_key: str, line: str) -> str:
-    """Extract only assistant-visible text from a provider's structured event."""
-    stripped = sanitize_cli_text(line).strip()
-    if not stripped:
-        return ""
-    try:
-        payload = json.loads(stripped)
-    except json.JSONDecodeError:
-        return stripped
+        # Codex is invoked in structured-output mode. A plain line is
+        # diagnostic output, never an assistant answer.
+        return ProviderEvent("codex", PROVIDER_EVENT_PROGRESS, raw_type="plain")
     if not isinstance(payload, dict):
-        return ""
+        return ProviderEvent("codex", PROVIDER_EVENT_PROGRESS, raw_type="json")
 
-    key = str(provider_key or "").casefold()
     event_type = str(payload.get("type", "") or "").casefold()
-    if key == "claude":
-        if event_type != "assistant":
-            return ""
-        message = payload.get("message")
-        found = (
-            _collect_text_fragments(message)
-            if isinstance(message, (dict, list))
-            else []
+    session_id = extract_cli_session_id(stripped)
+    if session_id:
+        return ProviderEvent(
+            "codex",
+            PROVIDER_EVENT_SESSION,
+            session_id=session_id,
+            raw_type=event_type,
         )
-        return sanitize_cli_text("".join(found)).strip()
-    if key == "gemini":
-        if (
-            event_type != "message"
-            or str(payload.get("role", "") or "").casefold() != "assistant"
-        ):
-            return ""
-        found = _collect_text_fragments(payload)
-        return sanitize_cli_text("".join(found)).strip()
-    return extract_text_from_cli_line(stripped)
+
+    error_text = extract_error_from_cli_line(stripped)
+    if not error_text and event_type in {"turn.failed", "turn.error"}:
+        error_text = _provider_error_text(payload)
+    if error_text:
+        return ProviderEvent(
+            "codex",
+            PROVIDER_EVENT_ERROR,
+            text=error_text,
+            raw_type=event_type,
+            turn_complete=event_type in {"turn.failed", "turn.error"},
+        )
+
+    return _parse_codex_provider_event(payload, event_type)
 
 
-def extract_cli_session_id(provider_key: str, line: str) -> str:
-    """Return the exact session identifier from a provider's initialization event."""
+def _parse_codex_provider_event(
+    payload: dict[str, Any], event_type: str
+) -> ProviderEvent:
+    if event_type == "turn.completed":
+        return ProviderEvent(
+            "codex",
+            PROVIDER_EVENT_PROGRESS,
+            raw_type=event_type,
+            turn_complete=True,
+        )
+
+    item = payload.get("item")
+    item_dict = item if isinstance(item, dict) else {}
+    item_type = str(item_dict.get("type", "") or "").casefold()
+    raw_type = f"{event_type}:{item_type}" if item_type else event_type
+    item_text = sanitize_cli_text(
+        "".join(_collect_text_fragments(item_dict))
+    ).strip()
+
+    if event_type == "item.completed" and item_type == "agent_message":
+        return ProviderEvent(
+            "codex",
+            PROVIDER_EVENT_FINAL_TEXT,
+            text=item_text,
+            raw_type=raw_type,
+        )
+    if item_type == "reasoning":
+        return ProviderEvent(
+            "codex",
+            PROVIDER_EVENT_REASONING,
+            text=item_text,
+            raw_type=raw_type,
+        )
+    if _is_tool_item_type(item_type):
+        return ProviderEvent(
+            "codex",
+            PROVIDER_EVENT_TOOL,
+            text=item_text,
+            raw_type=raw_type,
+        )
+    return ProviderEvent("codex", PROVIDER_EVENT_PROGRESS, raw_type=raw_type)
+
+
+def _is_tool_item_type(item_type: str) -> bool:
+    return item_type in {
+        "command_execution",
+        "file_change",
+        "mcp_tool_call",
+        "tool_call",
+        "tool_use",
+        "web_search",
+    }
+
+
+def _provider_error_text(payload: dict[str, Any]) -> str:
+    for value in (payload.get("error"), payload.get("result"), payload.get("message")):
+        if isinstance(value, str) and value:
+            try:
+                decoded = json.loads(value)
+            except json.JSONDecodeError:
+                return sanitize_cli_text(value).strip()
+            if isinstance(decoded, dict):
+                nested = decoded.get("message", "")
+                if isinstance(nested, str):
+                    return sanitize_cli_text(nested).strip()
+        elif isinstance(value, dict):
+            nested = value.get("message", "")
+            if isinstance(nested, str):
+                return sanitize_cli_text(nested).strip()
+    return ""
+
+
+def extract_cli_session_id(line: str) -> str:
+    """Return the exact session identifier from a Codex initialization event."""
     stripped = sanitize_cli_text(line).strip()
     if not stripped:
         return ""
@@ -1751,19 +1859,8 @@ def extract_cli_session_id(provider_key: str, line: str) -> str:
     if not isinstance(payload, dict):
         return ""
 
-    key = str(provider_key or "").casefold()
     event_type = str(payload.get("type", "") or "").casefold()
-    candidate: object = ""
-    if key == "codex" and event_type == "thread.started":
-        candidate = payload.get("thread_id", "")
-    elif (
-        key == "claude"
-        and event_type == "system"
-        and str(payload.get("subtype", "") or "").casefold() == "init"
-    ):
-        candidate = payload.get("session_id", "")
-    elif key == "gemini" and event_type == "init":
-        candidate = payload.get("session_id", "")
+    candidate: object = payload.get("thread_id", "") if event_type == "thread.started" else ""
 
     session_id = candidate.strip() if isinstance(candidate, str) else ""
     if (

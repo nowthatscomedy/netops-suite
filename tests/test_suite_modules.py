@@ -1052,6 +1052,10 @@ def test_config_builder_tab_embeds_full_builder_and_removes_legacy_shortcuts(
             builder.findChild(QPushButton, "configBuilderSampleStartButton").text()
             == "샘플로 시작"
         )
+        assert "QGroupBox::title" in builder.styleSheet()
+        assert "border-left: 3px solid #d0d5dd;" in builder.styleSheet()
+        group_box_style = builder.styleSheet().split("QGroupBox {", 1)[1].split("}", 1)[0]
+        assert "border-top" not in group_box_style
         assert builder.open_file_button.text() == "장비 변수 파일 열기"
         assert builder.add_row_button.text() == "빈 행 추가"
         assert builder.advanced_toggle_button.text() == "고급 작업"
@@ -1864,6 +1868,10 @@ def test_main_workspace_uses_single_white_content_surface():
         "QTabWidget::pane {\n    border: 0;\n    background: #ffffff;"
         in APP_STYLE_SHEET
     )
+    assert "QGroupBox::title" in APP_STYLE_SHEET
+    assert "border-left: 3px solid #d0d5dd;" in APP_STYLE_SHEET
+    group_box_style = APP_STYLE_SHEET.split("QGroupBox {", 1)[1].split("}", 1)[0]
+    assert "border-top" not in group_box_style
 
 
 def test_interface_tab_skips_startup_refresh_without_admin(qt_app, tmp_path: Path):
@@ -1994,6 +2002,21 @@ def test_action_button_helper_sets_role_icon_and_state(qt_app):
     assert "background: #ecfdf3" not in start_style
     assert "background: #fff1f2" not in danger_style
     assert "color: #b42318" not in danger_style
+
+
+def test_action_button_kinds_share_neutral_surface(qt_app):
+    forbidden_backgrounds = {"#ecfdf3", "#dcfce7", "#fff1f2", "#ffe4e6", "#eef8eb", "#fff1ed"}
+    forbidden_text_colors = {"#166534", "#b42318", "#9a3412", "#92400e"}
+
+    for kind in ActionKind:
+        button = make_action_button("Action", kind)
+        button_style = button.styleSheet().split("QPushButton {", 1)[1].split("}", 1)[0]
+
+        assert "background: #ffffff;" in button_style
+        assert "color: #182230;" in button_style
+        assert "border: 1px solid #cbd5e1;" in button_style
+        assert not any(color in button_style for color in forbidden_backgrounds)
+        assert not any(color in button_style for color in forbidden_text_colors)
 
 
 def test_ui_buttons_are_created_through_action_helper():

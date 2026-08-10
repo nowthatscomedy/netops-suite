@@ -179,7 +179,6 @@ QTabBar::tab:hover:!selected {
 QGroupBox {
     background: transparent;
     border: 0;
-    border-top: 1px solid #e4e7ec;
     border-radius: 0;
     margin-top: 22px;
     padding: 12px 2px 0 2px;
@@ -189,9 +188,10 @@ QGroupBox::title {
     subcontrol-origin: margin;
     subcontrol-position: top left;
     left: 0;
-    padding: 0 8px 0 0;
+    padding: 0 0 0 7px;
     color: #111827;
-    background: #ffffff;
+    background: transparent;
+    border-left: 3px solid #d0d5dd;
 }
 QLabel {
     background: transparent;

@@ -593,14 +593,8 @@ class DiagnosticsTab(
         return network.with_prefixlen
 
     def _set_quick_status(self, message: str, kind: str = "info") -> None:
-        colors = {
-            "info": "#667085",
-            "success": "#166534",
-            "warning": "#92400e",
-            "error": "#b42318",
-        }
         self.quick_status_label.setText(message)
-        self.quick_status_label.setStyleSheet(f"color:{colors.get(kind, colors['info'])};")
+        self.quick_status_label.setStyleSheet("color:#667085;")
 
     def _current_tool_key(self) -> str:
         index = self.diagnostic_stack.currentIndex()

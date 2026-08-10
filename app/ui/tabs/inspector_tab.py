@@ -35,6 +35,7 @@ from app.ui.common import (
 from app.ui.dialogs.inspector_profile_dialog import InspectorProfileDialog
 from app.utils.file_utils import timestamped_export_path
 from netops_suite.modules.inspector import (
+    CustomCommandValidationSummary,
     InspectorRunRequest,
     InspectorRunResult,
     InspectorService,
@@ -67,6 +68,7 @@ class InspectorTab(QWidget):
         self._last_result: InspectorRunResult | None = None
         self._profile_dialog: InspectorProfileDialog | None = None
         self._inventory_validated = False
+        self._custom_command_validation: CustomCommandValidationSummary | None = None
         self._inspector_running = False
         self._result_open_busy = False
         self._cancel_event: Event | None = None
@@ -169,6 +171,9 @@ class InspectorTab(QWidget):
         self.inventory_password_edit = QLineEdit()
         self.inventory_password_edit.setEchoMode(QLineEdit.Password)
         self.inventory_password_edit.setPlaceholderText("암호화 Excel인 경우에만 입력")
+        self.inventory_password_edit.textChanged.connect(
+            self._handle_inventory_password_changed
+        )
         inventory_layout.addRow("Excel 암호", self.inventory_password_edit)
         self.inventory_status_label = make_inline_status(
             "info", "대상 장비 목록 파일을 선택하거나 샘플을 생성하세요."
@@ -184,12 +189,12 @@ class InspectorTab(QWidget):
         self.mode_combo.addItem("백업", "backup")
         self.mode_combo.addItem("점검+백업", "inspection_backup")
         self.mode_combo.addItem("사용자 명령", "custom_commands")
-        self.mode_combo.currentIndexChanged.connect(self._update_command_file_state)
+        self.mode_combo.currentIndexChanged.connect(self._handle_mode_changed)
         execution_layout.addRow("실행 모드", self.mode_combo)
 
         self.command_path_edit = QLineEdit()
         self.command_path_edit.setPlaceholderText("사용자 명령 모드에서만 필요합니다")
-        self.command_path_edit.textChanged.connect(self._update_run_action_state)
+        self.command_path_edit.textChanged.connect(self._handle_command_changed)
         command_row = QHBoxLayout()
         command_row.addWidget(self.command_path_edit, 1)
         self.command_button = make_action_button(
@@ -200,6 +205,13 @@ class InspectorTab(QWidget):
         self.command_button.clicked.connect(self._pick_command_file)
         command_row.addWidget(self.command_button)
         execution_layout.addRow("사용자 명령 파일", command_row)
+        self.command_variable_hint = QLabel(
+            "변수 예: show interface {{ interface }} · 장비 목록 Excel의 같은 이름 열을 "
+            "장비별로 치환합니다. 실제 치환값은 결과와 세션 로그에 기록될 수 있습니다."
+        )
+        self.command_variable_hint.setObjectName("customCommandVariableHint")
+        self.command_variable_hint.setWordWrap(True)
+        execution_layout.addRow("", self.command_variable_hint)
 
         self.max_workers_spin = NoWheelSpinBox()
         self.max_workers_spin.setRange(1, 128)
@@ -342,6 +354,7 @@ class InspectorTab(QWidget):
         )
         self.command_path_edit.setEnabled(enabled)
         self.command_button.setEnabled(enabled)
+        self.command_variable_hint.setVisible(enabled)
         if enabled:
             self.command_path_edit.setPlaceholderText("사용자 명령 파일을 선택하세요")
             self._update_run_action_state()
@@ -349,8 +362,33 @@ class InspectorTab(QWidget):
         self.command_path_edit.setPlaceholderText("사용자 명령 모드에서만 필요합니다")
         self._update_run_action_state()
 
+    def _handle_mode_changed(self) -> None:
+        self._invalidate_validation(
+            "실행 모드가 변경되었습니다. 현재 설정을 다시 검증하세요."
+        )
+        self._update_command_file_state()
+
+    def _handle_command_changed(self) -> None:
+        self._invalidate_validation(
+            "사용자 명령 파일이 변경되었습니다. 현재 설정을 다시 검증하세요."
+        )
+        self._update_run_action_state()
+
+    def _handle_inventory_password_changed(self) -> None:
+        self._invalidate_validation(
+            "Excel 암호가 변경되었습니다. 대상 장비 목록을 다시 검증하세요."
+        )
+        self._update_run_action_state()
+
+    def _invalidate_validation(self, message: str) -> None:
+        self._inventory_validated = False
+        self._custom_command_validation = None
+        if hasattr(self, "validation_status_label"):
+            set_inline_status(self.validation_status_label, "warning", message)
+
     def _handle_inventory_changed(self) -> None:
         self._inventory_validated = False
+        self._custom_command_validation = None
         had_previous_result = self._last_result is not None
         self._last_result = None
         self._result_open_busy = False
@@ -481,6 +519,9 @@ class InspectorTab(QWidget):
                     "username": "admin",
                     "password": "CHANGE_ME_PASSWORD",
                     "enable_password": "CHANGE_ME_ENABLE_PASSWORD",
+                    "interface": "GigabitEthernet1/0/1",
+                    "vlan_id": 100,
+                    "gateway": "192.0.2.1",
                 }
             ]
         )
@@ -545,12 +586,29 @@ class InspectorTab(QWidget):
                 "대상 장비 목록 Excel 파일을 먼저 선택하세요.",
             )
             return
+        mode = self.mode_combo.currentData()
+        command_path = self.command_path_edit.text().strip()
+        if mode == "custom_commands" and not command_path:
+            set_inline_status(
+                self.validation_status_label,
+                "warning",
+                "사용자 명령 모드에서는 명령 파일을 먼저 선택하세요.",
+            )
+            return
         self._set_result_log_visible(True)
         try:
             devices = self.service.load_inventory(
                 path, self.inventory_password_edit.text().strip() or None
             )
+            command_validation = None
+            if mode == "custom_commands":
+                command_validation = self.service.validate_custom_command_file(
+                    command_path,
+                    devices,
+                )
         except Exception as exc:
+            self._inventory_validated = False
+            self._custom_command_validation = None
             self._log_inspector_exception("대상 장비 목록 검증 실패", exc)
             set_inline_status(
                 self.validation_status_label,
@@ -560,12 +618,25 @@ class InspectorTab(QWidget):
             QMessageBox.warning(self, "검증 실패", self._inspector_error_message(exc))
             return
         self._inventory_validated = True
-        self.summary_label.setText(f"검증 완료: 장비 {len(devices)}대")
+        self._custom_command_validation = command_validation
+        validation_summary = f"검증 완료: 장비 {len(devices)}대"
+        if command_validation is not None:
+            variables = (
+                ", ".join(command_validation.variable_names)
+                if command_validation.variable_names
+                else "없음"
+            )
+            validation_summary += (
+                f" · 명령 {command_validation.command_count}개 · 사용 변수 {variables}"
+            )
+        self.summary_label.setText(validation_summary)
         set_inline_status(
-            self.validation_status_label, "success", f"검증 완료: 장비 {len(devices)}대"
+            self.validation_status_label,
+            "success",
+            validation_summary,
         )
         self.log_view.appendPlainText(
-            f"[validate] {Path(path).name}: {len(devices)} devices"
+            f"[validate] {Path(path).name}: {validation_summary}"
         )
         self._update_run_action_state()
 
@@ -594,12 +665,24 @@ class InspectorTab(QWidget):
                 "warning",
                 "아직 검증하지 않았습니다. 실행 전 '먼저 검증'을 권장합니다.",
             )
+        custom_validation_detail = ""
+        if mode == "custom_commands" and self._custom_command_validation is not None:
+            variables = (
+                ", ".join(self._custom_command_validation.variable_names)
+                if self._custom_command_validation.variable_names
+                else "없음"
+            )
+            custom_validation_detail = (
+                f" 사용자 명령 {self._custom_command_validation.command_count}개와 "
+                f"변수({variables})가 검증되었습니다."
+            )
         if not confirm_risky_action(
             self,
             "대량 장비 점검 실행",
             impact=(
                 f"목록에 있는 장비에 SSH/Telnet 접속을 시도합니다. 최대 {self.max_workers_spin.value()}대가 동시에 처리되며 "
                 "일부 장비에서 로그인 실패, 세션 잠금, 네트워크 부하가 발생할 수 있습니다."
+                + custom_validation_detail
             ),
             reversibility="기본 점검/백업 모드는 장비 설정을 변경하지 않습니다. 사용자 명령 모드는 명령 파일 내용에 따라 되돌리기 어려울 수 있습니다.",
             output_location="결과 Excel, 백업 파일, 세션 로그, 원본 명령 출력(raw output)은 설정에 지정한 결과 폴더와 inspector runs 폴더에 기록됩니다.",

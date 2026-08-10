@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-KNOWN_AI_PROVIDERS = ("codex", "claude", "gemini")
+KNOWN_AI_PROVIDERS = ("codex",)
 AI_MODEL_CATALOG_SOURCES = ("live", "cache", "fallback", "custom")
 AI_REASONING_EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra")
 AI_INPUT_MODALITIES = ("text", "image")
@@ -299,26 +299,6 @@ def default_ai_chat_config() -> dict[str, Any]:
         "auto_export": False,
         "providers": {
             "codex": {
-                "enabled": True,
-                "command_path": "",
-                "model": "",
-                "reasoning_effort": "",
-                "speed": "",
-                "role_prompt": "",
-                "extra_args": [],
-                "timeout_seconds": 900,
-            },
-            "claude": {
-                "enabled": True,
-                "command_path": "",
-                "model": "",
-                "reasoning_effort": "",
-                "speed": "",
-                "role_prompt": "",
-                "extra_args": [],
-                "timeout_seconds": 900,
-            },
-            "gemini": {
                 "enabled": True,
                 "command_path": "",
                 "model": "",

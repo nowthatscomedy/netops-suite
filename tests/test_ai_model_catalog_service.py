@@ -619,11 +619,92 @@ def test_version_probe_honors_cancellation_and_full_deadline(tmp_path, monkeypat
     assert popen_called is False
 
 
+def test_codex_version_probe_uses_configured_launch_target(tmp_path, monkeypatch):
+    executable = tmp_path / "codex.exe"
+    executable.write_bytes(b"MZ")
+    popen_calls: list[tuple[list[str], dict[str, Any]]] = []
+
+    class CompletedVersionProcess:
+        stdin = None
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            return ("codex-cli 1.2.3\n", "")
+
+        def poll(self):
+            return self.returncode
+
+    def fake_popen(argv, **kwargs):
+        popen_calls.append((argv, kwargs))
+        return CompletedVersionProcess()
+
+    monkeypatch.setattr(
+        "app.services.ai_model_catalog_service.subprocess.Popen", fake_popen
+    )
+    service = AiModelCatalogService(tmp_path / "catalog.json")
+
+    cli_path, version = service._provider_cli_identity(
+        AiProviderConfig(key="codex", command_path=str(executable)),
+        time.monotonic() + 2,
+        Event(),
+    )
+
+    assert cli_path == str(executable)
+    assert version == "codex-cli 1.2.3"
+    assert popen_calls[0][0] == [str(executable), "--version"]
+    assert popen_calls[0][1].get("shell") is None
+
+
+@pytest.mark.parametrize("cancel_during_probe", [False, True])
+def test_windows_version_timeout_or_cancel_stops_entire_process_tree(
+    cancel_during_probe, tmp_path, monkeypatch
+):
+    service = AiModelCatalogService(tmp_path / "catalog.json")
+    service.VERSION_TIMEOUT_SECONDS = 1.0 if cancel_during_probe else 0.01
+    cancel_event = Event()
+    process = _BlockingVersionProcess(
+        cancel_event.set if cancel_during_probe else lambda: None
+    )
+    process.pid = 4242
+    terminated_pids: list[int] = []
+
+    def fake_terminate_tree(pid: int) -> bool:
+        terminated_pids.append(pid)
+        process.returncode = 0
+        return True
+
+    monkeypatch.setattr(
+        "app.services.ai_model_catalog_service.terminate_process_tree",
+        fake_terminate_tree,
+    )
+    monkeypatch.setattr(
+        "app.services.ai_model_catalog_service.subprocess.Popen",
+        lambda *_args, **_kwargs: process,
+    )
+    if cancel_during_probe:
+        with pytest.raises(AiModelCatalogError, match="취소"):
+            service._read_cli_version(
+                "C:/Codex/codex.exe",
+                time.monotonic() + 2,
+                cancel_event,
+            )
+    else:
+        assert (
+            service._read_cli_version(
+                "C:/Codex/codex.exe",
+                time.monotonic() + 2,
+                cancel_event,
+            )
+            == ""
+        )
+
+    assert terminated_pids == [4242]
+    assert process.terminated is False
+    assert process.killed is False
+
+
 def test_refresh_uses_one_deadline_for_version_identity_and_discovery(tmp_path):
     class DeadlineAdapter:
-        provider_key = "codex"
-        supports_live_discovery = True
-
         def __init__(self) -> None:
             self.identity_deadline: float | None = None
             self.discovery_deadline: float | None = None
@@ -723,7 +804,7 @@ def test_catalog_cache_ttl_path_version_and_last_good_preservation(tmp_path):
     assert list(cache_path.parent.glob(".*.tmp")) == []
 
 
-def test_concurrent_catalog_saves_preserve_each_provider(
+def test_concurrent_codex_catalog_saves_are_serialized(
     tmp_path,
     monkeypatch,
 ):
@@ -751,14 +832,14 @@ def test_concurrent_catalog_saves_preserve_each_provider(
 
     monkeypatch.setattr(catalog_module, "save_json", delayed_save_json)
 
-    def catalog(provider_key: str) -> AiModelCatalog:
+    def catalog(model_suffix: str) -> AiModelCatalog:
         return AiModelCatalog(
-            provider_key=provider_key,
+            provider_key="codex",
             models=[
                 AiModelDescriptor(
-                    id=f"id-{provider_key}",
-                    model=f"model-{provider_key}",
-                    display_name=provider_key,
+                    id=f"id-{model_suffix}",
+                    model=f"model-{model_suffix}",
+                    display_name=model_suffix,
                     is_default=True,
                     source="live",
                 )
@@ -767,17 +848,17 @@ def test_concurrent_catalog_saves_preserve_each_provider(
             source="live",
         )
 
-    def save(provider_key: str) -> None:
+    def save(model_suffix: str) -> None:
         start_barrier.wait(timeout=5)
-        service.save_catalog(catalog(provider_key))
+        service.save_catalog(catalog(model_suffix))
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = [executor.submit(save, provider) for provider in ("codex", "claude")]
+        futures = [executor.submit(save, suffix) for suffix in ("first", "second")]
         for future in futures:
             future.result(timeout=5)
 
     payload = json.loads(cache_path.read_text(encoding="utf-8"))
-    assert set(payload["providers"]) == {"codex", "claude"}
+    assert set(payload["providers"]) == {"codex"}
     assert max_active_saves == 1
 
 
@@ -816,7 +897,7 @@ def test_semantically_invalid_catalog_cache_falls_back(tmp_path, case):
         "source": "live",
     }
     if case == "provider_key_mismatch":
-        raw_catalog["provider_key"] = "gemini"
+        raw_catalog["provider_key"] = "unsupported"
     elif case == "duplicate_model":
         duplicate = dict(first_model)
         duplicate.update(id="id-two", is_default=False)
@@ -965,9 +1046,6 @@ def test_cache_uses_normalized_allowlist_and_roundtrips_upgrade_and_default_moda
 
 def test_refresh_uses_adapter_identity_and_does_not_replace_fresh_selection(tmp_path):
     class FakeAdapter:
-        provider_key = "codex"
-        supports_live_discovery = True
-
         def __init__(self) -> None:
             self.version = "v1"
             self.discovery_calls = 0
@@ -1017,17 +1095,13 @@ def test_refresh_uses_adapter_identity_and_does_not_replace_fresh_selection(tmp_
     assert refreshed.cli_version == "v2"
 
 
-def test_fallback_adapters_and_corrupt_cache_keep_app_usable(tmp_path):
+def test_corrupt_cache_keeps_codex_custom_model_usable(tmp_path):
     cache_path = tmp_path / "catalog.json"
     cache_path.write_text("{not-json", encoding="utf-8")
     service = AiModelCatalogService(cache_path)
 
     codex = service.load_catalog("codex", "manual/model")
-    claude = service.discover(AiProviderConfig(key="claude", model="claude-custom"))
-    gemini = service.discover(AiProviderConfig(key="gemini"))
 
     assert [model.model for model in codex.models] == ["manual/model"]
     assert codex.models[0].source == "custom"
-    assert "claude-custom" in {model.model for model in claude.models}
-    assert "gemini-2.5-pro" in {model.model for model in gemini.models}
     assert list(tmp_path.glob("catalog.json.invalid-*"))

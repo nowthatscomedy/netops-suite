@@ -422,6 +422,9 @@ def default_app_config() -> dict[str, Any]:
         "app_name": "NetOps Suite",
         "wireless_refresh_interval_sec": 2,
         "default_nslookup_type": "A",
+        "guide": {
+            "welcome_seen": False,
+        },
         "update": default_update_config(),
         "ai_chat": default_ai_chat_config(),
     }

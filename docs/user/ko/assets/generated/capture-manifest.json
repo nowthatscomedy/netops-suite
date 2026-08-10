@@ -1,0 +1,851 @@
+{
+  "schema_version": 2,
+  "fingerprint_algorithm": "sha256",
+  "assets": [
+    {
+      "scenario_id": "guide_interface_overview",
+      "file": "interface-overview.png",
+      "viewport": [
+        1280,
+        800
+      ],
+      "capture_handler": "guide_overview",
+      "expected_object_names": [
+        "appShell",
+        "mainNavigation",
+        "workspacePanel",
+        "stepHint"
+      ],
+      "source_paths": [
+        "app/main_window.py",
+        "app/ui/common/theme.py",
+        "app/ui/common/ux.py",
+        "app/ui/tabs/interface_tab.py"
+      ],
+      "png_sha256": "3141b17c4e2a334fb1667be45ce25a1b5a3ae7158a8809baed3c3c552ca60bd1",
+      "fingerprint": {
+        "schema_version": 1,
+        "algorithm": "sha256",
+        "value": "d9eff4025111f4d1c50ffca5bb20d5d754b4bc205191d94506b9a545c4741bd6",
+        "contract_sha256": "e0a729727b6fb93a8ca4121625c93dea28885bf90a189ce690e6b822bea969c4",
+        "handler_sha256": "43820e9791846df2859298ecc8ffc868e13e3d021f8a6c8a2892f16ef1a0a1f9",
+        "sources_sha256": "c7d85012342005b346da858861f04618001dfaa87cd3c00e47aabfb3f5493a2d",
+        "capture_handler": {
+          "name": "guide_overview",
+          "source": "qa/offscreen/harness.py",
+          "class": "OffscreenQaHarness",
+          "methods": [
+            {
+              "name": "_run_scenario",
+              "sha256": "8a112fc522584c8371769cdfccfa94e9ba30553ad75fb9ab7031391aa8806391"
+            },
+            {
+              "name": "_navigate_main",
+              "sha256": "0d982af5ea7cd97c6e666058f4dd1113633abca124c798a5a217ae94171b1f10"
+            },
+            {
+              "name": "_click_list_row",
+              "sha256": "fce7fa43f62fc7711910e023b0aa7504394e6bb641172e06bbfedcf9b8b29c52"
+            },
+            {
+              "name": "_flush",
+              "sha256": "bcd282c4e94affd1369c8101f75cc94d4d3cb34a12b33290f5fd30b7a3d7140c"
+            },
+            {
+              "name": "_capture",
+              "sha256": "cce82fd5c9e929eac3d0dada4bacaefad09e16b5e9d6712e86c24415516ca3bc"
+            },
+            {
+              "name": "_capture_handler_guide_overview",
+              "sha256": "d3fb1f2cdd53063ec8f5209b84b7e006af1f209b32e974d77a8bb09cc585f85e"
+            }
+          ]
+        },
+        "viewport": [
+          1280,
+          800
+        ],
+        "expected_object_names": [
+          "appShell",
+          "mainNavigation",
+          "workspacePanel",
+          "stepHint"
+        ],
+        "source_paths": [
+          "app/main_window.py",
+          "app/ui/common/theme.py",
+          "app/ui/common/ux.py",
+          "app/ui/tabs/interface_tab.py"
+        ],
+        "source_files": [
+          {
+            "path": "app/main_window.py",
+            "size": 46663,
+            "sha256": "d29ea68a8dffc1bb78c778522951bb2154dafb633635d7d76057b03f35724bcb"
+          },
+          {
+            "path": "app/ui/common/theme.py",
+            "size": 9595,
+            "sha256": "54802de2bef399ea2b689e85482a40e3dfc3cf2521c022a78689a5bc5867be09"
+          },
+          {
+            "path": "app/ui/common/ux.py",
+            "size": 6997,
+            "sha256": "486d4d60208df62e419e3b44239a5c088ce02f130122b7bb8d59665c609a3baf"
+          },
+          {
+            "path": "app/ui/tabs/interface_tab.py",
+            "size": 34468,
+            "sha256": "5d0a4c1d047551265a88f81ff6cc86a0436d78c9203d6f740e96fdc1f075de41"
+          }
+        ]
+      },
+      "checks": [
+        "메인 화면 0 이동",
+        "가이드 화면 제목: 네트워크 설정",
+        "가이드 화면 표시: 네트워크 설정",
+        "가이드 캡처 뷰포트: 1280×800",
+        "가이드 캡처 objectName 표시: appShell",
+        "가이드 캡처 objectName 표시: mainNavigation",
+        "가이드 캡처 objectName 표시: workspacePanel",
+        "가이드 캡처 objectName 표시: stepHint"
+      ]
+    },
+    {
+      "scenario_id": "guide_diagnostics_overview",
+      "file": "diagnostics-overview.png",
+      "viewport": [
+        1280,
+        800
+      ],
+      "capture_handler": "guide_overview",
+      "expected_object_names": [
+        "appShell",
+        "mainNavigation",
+        "workspacePanel",
+        "stepHint",
+        "diagnosticToolStack"
+      ],
+      "source_paths": [
+        "app/main_window.py",
+        "app/ui/common/theme.py",
+        "app/ui/common/ux.py",
+        "app/ui/tabs/diagnostics_tab.py",
+        "app/ui/tabs/diagnostics/core.py",
+        "app/ui/tabs/diagnostics/ping.py"
+      ],
+      "png_sha256": "6d457065a1f0fb45e2c5829d8cfdc580762defe2945f07e365a55eb6f9db9d49",
+      "fingerprint": {
+        "schema_version": 1,
+        "algorithm": "sha256",
+        "value": "371a75b5df48ec6e70691d32c47c97a61c5b9c290e5a7fb6bf75f731d483fbd8",
+        "contract_sha256": "e0f65932e5e24508a2045fd8791b754869f71031b805eca00a3110b15d29f8e8",
+        "handler_sha256": "43820e9791846df2859298ecc8ffc868e13e3d021f8a6c8a2892f16ef1a0a1f9",
+        "sources_sha256": "0f567c5f144421641c452ddb01dd80c3a895be2485df807d70ff9c8e61edcb98",
+        "capture_handler": {
+          "name": "guide_overview",
+          "source": "qa/offscreen/harness.py",
+          "class": "OffscreenQaHarness",
+          "methods": [
+            {
+              "name": "_run_scenario",
+              "sha256": "8a112fc522584c8371769cdfccfa94e9ba30553ad75fb9ab7031391aa8806391"
+            },
+            {
+              "name": "_navigate_main",
+              "sha256": "0d982af5ea7cd97c6e666058f4dd1113633abca124c798a5a217ae94171b1f10"
+            },
+            {
+              "name": "_click_list_row",
+              "sha256": "fce7fa43f62fc7711910e023b0aa7504394e6bb641172e06bbfedcf9b8b29c52"
+            },
+            {
+              "name": "_flush",
+              "sha256": "bcd282c4e94affd1369c8101f75cc94d4d3cb34a12b33290f5fd30b7a3d7140c"
+            },
+            {
+              "name": "_capture",
+              "sha256": "cce82fd5c9e929eac3d0dada4bacaefad09e16b5e9d6712e86c24415516ca3bc"
+            },
+            {
+              "name": "_capture_handler_guide_overview",
+              "sha256": "d3fb1f2cdd53063ec8f5209b84b7e006af1f209b32e974d77a8bb09cc585f85e"
+            }
+          ]
+        },
+        "viewport": [
+          1280,
+          800
+        ],
+        "expected_object_names": [
+          "appShell",
+          "mainNavigation",
+          "workspacePanel",
+          "stepHint",
+          "diagnosticToolStack"
+        ],
+        "source_paths": [
+          "app/main_window.py",
+          "app/ui/common/theme.py",
+          "app/ui/common/ux.py",
+          "app/ui/tabs/diagnostics_tab.py",
+          "app/ui/tabs/diagnostics/core.py",
+          "app/ui/tabs/diagnostics/ping.py"
+        ],
+        "source_files": [
+          {
+            "path": "app/main_window.py",
+            "size": 46663,
+            "sha256": "d29ea68a8dffc1bb78c778522951bb2154dafb633635d7d76057b03f35724bcb"
+          },
+          {
+            "path": "app/ui/common/theme.py",
+            "size": 9595,
+            "sha256": "54802de2bef399ea2b689e85482a40e3dfc3cf2521c022a78689a5bc5867be09"
+          },
+          {
+            "path": "app/ui/common/ux.py",
+            "size": 6997,
+            "sha256": "486d4d60208df62e419e3b44239a5c088ce02f130122b7bb8d59665c609a3baf"
+          },
+          {
+            "path": "app/ui/tabs/diagnostics/core.py",
+            "size": 53747,
+            "sha256": "34caa9d6e7deb2064bf93fc8a341201f5ee9c519c1aa28624717315a355d8086"
+          },
+          {
+            "path": "app/ui/tabs/diagnostics/ping.py",
+            "size": 15703,
+            "sha256": "08eae343330ccbe60a98cc356e16cec9043518ee8d835201b5cbf2055db6ed48"
+          },
+          {
+            "path": "app/ui/tabs/diagnostics_tab.py",
+            "size": 84,
+            "sha256": "d5b6ce336ed63cf274905596c8a89bda2acc3e6b07cffc89ecfa047a67e55ed9"
+          }
+        ]
+      },
+      "checks": [
+        "메인 화면 1 이동",
+        "가이드 화면 제목: 연결 진단",
+        "가이드 화면 표시: 연결 진단",
+        "가이드 캡처 뷰포트: 1280×800",
+        "가이드 캡처 objectName 표시: appShell",
+        "가이드 캡처 objectName 표시: mainNavigation",
+        "가이드 캡처 objectName 표시: workspacePanel",
+        "가이드 캡처 objectName 표시: stepHint",
+        "가이드 캡처 objectName 표시: diagnosticToolStack"
+      ]
+    },
+    {
+      "scenario_id": "guide_wireless_overview",
+      "file": "wireless-overview.png",
+      "viewport": [
+        1280,
+        800
+      ],
+      "capture_handler": "guide_overview",
+      "expected_object_names": [
+        "appShell",
+        "mainNavigation",
+        "workspacePanel",
+        "stepHint",
+        "wirelessStatusCard"
+      ],
+      "source_paths": [
+        "app/main_window.py",
+        "app/ui/common/theme.py",
+        "app/ui/common/ux.py",
+        "app/ui/tabs/wireless_tab.py"
+      ],
+      "png_sha256": "3fe4435ad6108cd7b778d7f9240281a388f5514d218c09fd4ef7acacf11c2a63",
+      "fingerprint": {
+        "schema_version": 1,
+        "algorithm": "sha256",
+        "value": "4db3e24e705eaad6afe40e4cee0f655f329bb820ab0cd80ba376351fcefe1185",
+        "contract_sha256": "1a61d2900280e7807effe5720a51542ee33788b265a193e98467213dc7bf05ac",
+        "handler_sha256": "43820e9791846df2859298ecc8ffc868e13e3d021f8a6c8a2892f16ef1a0a1f9",
+        "sources_sha256": "cef54e0a7de6c303dcbc5b04e3261482bbfd372f2869800cd57119d8738ad8c6",
+        "capture_handler": {
+          "name": "guide_overview",
+          "source": "qa/offscreen/harness.py",
+          "class": "OffscreenQaHarness",
+          "methods": [
+            {
+              "name": "_run_scenario",
+              "sha256": "8a112fc522584c8371769cdfccfa94e9ba30553ad75fb9ab7031391aa8806391"
+            },
+            {
+              "name": "_navigate_main",
+              "sha256": "0d982af5ea7cd97c6e666058f4dd1113633abca124c798a5a217ae94171b1f10"
+            },
+            {
+              "name": "_click_list_row",
+              "sha256": "fce7fa43f62fc7711910e023b0aa7504394e6bb641172e06bbfedcf9b8b29c52"
+            },
+            {
+              "name": "_flush",
+              "sha256": "bcd282c4e94affd1369c8101f75cc94d4d3cb34a12b33290f5fd30b7a3d7140c"
+            },
+            {
+              "name": "_capture",
+              "sha256": "cce82fd5c9e929eac3d0dada4bacaefad09e16b5e9d6712e86c24415516ca3bc"
+            },
+            {
+              "name": "_capture_handler_guide_overview",
+              "sha256": "d3fb1f2cdd53063ec8f5209b84b7e006af1f209b32e974d77a8bb09cc585f85e"
+            }
+          ]
+        },
+        "viewport": [
+          1280,
+          800
+        ],
+        "expected_object_names": [
+          "appShell",
+          "mainNavigation",
+          "workspacePanel",
+          "stepHint",
+          "wirelessStatusCard"
+        ],
+        "source_paths": [
+          "app/main_window.py",
+          "app/ui/common/theme.py",
+          "app/ui/common/ux.py",
+          "app/ui/tabs/wireless_tab.py"
+        ],
+        "source_files": [
+          {
+            "path": "app/main_window.py",
+            "size": 46663,
+            "sha256": "d29ea68a8dffc1bb78c778522951bb2154dafb633635d7d76057b03f35724bcb"
+          },
+          {
+            "path": "app/ui/common/theme.py",
+            "size": 9595,
+            "sha256": "54802de2bef399ea2b689e85482a40e3dfc3cf2521c022a78689a5bc5867be09"
+          },
+          {
+            "path": "app/ui/common/ux.py",
+            "size": 6997,
+            "sha256": "486d4d60208df62e419e3b44239a5c088ce02f130122b7bb8d59665c609a3baf"
+          },
+          {
+            "path": "app/ui/tabs/wireless_tab.py",
+            "size": 42715,
+            "sha256": "385a2fbe5f73783a35eb53648fc4f6ca4eb7bc75ab02a1168f33ecc7bb69f6ac"
+          }
+        ]
+      },
+      "checks": [
+        "메인 화면 2 이동",
+        "가이드 화면 제목: Wi-Fi 분석",
+        "가이드 화면 표시: Wi-Fi 분석",
+        "가이드 캡처 뷰포트: 1280×800",
+        "가이드 캡처 objectName 표시: appShell",
+        "가이드 캡처 objectName 표시: mainNavigation",
+        "가이드 캡처 objectName 표시: workspacePanel",
+        "가이드 캡처 objectName 표시: stepHint",
+        "가이드 캡처 objectName 표시: wirelessStatusCard"
+      ]
+    },
+    {
+      "scenario_id": "guide_inspector_overview",
+      "file": "inspector-overview.png",
+      "viewport": [
+        1280,
+        800
+      ],
+      "capture_handler": "guide_overview",
+      "expected_object_names": [
+        "appShell",
+        "mainNavigation",
+        "workspacePanel",
+        "stepHint",
+        "inspectorTopPanel"
+      ],
+      "source_paths": [
+        "app/main_window.py",
+        "app/ui/common/theme.py",
+        "app/ui/common/ux.py",
+        "app/ui/tabs/inspector_tab.py"
+      ],
+      "png_sha256": "1912302bfcef46966be602acea5cdaa4161c042d87086493ed840ba251556153",
+      "fingerprint": {
+        "schema_version": 1,
+        "algorithm": "sha256",
+        "value": "f626f7d0e00354c6007bd7de4aca46d73252decdcec0f085ec6338e1c83a04d3",
+        "contract_sha256": "935efeb970b9eb0f08b32011f98b399186d177c07f73ff91c968729f3ff2bb4d",
+        "handler_sha256": "43820e9791846df2859298ecc8ffc868e13e3d021f8a6c8a2892f16ef1a0a1f9",
+        "sources_sha256": "e1a67d021f5b1045f533955b567620308906d8e4d4a085f58141beb084f15dd2",
+        "capture_handler": {
+          "name": "guide_overview",
+          "source": "qa/offscreen/harness.py",
+          "class": "OffscreenQaHarness",
+          "methods": [
+            {
+              "name": "_run_scenario",
+              "sha256": "8a112fc522584c8371769cdfccfa94e9ba30553ad75fb9ab7031391aa8806391"
+            },
+            {
+              "name": "_navigate_main",
+              "sha256": "0d982af5ea7cd97c6e666058f4dd1113633abca124c798a5a217ae94171b1f10"
+            },
+            {
+              "name": "_click_list_row",
+              "sha256": "fce7fa43f62fc7711910e023b0aa7504394e6bb641172e06bbfedcf9b8b29c52"
+            },
+            {
+              "name": "_flush",
+              "sha256": "bcd282c4e94affd1369c8101f75cc94d4d3cb34a12b33290f5fd30b7a3d7140c"
+            },
+            {
+              "name": "_capture",
+              "sha256": "cce82fd5c9e929eac3d0dada4bacaefad09e16b5e9d6712e86c24415516ca3bc"
+            },
+            {
+              "name": "_capture_handler_guide_overview",
+              "sha256": "d3fb1f2cdd53063ec8f5209b84b7e006af1f209b32e974d77a8bb09cc585f85e"
+            }
+          ]
+        },
+        "viewport": [
+          1280,
+          800
+        ],
+        "expected_object_names": [
+          "appShell",
+          "mainNavigation",
+          "workspacePanel",
+          "stepHint",
+          "inspectorTopPanel"
+        ],
+        "source_paths": [
+          "app/main_window.py",
+          "app/ui/common/theme.py",
+          "app/ui/common/ux.py",
+          "app/ui/tabs/inspector_tab.py"
+        ],
+        "source_files": [
+          {
+            "path": "app/main_window.py",
+            "size": 46663,
+            "sha256": "d29ea68a8dffc1bb78c778522951bb2154dafb633635d7d76057b03f35724bcb"
+          },
+          {
+            "path": "app/ui/common/theme.py",
+            "size": 9595,
+            "sha256": "54802de2bef399ea2b689e85482a40e3dfc3cf2521c022a78689a5bc5867be09"
+          },
+          {
+            "path": "app/ui/common/ux.py",
+            "size": 6997,
+            "sha256": "486d4d60208df62e419e3b44239a5c088ce02f130122b7bb8d59665c609a3baf"
+          },
+          {
+            "path": "app/ui/tabs/inspector_tab.py",
+            "size": 40492,
+            "sha256": "0ad293bac90c0bd4a9f7bf9a80c2de98f2e0975ab678fca4ee2180e0e726007f"
+          }
+        ]
+      },
+      "checks": [
+        "메인 화면 3 이동",
+        "가이드 화면 제목: 장비 점검/백업",
+        "가이드 화면 표시: 장비 점검/백업",
+        "가이드 캡처 뷰포트: 1280×800",
+        "가이드 캡처 objectName 표시: appShell",
+        "가이드 캡처 objectName 표시: mainNavigation",
+        "가이드 캡처 objectName 표시: workspacePanel",
+        "가이드 캡처 objectName 표시: stepHint",
+        "가이드 캡처 objectName 표시: inspectorTopPanel"
+      ]
+    },
+    {
+      "scenario_id": "guide_config_builder_overview",
+      "file": "config-builder-overview.png",
+      "viewport": [
+        1280,
+        800
+      ],
+      "capture_handler": "guide_overview",
+      "expected_object_names": [
+        "appShell",
+        "mainNavigation",
+        "workspacePanel",
+        "stepHint",
+        "configBuilderEmbeddedBuilder"
+      ],
+      "source_paths": [
+        "app/main_window.py",
+        "app/ui/common/theme.py",
+        "app/ui/common/ux.py",
+        "app/ui/tabs/config_builder_tab.py",
+        "netops_suite/modules/config_builder/switch_configurator/desktop_impl.py"
+      ],
+      "png_sha256": "90dee74addda56b859e835721e55ef6d47c62d302e4918777d61267914cc8f6c",
+      "fingerprint": {
+        "schema_version": 1,
+        "algorithm": "sha256",
+        "value": "38a369c37a8b27f72a169bfb12175472d0533979c3632f459f8eb0b48e93efc1",
+        "contract_sha256": "0e973ca2ac3791641d14e5fb0352fd0d63131001ad6f0fa2942dd81a463445d5",
+        "handler_sha256": "43820e9791846df2859298ecc8ffc868e13e3d021f8a6c8a2892f16ef1a0a1f9",
+        "sources_sha256": "934cc04d19241de75b7c22943bb6faf0d994f1159c4c01a99723bd16a6189c04",
+        "capture_handler": {
+          "name": "guide_overview",
+          "source": "qa/offscreen/harness.py",
+          "class": "OffscreenQaHarness",
+          "methods": [
+            {
+              "name": "_run_scenario",
+              "sha256": "8a112fc522584c8371769cdfccfa94e9ba30553ad75fb9ab7031391aa8806391"
+            },
+            {
+              "name": "_navigate_main",
+              "sha256": "0d982af5ea7cd97c6e666058f4dd1113633abca124c798a5a217ae94171b1f10"
+            },
+            {
+              "name": "_click_list_row",
+              "sha256": "fce7fa43f62fc7711910e023b0aa7504394e6bb641172e06bbfedcf9b8b29c52"
+            },
+            {
+              "name": "_flush",
+              "sha256": "bcd282c4e94affd1369c8101f75cc94d4d3cb34a12b33290f5fd30b7a3d7140c"
+            },
+            {
+              "name": "_capture",
+              "sha256": "cce82fd5c9e929eac3d0dada4bacaefad09e16b5e9d6712e86c24415516ca3bc"
+            },
+            {
+              "name": "_capture_handler_guide_overview",
+              "sha256": "d3fb1f2cdd53063ec8f5209b84b7e006af1f209b32e974d77a8bb09cc585f85e"
+            }
+          ]
+        },
+        "viewport": [
+          1280,
+          800
+        ],
+        "expected_object_names": [
+          "appShell",
+          "mainNavigation",
+          "workspacePanel",
+          "stepHint",
+          "configBuilderEmbeddedBuilder"
+        ],
+        "source_paths": [
+          "app/main_window.py",
+          "app/ui/common/theme.py",
+          "app/ui/common/ux.py",
+          "app/ui/tabs/config_builder_tab.py",
+          "netops_suite/modules/config_builder/switch_configurator/desktop_impl.py"
+        ],
+        "source_files": [
+          {
+            "path": "app/main_window.py",
+            "size": 46663,
+            "sha256": "d29ea68a8dffc1bb78c778522951bb2154dafb633635d7d76057b03f35724bcb"
+          },
+          {
+            "path": "app/ui/common/theme.py",
+            "size": 9595,
+            "sha256": "54802de2bef399ea2b689e85482a40e3dfc3cf2521c022a78689a5bc5867be09"
+          },
+          {
+            "path": "app/ui/common/ux.py",
+            "size": 6997,
+            "sha256": "486d4d60208df62e419e3b44239a5c088ce02f130122b7bb8d59665c609a3baf"
+          },
+          {
+            "path": "app/ui/tabs/config_builder_tab.py",
+            "size": 4411,
+            "sha256": "d7c1f870ce0defdc5dae06e5ac7d5b00922002f703f2fa43a753afe07517601e"
+          },
+          {
+            "path": "netops_suite/modules/config_builder/switch_configurator/desktop_impl.py",
+            "size": 235657,
+            "sha256": "398255ed21cdc71678edaca2a7bc42b944f2fceb2212d163db30992f48b8b038"
+          }
+        ]
+      },
+      "checks": [
+        "메인 화면 4 이동",
+        "가이드 화면 제목: CLI 설정 생성",
+        "가이드 화면 표시: CLI 설정 생성",
+        "가이드 캡처 뷰포트: 1280×800",
+        "가이드 캡처 objectName 표시: appShell",
+        "가이드 캡처 objectName 표시: mainNavigation",
+        "가이드 캡처 objectName 표시: workspacePanel",
+        "가이드 캡처 objectName 표시: stepHint",
+        "가이드 캡처 objectName 표시: configBuilderEmbeddedBuilder"
+      ]
+    },
+    {
+      "scenario_id": "guide_assistant_overview",
+      "file": "assistant-overview.png",
+      "viewport": [
+        1280,
+        800
+      ],
+      "capture_handler": "guide_overview",
+      "expected_object_names": [
+        "appShell",
+        "mainNavigation",
+        "workspacePanel",
+        "stepHint",
+        "aiProviderSettingsGroup",
+        "aiProviderSetupButton"
+      ],
+      "source_paths": [
+        "app/main_window.py",
+        "app/ui/common/theme.py",
+        "app/ui/common/ux.py",
+        "app/ui/tabs/ai_chat_tab.py",
+        "app/models/ai_models.py",
+        "app/services/ai_agent_service.py",
+        "app/services/ai_model_catalog_service.py"
+      ],
+      "png_sha256": "34fb8de17e09dec03ebef7107ecc316c4b1ccefdba7f3587e1c3a524b70c6682",
+      "fingerprint": {
+        "schema_version": 1,
+        "algorithm": "sha256",
+        "value": "c7355eb216fe5c2b8d844accbe7432b2f939c7e7882321d1fd53856705e07c66",
+        "contract_sha256": "d80b8b3cd32a560f86d7b947bd3ade3f3ac3921249ea780a7f5fd1043639660e",
+        "handler_sha256": "43820e9791846df2859298ecc8ffc868e13e3d021f8a6c8a2892f16ef1a0a1f9",
+        "sources_sha256": "83b2c11f981e1e23eff9b2b03d46b91cd95557244caef1f0826329a2162932be",
+        "capture_handler": {
+          "name": "guide_overview",
+          "source": "qa/offscreen/harness.py",
+          "class": "OffscreenQaHarness",
+          "methods": [
+            {
+              "name": "_run_scenario",
+              "sha256": "8a112fc522584c8371769cdfccfa94e9ba30553ad75fb9ab7031391aa8806391"
+            },
+            {
+              "name": "_navigate_main",
+              "sha256": "0d982af5ea7cd97c6e666058f4dd1113633abca124c798a5a217ae94171b1f10"
+            },
+            {
+              "name": "_click_list_row",
+              "sha256": "fce7fa43f62fc7711910e023b0aa7504394e6bb641172e06bbfedcf9b8b29c52"
+            },
+            {
+              "name": "_flush",
+              "sha256": "bcd282c4e94affd1369c8101f75cc94d4d3cb34a12b33290f5fd30b7a3d7140c"
+            },
+            {
+              "name": "_capture",
+              "sha256": "cce82fd5c9e929eac3d0dada4bacaefad09e16b5e9d6712e86c24415516ca3bc"
+            },
+            {
+              "name": "_capture_handler_guide_overview",
+              "sha256": "d3fb1f2cdd53063ec8f5209b84b7e006af1f209b32e974d77a8bb09cc585f85e"
+            }
+          ]
+        },
+        "viewport": [
+          1280,
+          800
+        ],
+        "expected_object_names": [
+          "appShell",
+          "mainNavigation",
+          "workspacePanel",
+          "stepHint",
+          "aiProviderSettingsGroup",
+          "aiProviderSetupButton"
+        ],
+        "source_paths": [
+          "app/main_window.py",
+          "app/ui/common/theme.py",
+          "app/ui/common/ux.py",
+          "app/ui/tabs/ai_chat_tab.py",
+          "app/models/ai_models.py",
+          "app/services/ai_agent_service.py",
+          "app/services/ai_model_catalog_service.py"
+        ],
+        "source_files": [
+          {
+            "path": "app/main_window.py",
+            "size": 46663,
+            "sha256": "d29ea68a8dffc1bb78c778522951bb2154dafb633635d7d76057b03f35724bcb"
+          },
+          {
+            "path": "app/models/ai_models.py",
+            "size": 13538,
+            "sha256": "528281988303d228490fc01e258bc33b7c69a0a36d116afa36364df021a07d84"
+          },
+          {
+            "path": "app/services/ai_agent_service.py",
+            "size": 70749,
+            "sha256": "47478a0478955be5191620ab22f504413b8dac39810b5d08f18d2fee1391cef2"
+          },
+          {
+            "path": "app/services/ai_model_catalog_service.py",
+            "size": 35045,
+            "sha256": "f6ef87e9c91d8e06b9c648ffc7492df34268b699a24d5331876781cfc3e9445d"
+          },
+          {
+            "path": "app/ui/common/theme.py",
+            "size": 9595,
+            "sha256": "54802de2bef399ea2b689e85482a40e3dfc3cf2521c022a78689a5bc5867be09"
+          },
+          {
+            "path": "app/ui/common/ux.py",
+            "size": 6997,
+            "sha256": "486d4d60208df62e419e3b44239a5c088ce02f130122b7bb8d59665c609a3baf"
+          },
+          {
+            "path": "app/ui/tabs/ai_chat_tab.py",
+            "size": 229971,
+            "sha256": "d48f11dd355fd06a279a597dbb5569bb16186e52b77a057aa8cc31d5015b3503"
+          }
+        ]
+      },
+      "checks": [
+        "메인 화면 5 이동",
+        "Codex 단일 제공자 계약",
+        "AI 서비스 항목 한 개",
+        "Codex 제공자 선택",
+        "ChatGPT Codex 표시",
+        "Codex 단일 제공자 선택 잠금",
+        "가이드 화면 제목: NetOps 어시스턴트",
+        "가이드 화면 표시: NetOps 어시스턴트",
+        "가이드 캡처 뷰포트: 1280×800",
+        "가이드 캡처 objectName 표시: appShell",
+        "가이드 캡처 objectName 표시: mainNavigation",
+        "가이드 캡처 objectName 표시: workspacePanel",
+        "가이드 캡처 objectName 표시: stepHint",
+        "가이드 캡처 objectName 표시: aiProviderSettingsGroup",
+        "가이드 캡처 objectName 표시: aiProviderSetupButton"
+      ]
+    },
+    {
+      "scenario_id": "guide_settings_overview",
+      "file": "settings-overview.png",
+      "viewport": [
+        1280,
+        800
+      ],
+      "capture_handler": "guide_overview",
+      "expected_object_names": [
+        "appShell",
+        "mainNavigation",
+        "workspacePanel",
+        "stepHint",
+        "settingsSectionTabs"
+      ],
+      "source_paths": [
+        "app/main_window.py",
+        "app/ui/common/theme.py",
+        "app/ui/common/ux.py",
+        "app/ui/tabs/settings_tab.py",
+        "app/models/ai_models.py",
+        "app/services/ai_agent_service.py"
+      ],
+      "png_sha256": "b5b47d054fe6b865ff417300f67ac7c430bcd4bd869de7ac4e101c97d7d39559",
+      "fingerprint": {
+        "schema_version": 1,
+        "algorithm": "sha256",
+        "value": "b1465e8e5e6df564470343638791ade9e0a201abebb13e9c412d93212066d502",
+        "contract_sha256": "2bdd406bdabdd464b4189d49bfc6340b320947ac0abc46e55f1d534695d656c0",
+        "handler_sha256": "43820e9791846df2859298ecc8ffc868e13e3d021f8a6c8a2892f16ef1a0a1f9",
+        "sources_sha256": "7868c3996249f5b19ffaceb5cfc44f89f7176082019aadcb84015caec3dc8ccf",
+        "capture_handler": {
+          "name": "guide_overview",
+          "source": "qa/offscreen/harness.py",
+          "class": "OffscreenQaHarness",
+          "methods": [
+            {
+              "name": "_run_scenario",
+              "sha256": "8a112fc522584c8371769cdfccfa94e9ba30553ad75fb9ab7031391aa8806391"
+            },
+            {
+              "name": "_navigate_main",
+              "sha256": "0d982af5ea7cd97c6e666058f4dd1113633abca124c798a5a217ae94171b1f10"
+            },
+            {
+              "name": "_click_list_row",
+              "sha256": "fce7fa43f62fc7711910e023b0aa7504394e6bb641172e06bbfedcf9b8b29c52"
+            },
+            {
+              "name": "_flush",
+              "sha256": "bcd282c4e94affd1369c8101f75cc94d4d3cb34a12b33290f5fd30b7a3d7140c"
+            },
+            {
+              "name": "_capture",
+              "sha256": "cce82fd5c9e929eac3d0dada4bacaefad09e16b5e9d6712e86c24415516ca3bc"
+            },
+            {
+              "name": "_capture_handler_guide_overview",
+              "sha256": "d3fb1f2cdd53063ec8f5209b84b7e006af1f209b32e974d77a8bb09cc585f85e"
+            }
+          ]
+        },
+        "viewport": [
+          1280,
+          800
+        ],
+        "expected_object_names": [
+          "appShell",
+          "mainNavigation",
+          "workspacePanel",
+          "stepHint",
+          "settingsSectionTabs"
+        ],
+        "source_paths": [
+          "app/main_window.py",
+          "app/ui/common/theme.py",
+          "app/ui/common/ux.py",
+          "app/ui/tabs/settings_tab.py",
+          "app/models/ai_models.py",
+          "app/services/ai_agent_service.py"
+        ],
+        "source_files": [
+          {
+            "path": "app/main_window.py",
+            "size": 46663,
+            "sha256": "d29ea68a8dffc1bb78c778522951bb2154dafb633635d7d76057b03f35724bcb"
+          },
+          {
+            "path": "app/models/ai_models.py",
+            "size": 13538,
+            "sha256": "528281988303d228490fc01e258bc33b7c69a0a36d116afa36364df021a07d84"
+          },
+          {
+            "path": "app/services/ai_agent_service.py",
+            "size": 70749,
+            "sha256": "47478a0478955be5191620ab22f504413b8dac39810b5d08f18d2fee1391cef2"
+          },
+          {
+            "path": "app/ui/common/theme.py",
+            "size": 9595,
+            "sha256": "54802de2bef399ea2b689e85482a40e3dfc3cf2521c022a78689a5bc5867be09"
+          },
+          {
+            "path": "app/ui/common/ux.py",
+            "size": 6997,
+            "sha256": "486d4d60208df62e419e3b44239a5c088ce02f130122b7bb8d59665c609a3baf"
+          },
+          {
+            "path": "app/ui/tabs/settings_tab.py",
+            "size": 59399,
+            "sha256": "7348a6ad136fd20bb28cd30e2c18d077ba4d80b28a0948bb7fdbbe32b4af5430"
+          }
+        ]
+      },
+      "checks": [
+        "메인 화면 6 이동",
+        "가이드 화면 제목: 설정",
+        "가이드 화면 표시: 설정",
+        "가이드 캡처 뷰포트: 1280×800",
+        "가이드 캡처 objectName 표시: appShell",
+        "가이드 캡처 objectName 표시: mainNavigation",
+        "가이드 캡처 objectName 표시: workspacePanel",
+        "가이드 캡처 objectName 표시: stepHint",
+        "가이드 캡처 objectName 표시: settingsSectionTabs"
+      ]
+    }
+  ]
+}

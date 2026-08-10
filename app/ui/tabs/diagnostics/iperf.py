@@ -526,11 +526,11 @@ class IperfDiagnosticsMixin:
             }.get(source, source)
             self.iperf_status_label.setText(f"iperf3 준비됨 · {source_label}" if source_label else "iperf3 준비됨")
             self.iperf_status_label.setToolTip(executable_path or "")
-            self.iperf_status_label.setStyleSheet("color:#067647;")
+            self.iperf_status_label.setStyleSheet("color:#475467;")
         else:
             self.iperf_status_label.setText("iperf3 설치 필요")
             self.iperf_status_label.setToolTip("설정 > 도구 연동에서 iperf3를 설치하거나 상태를 확인하세요.")
-            self.iperf_status_label.setStyleSheet("color:#b42318;")
+            self.iperf_status_label.setStyleSheet("color:#475467;")
         self.iperf_status_label.show()
         self._set_iperf_running(self.iperf_cancel_button.isEnabled())
 

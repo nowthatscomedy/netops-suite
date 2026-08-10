@@ -219,7 +219,7 @@ class ScpDiagnosticsMixin:
         self.scp_server_bind_host_edit.setPlaceholderText("예: 0.0.0.0")
         self.scp_server_bind_warning_label = QLabel("0.0.0.0 = 모든 네트워크 인터페이스에 공개")
         self.scp_server_bind_warning_label.setWordWrap(True)
-        self.scp_server_bind_warning_label.setStyleSheet("color:#b45309;")
+        self.scp_server_bind_warning_label.setStyleSheet("color:#475467;")
         self.scp_server_port_edit = QLineEdit()
         self.scp_server_port_edit.setPlaceholderText("예: 2223")
         self.scp_server_root_edit = QLineEdit()
@@ -403,7 +403,7 @@ class ScpDiagnosticsMixin:
             label.hide()
             return
         label.setText(support.message)
-        label.setStyleSheet("color:#b71c1c;")
+        label.setStyleSheet("color:#475467;")
         label.show()
 
     def _show_scp_support_warning(self, title: str, support: OperationResult) -> None:

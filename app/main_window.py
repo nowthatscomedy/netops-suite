@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Callable
 
 from PySide6.QtCore import QEvent, Qt, QTimer
-from PySide6.QtGui import QAction, QFont, QFontDatabase
+from PySide6.QtGui import QAction, QFont, QFontDatabase, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
     QDockWidget,
@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.app_state import AppState
+from app.guides import GuideCatalog, GuideDialog
 from app.models.update_models import DownloadedUpdate, UpdateCheckResult
 from app.ui.common import JobRunner, confirm_risky_action, make_menu_button
 from app.ui.tabs.ai_chat_tab import AiChatTab
@@ -39,16 +40,35 @@ from app.utils.app_icon import load_app_icon
 from app.version import __version__
 
 
+_GUIDE_CONTEXT_PROPERTY = "guideContextId"
+_MAIN_PAGE_KEY_PROPERTY = "mainPageKey"
+_MAIN_PAGE_CONTEXT_SPECS = (
+    ("interface_tab", "네트워크 설정", "interface", "interface"),
+    ("diagnostics_tab", "연결 진단", "diagnostics", "diagnostics"),
+    ("wireless_tab", "Wi-Fi 분석", "wireless", "wireless"),
+    ("inspector_tab", "장비 점검/백업", "inspector", "inspector"),
+    ("config_builder_tab", "CLI 설정 생성", "config_builder", "config-builder"),
+    ("ai_chat_tab", "NetOps 어시스턴트", "assistant", "assistant"),
+    ("settings_tab", "설정", "settings", "settings"),
+)
+
+
 class MainWindow(QMainWindow):
-    _MAIN_PAGE_KEYS = (
-        "interface",
-        "diagnostics",
-        "wireless",
-        "inspector",
-        "config_builder",
-        "assistant",
-        "settings",
-    )
+    _MAIN_PAGE_SPECS = _MAIN_PAGE_CONTEXT_SPECS
+    _MAIN_PAGE_KEYS = tuple(spec[2] for spec in _MAIN_PAGE_CONTEXT_SPECS)
+    _MAIN_GUIDE_IDS = tuple(spec[3] for spec in _MAIN_PAGE_CONTEXT_SPECS)
+    _DIAGNOSTIC_GUIDE_IDS = {
+        "ping": "diagnostics.ping",
+        "tcp": "diagnostics.tcp",
+        "dns": "diagnostics.dns",
+        "trace": "diagnostics.trace",
+        "iperf": "diagnostics.iperf",
+        "arp": "diagnostics.arp",
+        "subnet": "diagnostics.subnet",
+        "oui": "diagnostics.oui",
+        "transfer": "diagnostics.transfer",
+        "commands": "diagnostics.commands",
+    }
 
     def __init__(
         self,
@@ -65,6 +85,8 @@ class MainWindow(QMainWindow):
         self._active_workers = self._job_runner._active_workers
         self._update_busy = False
         self._startup_activated = False
+        self.guide_catalog = GuideCatalog.load()
+        self._guide_dialog: GuideDialog | None = None
         self.setWindowTitle("NetOps Suite")
         self._apply_locale_font()
         self._apply_window_icon()
@@ -134,13 +156,12 @@ class MainWindow(QMainWindow):
         self._report_startup("설정 화면 구성", "프로그램, 저장 위치, 외부 도구와 설정 관리 화면을 준비합니다.")
         self.settings_tab = SettingsTab(self.state)
 
-        self.tab_widget.addTab(self.interface_tab, "네트워크 설정")
-        self.tab_widget.addTab(self.diagnostics_tab, "연결 진단")
-        self.tab_widget.addTab(self.wireless_tab, "Wi-Fi 분석")
-        self.tab_widget.addTab(self.inspector_tab, "장비 점검/백업")
-        self.tab_widget.addTab(self.config_builder_tab, "CLI 설정 생성")
-        self.tab_widget.addTab(self.ai_chat_tab, "NetOps 어시스턴트")
-        self.tab_widget.addTab(self.settings_tab, "설정")
+        for attribute, title, page_key, guide_id in self._MAIN_PAGE_SPECS:
+            page = getattr(self, attribute)
+            page.setProperty(_MAIN_PAGE_KEY_PROPERTY, page_key)
+            page.setProperty(_GUIDE_CONTEXT_PROPERTY, guide_id)
+            self.tab_widget.addTab(page, title)
+        self._bind_diagnostic_guide_contexts()
 
         self.view_menu = QMenu("보기", self)
         self.toggle_log_view_action = QAction("애플리케이션 로그", self)
@@ -192,6 +213,18 @@ class MainWindow(QMainWindow):
         self.view_button.setMinimumHeight(28)
         self.view_button.setMaximumHeight(32)
         self.view_button.installEventFilter(self)
+        self.guide_action = QAction("도움말", self)
+        self.guide_action.setToolTip("현재 화면의 사용자 가이드를 엽니다 (F1)")
+        self.guide_action.setShortcut(QKeySequence("F1"))
+        self.guide_action.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.addAction(self.guide_action)
+        self.guide_button = QToolButton()
+        self.guide_button.setObjectName("sideUtilityButton")
+        self.guide_button.setAccessibleName("사용자 가이드")
+        self.guide_button.setDefaultAction(self.guide_action)
+        self.guide_button.setMinimumHeight(28)
+        self.guide_button.setMaximumHeight(32)
+        utility_row.addWidget(self.guide_button)
         utility_row.addWidget(self.admin_button)
         utility_row.addWidget(self.view_button)
         utility_row.addStretch(1)
@@ -236,6 +269,7 @@ class MainWindow(QMainWindow):
 
     def _connect_signals(self) -> None:
         self.restart_admin_action.triggered.connect(self._restart_as_admin)
+        self.guide_action.triggered.connect(lambda _checked=False: self.open_guide())
         self.tab_widget.currentChanged.connect(self._handle_main_tab_changed)
         self.tab_widget.currentChanged.connect(self._sync_nav_to_tab)
         self.nav_list.currentRowChanged.connect(self._handle_nav_changed)
@@ -250,6 +284,8 @@ class MainWindow(QMainWindow):
         self.settings_tab.integration_changed.connect(self._handle_integration_changed)
         self.diagnostics_tab.tool_settings_requested.connect(self._show_tool_settings)
         self.ai_chat_tab.tool_settings_requested.connect(self._show_tool_settings)
+        self.ai_chat_tab.feature_requested.connect(self.open_feature_route)
+        self.ai_chat_tab.guide_requested.connect(self.open_guide)
 
         self.state.log_message.connect(self.log_view.appendPlainText)
         self.interface_tab.status_message.connect(self.statusBar().showMessage)
@@ -263,10 +299,54 @@ class MainWindow(QMainWindow):
         self._sync_result_dock_action("tcp", self.diagnostics_tab.is_result_dock_visible("tcp"))
         self._sync_log_dock_state()
         self._sync_nav_to_tab(self.tab_widget.currentIndex())
+        for diagnostic in self.guide_catalog.errors:
+            self.state.logger.warning("User guide: %s", diagnostic)
 
     def _handle_nav_changed(self, row: int) -> None:
         if 0 <= row < self.tab_widget.count() and self.tab_widget.currentIndex() != row:
             self.tab_widget.setCurrentIndex(row)
+
+    def open_feature_route(self, route: str) -> bool:
+        """Open a stable public feature route emitted by the assistant."""
+
+        requested = str(route or "").strip()
+        if not requested:
+            return False
+        route_key = requested.casefold().replace("_", "-")
+        aliases = {
+            "ai-chat": "assistant",
+            "netops-assistant": "assistant",
+            "config-builder": "config-builder",
+            "configuration-builder": "config-builder",
+        }
+        route_key = aliases.get(route_key, route_key)
+
+        target_page = None
+        for attribute, _title, page_key, guide_id in self._MAIN_PAGE_SPECS:
+            public_routes = {
+                page_key.casefold().replace("_", "-"),
+                guide_id.casefold(),
+            }
+            if route_key in public_routes or any(
+                route_key.startswith(f"{candidate}.")
+                for candidate in public_routes
+            ):
+                target_page = getattr(self, attribute)
+                break
+        if target_page is None:
+            self.statusBar().showMessage(
+                f"연결된 NetOps 기능 화면을 찾을 수 없습니다: {requested}", 5000
+            )
+            return False
+
+        self.tab_widget.setCurrentWidget(target_page)
+        if target_page is self.diagnostics_tab and route_key.startswith("diagnostics."):
+            diagnostic_key = route_key.split(".", 2)[1]
+            select_tool = getattr(self.diagnostics_tab, "select_diagnostic_tab", None)
+            if callable(select_tool):
+                select_tool(diagnostic_key)
+        self.statusBar().showMessage("추천된 NetOps 기능 화면을 열었습니다.", 3000)
+        return True
 
     def eventFilter(self, watched, event) -> bool:
         if (
@@ -330,6 +410,266 @@ class MainWindow(QMainWindow):
     def _show_tool_settings(self, tool_key: str = "") -> None:
         self.tab_widget.setCurrentWidget(self.settings_tab)
         self.settings_tab.show_section("tools", tool_key)
+
+    @staticmethod
+    def _guide_id_for_widget(widget: QWidget | None) -> str:
+        if widget is None:
+            return ""
+        return str(widget.property(_GUIDE_CONTEXT_PROPERTY) or "").strip()
+
+    def _bind_diagnostic_guide_contexts(self) -> None:
+        tool_keys = tuple(getattr(self.diagnostics_tab, "_diagnostic_tool_keys", ()))
+        stack = getattr(self.diagnostics_tab, "diagnostic_stack", None)
+        if stack is None:
+            return
+        for index, tool_key in enumerate(tool_keys):
+            page = stack.widget(index)
+            if page is not None:
+                page.setProperty(
+                    _GUIDE_CONTEXT_PROPERTY,
+                    self._DIAGNOSTIC_GUIDE_IDS.get(str(tool_key), ""),
+                )
+
+    def main_guide_context_ids(self) -> tuple[str, ...]:
+        """Return guide IDs attached to the actual main-tab widgets."""
+
+        return tuple(
+            self._guide_id_for_widget(self.tab_widget.widget(index))
+            for index in range(self.tab_widget.count())
+        )
+
+    def diagnostic_guide_contexts(self) -> dict[str, str]:
+        """Return actual diagnostic tool keys and their attached guide IDs."""
+
+        tool_keys = tuple(getattr(self.diagnostics_tab, "_diagnostic_tool_keys", ()))
+        stack = getattr(self.diagnostics_tab, "diagnostic_stack", None)
+        return {
+            str(tool_key): self._guide_id_for_widget(
+                stack.widget(index) if stack is not None else None
+            )
+            for index, tool_key in enumerate(tool_keys)
+        }
+
+    def transfer_guide_context_ids(self) -> frozenset[str]:
+        """Enumerate context IDs reachable from the actual transfer selectors."""
+
+        role_combo = getattr(self.diagnostics_tab, "file_transfer_role_combo", None)
+        mode_combo = getattr(self.diagnostics_tab, "file_transfer_mode_combo", None)
+        if role_combo is None or mode_combo is None:
+            return frozenset()
+
+        contexts: set[str] = set()
+        for role_index in range(role_combo.count()):
+            role_value = int(role_combo.itemData(role_index) or 0)
+            role = "server" if role_value == 1 else "client"
+            for mode_index in range(mode_combo.count()):
+                mode_value = int(mode_combo.itemData(mode_index) or 0)
+                if mode_value == 1:
+                    protocols = ("scp",)
+                elif mode_value == 2:
+                    protocols = ("tftp",)
+                elif mode_value == 0:
+                    protocol_combo = getattr(
+                        self.diagnostics_tab,
+                        f"ftp_{role}_protocol_combo",
+                        None,
+                    )
+                    protocols = (
+                        tuple(
+                            str(protocol_combo.itemData(index) or "").casefold()
+                            for index in range(protocol_combo.count())
+                        )
+                        if protocol_combo is not None
+                        else ()
+                    )
+                else:
+                    protocols = ()
+                contexts.update(
+                    f"diagnostics.transfer.{protocol}.{role}"
+                    for protocol in protocols
+                    if protocol
+                )
+        return frozenset(contexts)
+
+    def guide_context_coverage_errors(self) -> tuple[str, ...]:
+        """Report structural or catalog drift in context-sensitive help coverage."""
+
+        errors: list[str] = []
+        main_contexts = self.main_guide_context_ids()
+        if self.tab_widget.count() != len(self._MAIN_PAGE_SPECS):
+            errors.append(
+                "main tab count does not match the registered main-page guide specs"
+            )
+        if any(not guide_id for guide_id in main_contexts):
+            errors.append("one or more main tabs have no guide context ID")
+        if main_contexts != self._MAIN_GUIDE_IDS:
+            errors.append(
+                "main-tab guide contexts differ from the registered page order "
+                f"(actual={main_contexts!r}, expected={self._MAIN_GUIDE_IDS!r})"
+            )
+
+        diagnostic_contexts = self.diagnostic_guide_contexts()
+        actual_tool_keys = set(diagnostic_contexts)
+        mapped_tool_keys = set(self._DIAGNOSTIC_GUIDE_IDS)
+        if actual_tool_keys != mapped_tool_keys:
+            missing = sorted(actual_tool_keys - mapped_tool_keys)
+            stale = sorted(mapped_tool_keys - actual_tool_keys)
+            errors.append(
+                "diagnostic guide mapping differs from actual tools "
+                f"(missing={missing}, stale={stale})"
+            )
+        for tool_key, guide_id in diagnostic_contexts.items():
+            expected = self._DIAGNOSTIC_GUIDE_IDS.get(tool_key, "")
+            if guide_id != expected:
+                errors.append(
+                    f"diagnostic tool {tool_key!r} has guide {guide_id!r}; "
+                    f"expected {expected!r}"
+                )
+
+        role_combo = getattr(self.diagnostics_tab, "file_transfer_role_combo", None)
+        mode_combo = getattr(self.diagnostics_tab, "file_transfer_mode_combo", None)
+        if role_combo is None or mode_combo is None:
+            errors.append("transfer guide selectors are unavailable")
+        else:
+            role_values = tuple(
+                int(role_combo.itemData(index) or 0)
+                for index in range(role_combo.count())
+            )
+            mode_values = tuple(
+                int(mode_combo.itemData(index) or 0)
+                for index in range(mode_combo.count())
+            )
+            if role_values != (0, 1):
+                errors.append(
+                    f"transfer role guide mapping is stale: {role_values!r}"
+                )
+            if mode_values != (0, 1, 2):
+                errors.append(
+                    f"transfer mode guide mapping is stale: {mode_values!r}"
+                )
+            for role in ("client", "server"):
+                protocol_combo = getattr(
+                    self.diagnostics_tab,
+                    f"ftp_{role}_protocol_combo",
+                    None,
+                )
+                protocol_values = (
+                    tuple(
+                        str(protocol_combo.itemData(index) or "").casefold()
+                        for index in range(protocol_combo.count())
+                    )
+                    if protocol_combo is not None
+                    else ()
+                )
+                if protocol_values != ("ftp", "ftps", "sftp"):
+                    errors.append(
+                        f"transfer {role} protocol guide mapping is stale: "
+                        f"{protocol_values!r}"
+                    )
+
+        transfer_contexts = self.transfer_guide_context_ids()
+        registered_transfer_contexts = {
+            entry.id
+            for entry in self.guide_catalog.entries
+            if entry.parent_id == "diagnostics.transfer"
+        }
+        if transfer_contexts != registered_transfer_contexts:
+            missing = sorted(transfer_contexts - registered_transfer_contexts)
+            stale = sorted(registered_transfer_contexts - transfer_contexts)
+            errors.append(
+                "transfer guide contexts differ from actual selectors "
+                f"(missing={missing}, stale={stale})"
+            )
+
+        context_ids = {
+            *main_contexts,
+            *diagnostic_contexts.values(),
+            *transfer_contexts,
+        }
+        for guide_id in sorted(context_ids):
+            if guide_id and self.guide_catalog.get(guide_id) is None:
+                errors.append(f"guide context is not registered exactly: {guide_id}")
+        return tuple(errors)
+
+    def current_guide_id(self) -> str:
+        current_page = self.tab_widget.currentWidget()
+        if current_page is self.diagnostics_tab:
+            current_tool = getattr(self.diagnostics_tab, "_current_tool_key", None)
+            if callable(current_tool):
+                tool_key = str(current_tool() or "")
+                if tool_key == "transfer":
+                    return self._current_transfer_guide_id()
+                diagnostic_page = self.diagnostics_tab.diagnostic_stack.currentWidget()
+                return self._guide_id_for_widget(diagnostic_page) or "diagnostics"
+        return self._guide_id_for_widget(current_page) or "getting-started"
+
+    def _current_transfer_guide_id(self) -> str:
+        role_combo = getattr(self.diagnostics_tab, "file_transfer_role_combo", None)
+        mode_combo = getattr(self.diagnostics_tab, "file_transfer_mode_combo", None)
+        if role_combo is None or mode_combo is None:
+            return "diagnostics.transfer"
+        role = "server" if int(role_combo.currentData() or 0) == 1 else "client"
+        mode_index = int(mode_combo.currentData() or 0)
+        if mode_index == 1:
+            protocol = "scp"
+        elif mode_index == 2:
+            protocol = "tftp"
+        else:
+            protocol_combo = getattr(
+                self.diagnostics_tab,
+                f"ftp_{role}_protocol_combo",
+                None,
+            )
+            protocol = (
+                str(protocol_combo.currentData() or "ftp").casefold()
+                if protocol_combo is not None
+                else "ftp"
+            )
+            if protocol not in {"ftp", "ftps", "sftp"}:
+                protocol = "ftp"
+        return f"diagnostics.transfer.{protocol}.{role}"
+
+    def open_guide(self, feature_id: str | None = None) -> bool:
+        """Open help for a stable guide ID, or for the current app context."""
+
+        if self._guide_dialog is None:
+            self._guide_dialog = GuideDialog(
+                self.guide_catalog,
+                context_provider=self.current_guide_id,
+                parent=self,
+            )
+        target = feature_id.strip() if isinstance(feature_id, str) else ""
+        if not target:
+            target = self.current_guide_id()
+        return self._guide_dialog.open_guide(target)
+
+    def _maybe_show_first_run_guide(self) -> None:
+        guide_config = self.state.app_config.get("guide", {})
+        if isinstance(guide_config, dict) and bool(guide_config.get("welcome_seen", False)):
+            return
+        welcome_entry = self.guide_catalog.get("getting-started")
+        if welcome_entry is None:
+            self.state.logger.warning(
+                "User guide welcome was not shown because getting-started is unavailable."
+            )
+            return
+        markdown, error = self.guide_catalog.read_markdown(welcome_entry)
+        if markdown is None:
+            self.state.logger.warning(
+                "User guide welcome was not shown: %s", error or "content unavailable"
+            )
+            return
+        if not self.open_guide(welcome_entry.id):
+            return
+
+        config = dict(self.state.app_config)
+        normalized_guide_config = dict(guide_config) if isinstance(guide_config, dict) else {}
+        normalized_guide_config["welcome_seen"] = True
+        config["guide"] = normalized_guide_config
+        try:
+            self.state.save_app_config(config)
+        except Exception as exc:
+            self.state.logger.warning("Failed to save guide welcome state: %s", exc)
 
     def _handle_integration_changed(self, integration: str) -> None:
         if integration == "iperf3":
@@ -434,6 +774,7 @@ class MainWindow(QMainWindow):
             return
         self._startup_activated = True
         QTimer.singleShot(0, self._start_visible_tab_initial_load)
+        QTimer.singleShot(0, self._maybe_show_first_run_guide)
 
     def _handle_main_tab_changed(self, index: int) -> None:
         if not self._startup_activated:
@@ -670,6 +1011,9 @@ class MainWindow(QMainWindow):
         startup_update_timer = getattr(self, "_startup_update_timer", None)
         if startup_update_timer is not None:
             startup_update_timer.stop()
+        guide_dialog = getattr(self, "_guide_dialog", None)
+        if guide_dialog is not None:
+            guide_dialog.close()
         for tab_name in ("diagnostics_tab", "wireless_tab", "inspector_tab", "ai_chat_tab", "settings_tab"):
             tab = getattr(self, tab_name, None)
             shutdown = getattr(tab, "shutdown", None)

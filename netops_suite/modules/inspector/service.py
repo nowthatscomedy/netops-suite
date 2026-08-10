@@ -57,6 +57,12 @@ class InspectorRunResult:
     results: list[dict[str, Any]]
 
 
+@dataclass(frozen=True, slots=True)
+class CustomCommandValidationSummary:
+    command_count: int
+    variable_names: tuple[str, ...]
+
+
 class InspectorService:
     """GUI-friendly wrapper around the migrated netops-inspector runtime."""
 
@@ -527,6 +533,28 @@ class InspectorService:
 
             return read_command_file(path)
 
+    def validate_custom_commands(
+        self,
+        commands: list[str],
+        devices: list[dict[str, Any]],
+    ) -> CustomCommandValidationSummary:
+        self._ensure_runtime_modules_current()
+        with self._runtime_import_path():
+            from core.command_patterns import prepare_custom_commands
+
+            prepared = prepare_custom_commands(commands, devices)
+        return CustomCommandValidationSummary(
+            command_count=prepared.command_count,
+            variable_names=prepared.variable_names,
+        )
+
+    def validate_custom_command_file(
+        self,
+        path: str,
+        devices: list[dict[str, Any]],
+    ) -> CustomCommandValidationSummary:
+        return self.validate_custom_commands(self.read_command_file(path), devices)
+
     def run(
         self,
         request: InspectorRunRequest,
@@ -545,6 +573,7 @@ class InspectorService:
         self._raise_if_cancelled(cancel_event)
         self._ensure_runtime_modules_current()
         with self._runtime_import_path(), self._working_directory():
+            from core.command_patterns import prepare_custom_commands
             from core.file_handler import save_results_to_excel
             from core.inspector import NetworkInspector
             from core.settings import load_settings, resolve_inspection_column_order
@@ -562,6 +591,10 @@ class InspectorService:
             commands = list(request.commands or [])
             if request.command_path:
                 commands = self.read_command_file(request.command_path)
+
+            prepared_custom_commands = None
+            if request.mode == "custom_commands":
+                prepared_custom_commands = prepare_custom_commands(commands, devices)
 
             inspector = NetworkInspector(
                 request.output_name,
@@ -615,9 +648,10 @@ class InspectorService:
                     column_aliases=settings.column_aliases,
                 )
             elif request.mode == "custom_commands":
-                if not commands:
-                    raise ValueError("사용자 명령 파일 또는 명령 목록이 필요합니다.")
-                inspector.run_custom_commands(commands)
+                assert prepared_custom_commands is not None
+                inspector.run_custom_commands(
+                    prepared_custom_commands.commands_by_device
+                )
                 self._raise_if_cancelled(cancel_event)
                 result_excel = inspector.output_excel.replace(
                     "inspection_results", "command_results"

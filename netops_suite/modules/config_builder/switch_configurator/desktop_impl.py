@@ -120,6 +120,13 @@ def normalize_user_save_path(
     return Path(f"{path}{normalized_default}")
 
 
+def _status_badge_style(accent: str = "#98a2b3", *, padding: str = "3px 6px") -> str:
+    return (
+        f"padding: {padding}; border: 1px solid #d0d5dd; border-left: 3px solid {accent}; "
+        "border-radius: 4px; background: #ffffff; color: #344054;"
+    )
+
+
 def _app_state_read_paths() -> list[Path]:
     paths = [Path(APP_STATE_PATH)]
     try:
@@ -202,14 +209,14 @@ QGroupBox {
     padding: 12px 0 0 0;
     background: transparent;
     border: 0;
-    border-top: 1px solid #e4e7ec;
 }
 QGroupBox::title {
     subcontrol-origin: margin;
     subcontrol-position: top left;
     left: 0;
-    padding: 0 8px 0 0;
-    background: #ffffff;
+    padding: 0 0 0 7px;
+    background: transparent;
+    border-left: 3px solid #d0d5dd;
 }
 QPushButton {
     padding: 2px 7px;
@@ -2221,7 +2228,7 @@ class SwitchConfigBuilderWidget(QWidget):
         self.selected_device_label.setObjectName("SelectionName")
         self.cli_status_label = QLabel("CLI 대기")
         self.cli_status_label.setWordWrap(True)
-        self.cli_status_label.setStyleSheet("padding: 3px 6px; border-radius: 6px; background: #eef2f6; color: #22303c;")
+        self.cli_status_label.setStyleSheet(_status_badge_style("#98a2b3"))
         self.work_state_label = QLabel("작업 상태 · 대기")
         self.work_state_label.setWordWrap(True)
         self.work_state_label.setStyleSheet("color: #5f6b76;")
@@ -3888,7 +3895,7 @@ class SwitchConfigBuilderWidget(QWidget):
             self.selected_device_label.setText("장비 미선택")
             self.selected_device_label.setToolTip("")
             self.cli_status_label.setText("CLI 대기")
-            self.cli_status_label.setStyleSheet("padding: 3px 6px; border-radius: 6px; background: #eef2f6; color: #22303c;")
+            self.cli_status_label.setStyleSheet(_status_badge_style("#98a2b3"))
             self.work_state_label.setText("작업 상태 · 대기")
             self.work_state_label.setStyleSheet("color: #5f6b76;")
             self.profile_effect_label.setText("입력값 요약")
@@ -3914,10 +3921,10 @@ class SwitchConfigBuilderWidget(QWidget):
         line_count = len([line for line in (rendered.text.splitlines() if rendered else []) if line.strip()])
         if rendered:
             self.cli_status_label.setText(f"복사 가능 · {line_count}줄 · 오류 {error_count} · 경고 {warning_count}")
-            self.cli_status_label.setStyleSheet("padding: 3px 6px; border-radius: 6px; background: #eef8eb; color: #204227;")
+            self.cli_status_label.setStyleSheet(_status_badge_style("#16a34a"))
         else:
             self.cli_status_label.setText(f"확인 필요 · 오류 {error_count} · 경고 {warning_count}")
-            self.cli_status_label.setStyleSheet("padding: 3px 6px; border-radius: 6px; background: #fff1ed; color: #6f261c;")
+            self.cli_status_label.setStyleSheet(_status_badge_style("#dc2626"))
         state_style = {
             ROW_STATE_PENDING: ("작업 상태 · 대기", "color: #5f6b76;"),
             ROW_STATE_COPIED: ("작업 상태 · 복사 완료", "color: #1f4f85;"),
@@ -4893,28 +4900,21 @@ class SwitchConfigBuilderWidget(QWidget):
         issue_rows = sum(1 for issues in self.current_row_issues.values() if any(issue.level == "error" for issue in issues))
         if not self.current_file_path:
             text = "파일을 열면 저장 상태를 표시합니다."
-            color = "#22303c"
-            background = "#eef2f6"
+            accent = "#98a2b3"
         elif not self.auto_save_check.isChecked():
             text = "수동 저장 모드입니다."
-            color = "#5a4314"
-            background = "#fff8e4"
+            accent = "#d97706"
         elif issue_rows and self.allow_error_autosave_check.isChecked():
             text = f"오류 {issue_rows}행 포함 상태로 실시간 저장 중입니다."
-            color = "#7a2e1c"
-            background = "#fff1ed"
+            accent = "#dc2626"
         elif issue_rows:
             text = f"오류 {issue_rows}행 때문에 자동 저장이 보류될 수 있습니다."
-            color = "#7a2e1c"
-            background = "#fff1ed"
+            accent = "#dc2626"
         else:
             text = "오류 없이 실시간 저장 중입니다."
-            color = "#204227"
-            background = "#eef8eb"
+            accent = "#16a34a"
         self.save_status_label.setText(text)
-        self.save_status_label.setStyleSheet(
-            f"padding: 4px 6px; border-radius: 6px; background: {background}; color: {color};"
-        )
+        self.save_status_label.setStyleSheet(_status_badge_style(accent, padding="4px 6px"))
 
     def _update_summary(self) -> None:
         total_rows = len(self.table_model.rows)

@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up uv and Python
         uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
@@ -38,6 +40,34 @@ jobs:
 
       - name: Audit installed dependencies
         run: python scripts/audit_dependencies.py
+
+      - name: Validate user guide contract
+        run: |
+          python scripts/validate_guides.py
+          python scripts/generate_guides.py build --check
+
+      - name: Validate pull request guide impact
+        if: github.event_name == 'pull_request'
+        shell: powershell
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GUIDE_EXCEPTION: ${{ contains(github.event.pull_request.labels.*.name, 'guide-not-required') }}
+          GUIDE_EXCEPTION_REASON: ${{ github.event.pull_request.body }}
+        run: |
+          $guideArgs = @(
+            "scripts/validate_guides.py",
+            "--base", $env:BASE_SHA,
+            "--head", $env:HEAD_SHA
+          )
+          if ($env:GUIDE_EXCEPTION -eq "true") {
+            $guideArgs += @(
+              "--allow-guide-not-required",
+              "--exception-reason", $env:GUIDE_EXCEPTION_REASON
+            )
+          }
+          & python @guideArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Lint Python sources
         run: python -m ruff check .

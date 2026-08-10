@@ -26,7 +26,21 @@ python scripts/run_offscreen_qa.py --output C:\Temp\netops-offscreen-qa
 - 프로그램 및 저장 위치 설정
 - AI 채팅의 사용자→시스템→도구 결과 순서와 이미지 붙여넣기
 - 장비 점검 프로파일의 점검/백업 명령 분리와 YAML 미리보기
+- 7개 주요 화면의 사용자 가이드용 1280×800 이미지 생성
 - 1024×680, 1280×800, 1600×900 레이아웃 기본 조건
 
 각 단계의 PNG, `report.json`, `report.md`가 출력 폴더에 저장됩니다. 실패해도 가능한
 나머지 시나리오는 계속 실행되어 한 번에 전체 결함 목록을 확인할 수 있습니다.
+
+가이드에 포함할 주요 화면 이미지를 안정된 파일명으로 함께 내보내려면 다음처럼
+실행합니다.
+
+```powershell
+python scripts/run_offscreen_qa.py `
+  --config qa\offscreen\guide_scenarios.json `
+  --output C:\Temp\netops-offscreen-qa `
+  --guide-assets-output docs\user\ko\assets\generated
+```
+
+`guide_asset`이 지정된 시나리오만 복사되며, 대상 폴더에는 이미지와 함께
+`capture-manifest.json`이 생성됩니다.

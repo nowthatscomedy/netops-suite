@@ -400,9 +400,7 @@ class WirelessTab(QWidget):
         self._set_info_label("receive_rate", f"{info.receive_rate_mbps} Mbps" if info.receive_rate_mbps else "-")
         self._set_info_label("transmit_rate", f"{info.transmit_rate_mbps} Mbps" if info.transmit_rate_mbps else "-")
 
-        state_lower = info.state.lower()
-        state_color = "#1b5e20" if ("connected" in state_lower or "연결" in info.state) else "#b71c1c"
-        self.info_labels["state"].setStyleSheet(f"font-size:13px; font-weight:700; color:{state_color};")
+        self.info_labels["state"].setStyleSheet("font-size:13px; font-weight:700; color:#182230;")
         self._log_wireless_changes(info)
         self.previous_info = info
         self._apply_nearby_view()
