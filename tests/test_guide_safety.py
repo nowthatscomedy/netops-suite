@@ -9,6 +9,7 @@ from scripts.generate_guides import (
     GuideBuildError,
     _validated_bundle_source,
     build_bundle,
+    compare_bundle,
 )
 from scripts.validate_guides import _git_changed_paths
 
@@ -67,6 +68,17 @@ def test_guide_bundle_source_accepts_regular_file_inside_locale_root(
     source.write_text("offline guide asset\n", encoding="utf-8")
 
     assert _validated_bundle_source(source_root, source) == source.resolve()
+
+
+def test_guide_bundle_comparison_ignores_checkout_newline_style(tmp_path: Path) -> None:
+    expected = tmp_path / "expected"
+    actual = tmp_path / "actual"
+    expected.mkdir()
+    actual.mkdir()
+    (expected / "guide_manifest.json").write_bytes(b'{"version": 1}\n')
+    (actual / "guide_manifest.json").write_bytes(b'{"version": 1}\r\n')
+
+    assert compare_bundle(expected, actual) == []
 
 
 def test_git_changed_paths_includes_deletions_and_both_rename_paths(

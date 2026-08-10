@@ -43,6 +43,13 @@ except ModuleNotFoundError:  # Direct execution puts scripts/ on sys.path.
 
 
 DEFAULT_OUTPUT = "app/resources/guides"
+TEXT_BUNDLE_SUFFIXES = {
+    ".json",
+    ".md",
+    ".txt",
+    ".yaml",
+    ".yml",
+}
 DEFAULT_CAPABILITY_SOURCE = "app/assistant/capabilities.py"
 DEFAULT_REQUIRED_SECTIONS = [
     "목적",
@@ -428,7 +435,10 @@ def _tree_bytes(root: Path) -> dict[str, bytes]:
         if not path.is_file():
             continue
         resolved = _validated_bundle_source(root, path)
-        files[path.relative_to(root).as_posix()] = resolved.read_bytes()
+        content = resolved.read_bytes()
+        if resolved.suffix.casefold() in TEXT_BUNDLE_SUFFIXES:
+            content = content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+        files[path.relative_to(root).as_posix()] = content
     return files
 
 
