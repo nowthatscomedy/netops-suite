@@ -143,6 +143,7 @@ show vlan {{ vlan_id }}
 - GitHub Releases의 최신 정식 버전을 확인합니다.
 - 설치 파일은 SHA-256으로 파일 무결성을 검증한 뒤 실행합니다.
 - SHA-256은 다운로드 파일 변조 확인용이며, 게시자 신뢰는 Windows 코드서명 정보로 별도 확인해야 합니다.
+- 기본 Program Files 설치를 상위 버전으로 업데이트하면 기존 실행 파일과 PyInstaller 런타임을 함께 임시 백업한 뒤 새 페이로드로 교체합니다. 성공한 경우에만 이전 백업 제거를 시도하며 `%LOCALAPPDATA%\NetOps Suite`의 사용자 데이터와 설치 폴더 루트의 알 수 없는 파일은 정리하지 않습니다. 단, 새 배포본과 이름이 같은 루트 파일은 정상 설치 과정에서 덮어쓸 수 있습니다.
 
 ## 테스트
 
@@ -170,7 +171,7 @@ gitleaks dir --no-banner --redact .
 ```powershell
 pip install -r requirements-dev-lock.txt
 pip install "pyinstaller==6.21.0" "pyinstaller-hooks-contrib==2026.6"
-powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.0.10 -Clean
+powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.0.11 -Clean
 ```
 
 Windows 설치 파일 빌드에는 Inno Setup 6가 필요합니다.
@@ -203,7 +204,7 @@ GitHub Actions 릴리즈 빌드는 `workflow_dispatch`로 수동 실행하며, �
 ```powershell
 $env:WINDOWS_CODESIGN_CERT_PATH = "C:\path\codesign.pfx"
 $env:WINDOWS_CODESIGN_CERT_PASSWORD = "<pfx password>"
-powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.0.10 -Clean -RequireCodeSigning
+powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.0.11 -Clean -RequireCodeSigning
 ```
 
 ## 프로젝트 구조

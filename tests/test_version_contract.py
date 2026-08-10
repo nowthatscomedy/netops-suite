@@ -27,6 +27,7 @@ def test_release_workflow_gates_publish_and_binds_it_to_checked_out_commit():
     assert "python -m ruff check ." in workflow
     assert "python -m compileall -q main.py app netops_suite qa scripts tests" in workflow
     assert "python -m pytest -q" in workflow
+    assert ".\\scripts\\test_installer_upgrade.ps1" in workflow
     assert "Gitleaks.Gitleaks" in workflow
     assert "gitleaks git --no-banner --redact --exit-code 1" in workflow
     assert "gitleaks dir --no-banner --redact --exit-code 1" in workflow
@@ -171,6 +172,8 @@ def test_installer_and_repository_release_safety_contract():
     integration_readme = Path("README_NETOPS_SUITE.md").read_text(encoding="utf-8")
 
     assert "MinVersion=10.0.17763" in installer
+    assert "CloseApplications=yes" in installer
+    assert "RedirectionGuard=yes" in installer
     for secret_pattern in ("*.pfx", "*.p12", "*.pvk", "*.key", "*.pem"):
         assert secret_pattern in gitignore
     assert f"-Version {source_version} -Clean" in readme
@@ -178,6 +181,102 @@ def test_installer_and_repository_release_safety_contract():
     assert "공식 GitHub 릴리즈는 기본적으로 Windows 코드서명을 필수로 검증" in readme
     assert "allow_unsigned_release" in readme
     assert "75 passed" not in integration_readme
+
+
+def test_installer_upgrade_cleanup_is_limited_to_registered_app_runtime():
+    installer = Path("installer/netops-suite.iss").read_text(encoding="utf-8")
+    normalized_installer = installer.casefold()
+
+    assert "[installdelete]" not in normalized_installer
+    assert (
+        'source: "{#sourcedir}\\netopssuite.exe"; destdir: "{app}"; '
+        "flags: ignoreversion"
+    ) in normalized_installer
+    assert "beforeinstall: rotatemanagedruntime" not in normalized_installer
+    assert (
+        'source: "{#sourcedir}\\*"; destdir: "{app}"; '
+        'excludes: "\\netopssuite.exe"'
+    ) in normalized_installer
+
+    for forbidden_target in (
+        'name: "{app}"',
+        'name: "{app}\\*',
+        "{localappdata}",
+        "{userappdata}",
+        "%localappdata%",
+        "\\config",
+        "\\logs",
+    ):
+        assert forbidden_target not in normalized_installer
+
+    assert (
+        "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\"
+        "{E5B8B0F9-5B63-4A5F-BB0A-89F14E37E7B8}_is1"
+    ) in installer
+    assert "RegQueryStringValue(" in installer
+    assert "HKLM64, NetOpsUninstallKey, 'InstallLocation'" in installer
+    assert "HKLM64, NetOpsUninstallKey, 'DisplayVersion'" in installer
+    assert "NormalizePath(RegisteredInstallLocation)" in installer
+    assert "NormalizePath(ExpandConstant('{app}'))" in installer
+    assert "CompareText(RegisteredInstallLocation, CurrentInstallLocation) = 0" in installer
+    assert "if not FileExists(ManagedExecutablePath) then" in installer
+    assert "IsUnderProgramFiles(CurrentInstallLocation)" in installer
+    assert "HasReparsePointInPath(ManagedRuntimePath)" in installer
+    assert "HasReparsePointInPath(RuntimeBackupPath)" in installer
+    assert "TryCompareSemanticVersions(" in installer
+    assert "ComparePrereleaseVersions(" in installer
+    assert "IsStrictVersionUpgrade(InstalledVersion)" in installer
+    assert "RenameFile(ManagedRuntimePath, RuntimeBackupPath)" in installer
+    assert "RenameFile(RuntimeBackupPath, ManagedRuntimePath)" in installer
+    assert re.search(
+        r"RenameFile\(\s*ManagedExecutablePath,\s*ExecutableBackupPath\s*\)",
+        installer,
+    )
+    assert re.search(
+        r"RenameFile\(\s*ExecutableBackupPath,\s*ManagedExecutablePath\s*\)",
+        installer,
+    )
+    assert "'.netops-suite-runtime-backup'" in installer
+    assert "'.netops-suite-executable-backup.exe'" in installer
+    assert ".netops-suite-runtime-backup-{#AppVersion}" not in installer
+    assert "if FileExists(ManagedRuntimePath)" in installer
+    assert "if CurStep = ssInstall then" in installer
+    assert "RuntimeBackupMarkerTempPath" in installer
+    assert "RemoveAbandonedRuntimeMarkerTemp" in installer
+    assert "RuntimeBackupInProgressMarkerPath" in installer
+    assert "RuntimeBackupCommittedMarkerPath" in installer
+    assert "MarkerIncomingVersionMatches(" in installer
+    assert "if CurStep = ssDone" in installer
+    assert "if RuntimeBackupActive and not InstallCommitted" in installer
+    assert "function PrepareToInstall(var NeedsRestart: Boolean): String;" in installer
+    assert "if VersionComparison < 0" in installer
+    assert "%LOCALAPPDATA%" not in installer
+    assert "{localappdata}" not in normalized_installer
+    assert "powershell" not in normalized_installer
+
+
+def test_release_workflow_runs_real_installer_upgrade_transaction_gate():
+    workflow = Path(".github/workflows/release.yml").read_text(encoding="utf-8")
+    upgrade_test = Path("scripts/test_installer_upgrade.ps1").read_text(encoding="utf-8")
+
+    assert workflow.index(".\\scripts\\test_installer_upgrade.ps1") < workflow.index(
+        "- name: Build Installer"
+    )
+    for scenario in (
+        "obsolete.txt",
+        "cross-version-recovery",
+        "partial-marker-recovery",
+        "prerelease-to-stable",
+        "failed-upgrade",
+        "interrupted-followup-failure",
+        "committed-backup-cleanup-retry",
+        "untrusted-marker",
+        "downgrade",
+        "manual-iperf",
+        "user-data",
+    ):
+        assert scenario in upgrade_test
+    assert "Installer upgrade transaction integration test passed." in upgrade_test
 
 
 def test_release_build_bundles_only_existing_repository_data_paths():
