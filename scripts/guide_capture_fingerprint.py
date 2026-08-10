@@ -31,6 +31,19 @@ CAPTURE_PIPELINE_METHODS = (
 HANDLER_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 OBJECT_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.:-]*$")
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+TEXT_SOURCE_SUFFIXES = {
+    ".bat",
+    ".cmd",
+    ".json",
+    ".md",
+    ".ps1",
+    ".py",
+    ".spec",
+    ".toml",
+    ".txt",
+    ".yaml",
+    ".yml",
+}
 
 
 class CaptureFingerprintError(ValueError):
@@ -52,6 +65,14 @@ def _sha256_bytes(value: bytes) -> str:
 
 def _sha256_json(value: Any) -> str:
     return _sha256_bytes(_canonical_json(value))
+
+
+def _canonical_source_bytes(path: Path, content: bytes) -> bytes:
+    """Make text fingerprints independent of checkout newline settings."""
+
+    if path.suffix.casefold() not in TEXT_SOURCE_SUFFIXES:
+        return content
+    return content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
 
 
 def _safe_repo_path(repo_root: Path, value: str) -> Path:
@@ -217,7 +238,7 @@ def _source_metadata(
     entries: list[dict[str, Any]] = []
     for path in _expand_source_paths(resolved_root, source_paths):
         try:
-            content = path.read_bytes()
+            content = _canonical_source_bytes(path, path.read_bytes())
         except OSError as exc:
             raise CaptureFingerprintError(f"cannot read screenshot source {path}: {exc}") from exc
         entries.append(

@@ -201,7 +201,7 @@ class OffscreenQaHarness:
     )
     source_path = tmp_path / "app" / "page.py"
     source_path.parent.mkdir(parents=True)
-    source_path.write_text("PAGE_TITLE = 'first'\n", encoding="utf-8")
+    source_path.write_bytes(b"PAGE_TITLE = 'first'\n")
     config = {
         "schema_version": 1,
         "application": "NetOps Suite",
@@ -218,6 +218,10 @@ class OffscreenQaHarness:
     }
 
     initial = build_capture_fingerprint(tmp_path, config, scenario)
+    source_path.write_bytes(b"PAGE_TITLE = 'first'\r\n")
+    windows_newlines = build_capture_fingerprint(tmp_path, config, scenario)
+    assert windows_newlines == initial
+
     changed_contract = build_capture_fingerprint(
         tmp_path,
         config,
