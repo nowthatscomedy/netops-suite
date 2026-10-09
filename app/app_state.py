@@ -40,7 +40,6 @@ from app.utils.file_utils import (
     default_scp_profiles,
     default_scp_runtime,
     default_tftp_runtime,
-    default_vendor_presets,
     ensure_runtime_files,
     load_json,
     migrate_config_directory,
@@ -178,7 +177,10 @@ class AppState(QObject):
         if should_save_app_config:
             save_json(self.paths.app_config, self.app_config)
         profiles = [IPProfile.from_dict(item) for item in load_json(self.paths.ip_profiles, [])]
-        legacy_presets = load_json(self.paths.vendor_presets, [])
+        # vendor_presets.json predates IP profiles. Merge whatever it still
+        # holds, then remove it; unreadable files are left untouched.
+        legacy_file = load_json(self.paths.vendor_presets, None)
+        legacy_presets = legacy_file if isinstance(legacy_file, list) else []
         migrated_legacy = bool(legacy_presets)
         existing_names = {profile.name.casefold() for profile in profiles if profile.name}
         for item in legacy_presets:
@@ -197,7 +199,11 @@ class AppState(QObject):
         self.tftp_runtime = loaded_tftp_runtime if isinstance(loaded_tftp_runtime, dict) else {}
         if migrated_legacy:
             save_json(self.paths.ip_profiles, [profile.to_dict() for profile in self.ip_profiles])
-            save_json(self.paths.vendor_presets, [])
+        if isinstance(legacy_file, list):
+            try:
+                Path(self.paths.vendor_presets).unlink()
+            except OSError:
+                pass
         self.config_reloaded.emit()
         if hasattr(self, "logger"):
             if should_save_app_config:
@@ -297,7 +303,6 @@ class AppState(QObject):
             "scp_profiles": default_scp_profiles(),
             "scp_runtime": default_scp_runtime(),
             "tftp_runtime": default_tftp_runtime(),
-            "vendor_presets": default_vendor_presets(),
         }
         current_config_dir = Path(current_paths.config_dir).resolve(strict=False)
         target_config_dir = Path(target_paths.config_dir).resolve(strict=False)

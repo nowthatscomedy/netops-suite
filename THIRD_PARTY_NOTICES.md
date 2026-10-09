@@ -23,10 +23,8 @@ publishing source archives or Windows installer builds.
 | tftpy | MIT |
 | msoffcrypto-tool | MIT |
 | xlrd | BSD |
-| colorama | BSD |
 | rich | MIT |
 | Pygments | BSD-2-Clause |
-| InquirerPy | MIT |
 
 ## Optional Legacy SSH Runtime
 

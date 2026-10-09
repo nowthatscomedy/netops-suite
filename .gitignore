@@ -21,12 +21,9 @@ dist/
 *.pem
 
 /data/
-logs/app.log
-logs/exports/*
-!logs/.gitkeep
-!logs/exports/.gitkeep
 
-# Local runtime data created while running from source.
+# Local runtime data created by older versions when running from source.
+/logs/
 /inspector/
 /config_builder/
 /custom_parsers/
@@ -38,6 +35,7 @@ config/app_config.json
 config/*_runtime.json
 config/public_iperf_servers_cache.json
 config/oui_cache.json
+config/vendor_presets.json
 config/ftp_keys/*
 !config/ftp_keys/.gitkeep
 

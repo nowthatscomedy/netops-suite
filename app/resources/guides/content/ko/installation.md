@@ -69,6 +69,7 @@
 - 업데이트 설치 파일은 검증 후 앱이 안내한 다운로드 경로에 남을 수 있습니다.
 - 이전 버전이 `logs\exports`, `inspector\runs`, `config_builder\outputs`에 저장한 결과는 첫 실행 때 `results`로 옮겨집니다. 같은 이름의 파일이 이미 있으면 덮어쓰지 않고 원래 위치에 남깁니다.
 - 제거된 AI 기능이 남긴 모델 목록 캐시(`config\ai_model_catalog_cache.json`)는 첫 실행 때 삭제됩니다. 설정, 프로파일, 결과, 로그는 삭제하지 않습니다.
+- 초기 버전이 쓰던 `config\vendor_presets.json`은 남은 항목을 IP 프로파일로 합친 뒤 삭제됩니다. 파일을 읽을 수 없으면 그대로 둡니다.
 
 ## 주의사항
 

@@ -292,8 +292,6 @@ $buildDir = Join-Path $repoRoot "build"
 $distDir = Join-Path $repoRoot "dist"
 $stagingDir = Join-Path $buildDir "staging"
 $stagingConfigDir = Join-Path $stagingDir "config"
-$stagingLogsDir = Join-Path $stagingDir "logs"
-$stagingLogsExportsDir = Join-Path $stagingLogsDir "exports"
 $stagingInspectorRuntimeDir = Join-Path $stagingDir "inspector_runtime"
 $releaseDir = Join-Path $distDir "release"
 $guideBundleDir = Join-Path $repoRoot "app\resources\guides"
@@ -312,7 +310,6 @@ if ($Clean) {
 }
 
 New-Item -ItemType Directory -Force -Path $stagingConfigDir | Out-Null
-New-Item -ItemType Directory -Force -Path $stagingLogsExportsDir | Out-Null
 New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
 
 $numericVersion = $normalizedVersion.Split('-', 2)[0].Split('+', 2)[0].Split('.')
@@ -353,14 +350,11 @@ Set-Content -LiteralPath $versionInfoPath -Value $versionInfo -Encoding ASCII
 Copy-Item -LiteralPath (Join-Path $repoRoot "config\ip_profiles.json") -Destination $stagingConfigDir -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "config\ftp_profiles.json") -Destination $stagingConfigDir -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "config\scp_profiles.json") -Destination $stagingConfigDir -Force
-Copy-Item -LiteralPath (Join-Path $repoRoot "config\vendor_presets.json") -Destination $stagingConfigDir -Force
 Copy-InspectorRuntimePayload `
     -SourceDir (Join-Path $repoRoot "netops_suite\modules\inspector_runtime") `
     -DestinationDir $stagingInspectorRuntimeDir `
     -RepositoryRoot $repoRoot
 
-Set-Content -LiteralPath (Join-Path $stagingLogsDir ".gitkeep") -Value "" -Encoding UTF8
-Set-Content -LiteralPath (Join-Path $stagingLogsExportsDir ".gitkeep") -Value "" -Encoding UTF8
 
 $pyInstallerArgs = @(
     "-m", "PyInstaller",
@@ -377,7 +371,6 @@ $pyInstallerArgs = @(
     "--hidden-import=msoffcrypto",
     "--hidden-import=xlrd",
     "--add-data=$(Format-PyInstallerBundleArg -Source $stagingConfigDir -Destination 'config')",
-    "--add-data=$(Format-PyInstallerBundleArg -Source $stagingLogsDir -Destination 'logs')",
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'assets\icons') -Destination 'assets/icons')",
     "--add-data=$(Format-PyInstallerBundleArg -Source $guideBundleDir -Destination 'app/resources/guides')",
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'netops_suite\modules\inspector\vendor_profiles') -Destination 'netops_suite/modules/inspector/vendor_profiles')",

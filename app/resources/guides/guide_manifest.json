@@ -25,7 +25,6 @@
       "route": "getting-started",
       "source_paths": [
         "app/main_window.py",
-        "app/ui/tabs/a*_tab.py",
         "README.md",
         "app/ui/home.py",
         "app/ui/common/disclosure.py",

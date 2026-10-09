@@ -34,7 +34,6 @@ from app.ui.dialogs.inspector_profile_dialog import (
     InspectorProfileDialog,
     PythonParserDialog,
 )
-from app.ui.tabs.artifacts_tab import ArtifactsTab
 from app.ui.tabs.interface_tab import InterfaceTab
 from app.ui.tabs.inspector_tab import InspectorTab
 from app.ui.tabs.config_builder_tab import ConfigBuilderTab
@@ -1763,33 +1762,6 @@ def test_inspector_tab_top_sections_use_white_background(qt_app, tmp_path: Path)
         tab.close()
 
 
-def test_artifacts_tab_shortens_path_column_and_keeps_table_readable(
-    qt_app, tmp_path: Path
-):
-    data_root = tmp_path / "data"
-    logs_dir = tmp_path / "logs"
-    exports_dir = tmp_path / "exports"
-    deep_path = logs_dir / "sessions" / "2026" / "run.log"
-    deep_path.parent.mkdir(parents=True)
-    deep_path.write_text("ok", encoding="utf-8")
-    state = SimpleNamespace(
-        paths=SimpleNamespace(
-            logs_dir=logs_dir, exports_dir=exports_dir, data_root=data_root
-        ),
-    )
-
-    tab = ArtifactsTab(state)
-    try:
-        assert tab.table.minimumHeight() >= 220
-        assert tab.table.rowCount() == 1
-        path_item = tab.table.item(0, 3)
-        assert path_item.toolTip() == str(deep_path)
-        assert path_item.text() != str(deep_path)
-        assert "..." in path_item.text()
-    finally:
-        tab.close()
-
-
 def test_main_window_uses_purpose_based_tab_labels_and_step_hints(
     qt_app, tmp_path: Path
 ):
@@ -2140,3 +2112,36 @@ def test_inspector_folder_open_failure_is_reported(qt_app, tmp_path, monkeypatch
         assert "결과 폴더 열기 실패: denied" in tab.log_view.toPlainText()
     finally:
         tab.close()
+
+
+def test_legacy_vendor_presets_are_merged_into_ip_profiles_then_removed(
+    qt_app, tmp_path: Path
+):
+    state = AppState(tmp_path)
+    legacy_file = Path(state.paths.vendor_presets)
+    assert not legacy_file.exists()
+    state.shutdown()
+
+    legacy_file.write_text(
+        '[{"name": "Old preset", "local_ip": "192.0.2.10", "prefix": 24}]',
+        encoding="utf-8",
+    )
+    state = AppState(tmp_path)
+    try:
+        assert "Old preset" in [profile.name for profile in state.ip_profiles]
+        assert not legacy_file.exists()
+    finally:
+        state.shutdown()
+
+
+def test_unreadable_legacy_vendor_presets_file_is_kept(qt_app, tmp_path: Path):
+    state = AppState(tmp_path)
+    legacy_file = Path(state.paths.vendor_presets)
+    state.shutdown()
+    legacy_file.write_text("{not json", encoding="utf-8")
+
+    state = AppState(tmp_path)
+    try:
+        assert legacy_file.read_text(encoding="utf-8") == "{not json"
+    finally:
+        state.shutdown()

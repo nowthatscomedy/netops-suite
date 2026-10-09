@@ -717,10 +717,6 @@ def default_ip_profiles() -> list[dict[str, Any]]:
     ]
 
 
-def default_vendor_presets() -> list[dict[str, Any]]:
-    return []
-
-
 def default_ftp_profiles() -> list[dict[str, Any]]:
     return []
 
@@ -836,10 +832,6 @@ def ensure_runtime_files(paths: AppPaths) -> None:
         paths.tftp_runtime: (
             default_tftp_runtime(),
             paths.root / "config" / "tftp_runtime.json",
-        ),
-        paths.vendor_presets: (
-            default_vendor_presets(),
-            paths.root / "config" / "vendor_presets.json",
         ),
     }
     for file_path, (default_value, source_path) in defaults.items():
