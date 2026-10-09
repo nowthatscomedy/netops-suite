@@ -38,7 +38,7 @@ class DummySettingsState(QObject):
         super().__init__()
         self.paths = build_app_paths(tmp_path)
         ensure_runtime_files(self.paths)
-        self.app_config = {"update": default_update_config()}
+        self.app_config = default_app_config()
         self.saved_configs: list[dict] = []
         self.saved_path_settings: list[dict[str, str]] = []
         self.reload_count = 0
@@ -148,7 +148,7 @@ def test_settings_tab_path_controls_are_centralized_and_current_labels_are_selec
             assert label.wordWrap()
             assert label.textInteractionFlags() & Qt.TextInteractionFlag.TextSelectableByMouse
         assert "app_config.json" in tab.settings_files_view.toPlainText()
-        assert "ai_model_catalog_cache.json" in tab.settings_files_view.toPlainText()
+        assert "ai_model_catalog_cache.json" not in tab.settings_files_view.toPlainText()
     finally:
         tab.close()
 
@@ -220,6 +220,32 @@ def test_settings_tools_page_shows_shared_oui_version_and_source(qapp, tmp_path)
         assert "IEEE Registration Authority" in tab.oui_tool_source_label.text()
         assert tab.oui_check_updates_button.text() == "최신 여부 확인"
         assert tab.oui_update_button.text() == "데이터 업데이트"
+    finally:
+        tab.close()
+
+
+def test_settings_tools_has_no_ai_profile_controls(qapp, tmp_path):
+    state = DummySettingsState(tmp_path)
+    tab = SettingsTab(state)
+    try:
+        group_titles = [group.title() for group in tab.findChildren(QGroupBox)]
+        assert all("AI" not in title and "Codex" not in title for title in group_titles)
+        assert not hasattr(tab, "profile_ai_tool_group")
+        assert "profile_ai" not in tab._collect_tool_status()
+    finally:
+        tab.close()
+
+def test_storage_details_are_collapsed_until_requested(qapp, tmp_path):
+    tab = SettingsTab(DummySettingsState(tmp_path))
+    try:
+        tab.show_section("storage")
+        assert tab.applied_paths_group.isHidden()
+        assert len(tab.path_edits) == 3
+        tab.path_details_button.click()
+        assert not tab.applied_paths_group.isHidden()
+        assert str(tab.state.paths.logs_dir) in tab.log_dir_label.text()
+        tab.path_details_button.click()
+        assert tab.applied_paths_group.isHidden()
     finally:
         tab.close()
 
@@ -395,7 +421,7 @@ def test_settings_program_page_does_not_duplicate_diagnostic_defaults(qapp, tmp_
         tab.close()
 
 
-def test_app_state_removes_retired_diagnostic_default_keys(
+def test_app_state_removes_retired_diagnostic_and_assistant_settings(
     qapp,
     tmp_path,
     monkeypatch,
@@ -408,6 +434,16 @@ def test_app_state_removes_retired_diagnostic_default_keys(
             "default_ping_count": 99,
             "default_ping_timeout_ms": 9999,
             "default_tcp_timeout_ms": 9999,
+            "ai_chat": {"active_provider": "codex"},
+            "profile_ai": {
+                "codex_command_path": "C:/tools/codex.exe",
+                "model": "invalid model name",
+                "timeout_seconds": 2,
+            },
+            "ui_state": {
+                "main_window": {"current_page_key": "assistant"},
+                "ai_chat_tab": {"section": "chat"},
+            },
         }
     )
     save_json(paths.app_config, stale_config)
@@ -419,10 +455,15 @@ def test_app_state_removes_retired_diagnostic_default_keys(
         "default_ping_count",
         "default_ping_timeout_ms",
         "default_tcp_timeout_ms",
+        "ai_chat",
+        "profile_ai",
     }
     try:
         assert retired_keys.isdisjoint(state.app_config)
         assert retired_keys.isdisjoint(load_json(state.paths.app_config, {}))
+        assert "ai_chat_tab" not in state.app_config["ui_state"]
+        assert "profile_ai" not in state.app_config
+        assert "profile_ai" not in load_json(state.paths.app_config, {})
 
         state.save_app_config(
             {
@@ -430,28 +471,18 @@ def test_app_state_removes_retired_diagnostic_default_keys(
                 "default_ping_count": 77,
                 "default_ping_timeout_ms": 7777,
                 "default_tcp_timeout_ms": 7777,
+                "ai_chat": {"active_provider": "codex"},
+                "ui_state": {
+                    **state.app_config["ui_state"],
+                    "ai_chat_tab": {"section": "connection"},
+                },
             }
         )
         assert retired_keys.isdisjoint(state.app_config)
         assert retired_keys.isdisjoint(load_json(state.paths.app_config, {}))
+        assert "ai_chat_tab" not in state.app_config["ui_state"]
     finally:
         state.shutdown()
-
-
-def test_settings_tab_saves_ai_cli_paths(qapp, tmp_path):
-    state = DummySettingsState(tmp_path)
-    tab = SettingsTab(state)
-    changed: list[str] = []
-    tab.integration_changed.connect(changed.append)
-    try:
-        custom_codex = tmp_path / "tools" / "codex.exe"
-        tab.ai_cli_path_edits["codex"].setText(str(custom_codex))
-        tab.save_ai_cli_paths_button.click()
-
-        assert state.app_config["ai_chat"]["providers"]["codex"]["command_path"] == str(custom_codex)
-        assert changed == ["ai"]
-    finally:
-        tab.close()
 
 
 def test_settings_tab_saves_paths_and_applies_exports_immediately(qapp, tmp_path):
@@ -716,7 +747,7 @@ def test_settings_management_reset_is_reachable_at_supported_window_sizes(
         tab.close()
 
 
-def test_settings_path_and_ai_cli_controls_have_contextual_accessible_names(
+def test_settings_path_controls_have_contextual_accessible_names(
     qapp,
     tmp_path,
 ):
@@ -740,19 +771,7 @@ def test_settings_path_and_ai_cli_controls_have_contextual_accessible_names(
                 == f"입력된 {label}를 파일 탐색기에서 엽니다."
             )
 
-        provider_labels = {"codex": "ChatGPT Codex"}
-        assert set(tab.ai_cli_path_edits) == set(provider_labels)
-        assert set(tab.ai_cli_browse_buttons) == set(provider_labels)
-        assert set(tab.ai_cli_status_labels) == set(provider_labels)
-        for key, label in provider_labels.items():
-            assert tab.ai_cli_path_edits[key].accessibleName() == f"{label} 실행 파일"
-            assert tab.ai_cli_path_edits[key].accessibleDescription()
-            assert (
-                tab.ai_cli_browse_buttons[key].accessibleName()
-                == f"{label} 실행 파일 찾아보기"
-            )
-            assert label in tab.ai_cli_browse_buttons[key].toolTip()
-            assert tab.ai_cli_status_labels[key].accessibleName() == f"{label} 감지 상태"
+        assert not hasattr(tab, "ai_cli_group")
     finally:
         tab.close()
 

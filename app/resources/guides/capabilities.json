@@ -4,10 +4,11 @@
   "capabilities": [
     {
       "feature_id": "getting-started",
-      "public_name": "NetOps Suite 빠른 시작",
+      "public_name": "시작",
       "guide_id": "getting-started",
       "route": "getting-started",
       "aliases": [
+        "NetOps Suite 빠른 시작",
         "처음 사용",
         "시작 방법",
         "메뉴 안내"
@@ -58,10 +59,11 @@
     },
     {
       "feature_id": "interface",
-      "public_name": "네트워크 설정",
+      "public_name": "내 PC 네트워크",
       "guide_id": "interface",
       "route": "interface",
       "aliases": [
+        "네트워크 설정",
         "네트워크 어댑터",
         "고정 IP",
         "DHCP",
@@ -1040,10 +1042,11 @@
     },
     {
       "feature_id": "wireless",
-      "public_name": "Wi-Fi 분석",
+      "public_name": "Wi-Fi 확인",
       "guide_id": "wireless",
       "route": "wireless",
       "aliases": [
+        "Wi-Fi 분석",
         "와이파이",
         "WiFi",
         "SSID",
@@ -1070,10 +1073,13 @@
     },
     {
       "feature_id": "inspector",
-      "public_name": "장비 점검 및 백업",
+      "public_name": "장비 점검·백업",
       "guide_id": "inspector",
       "route": "inspector",
       "aliases": [
+        "장비 작업 자동화",
+        "장비 점검/백업",
+        "장비 점검 및 백업",
         "장비 점검",
         "장비 백업",
         "점검 백업",
@@ -1095,11 +1101,14 @@
       ],
       "inputs": [
         "장비 목록 Excel",
+        "선택 model 열",
         "SSH 또는 Telnet 접속 정보",
         "사용자 명령에서는 TXT·XLS·XLSX·XLSM 명령 파일"
       ],
       "constraints": [
         "사용자 명령은 실행 전 반드시 먼저 검증합니다.",
+        "모델 프로파일은 공백과 대소문자를 정규화한 뒤 정확히 일치할 때만 적용합니다.",
+        "샘플 생성은 선택한 장비 종류와 실행 모드에 맞는 열과 예시 값으로 장비 목록 Excel을 만듭니다.",
         "현재 화면에서는 장비 목록 Excel의 개별 행을 선택할 수 없으며 유효한 전체 행이 대상입니다."
       ],
       "risk": "high",
@@ -1117,7 +1126,7 @@
     },
     {
       "feature_id": "inspector.user-commands",
-      "public_name": "장비 점검 및 백업 · 사용자 명령",
+      "public_name": "장비 점검·백업 · 사용자 명령",
       "guide_id": "inspector",
       "route": "inspector",
       "aliases": [
@@ -1166,10 +1175,12 @@
     },
     {
       "feature_id": "config-builder",
-      "public_name": "CLI 설정 생성",
+      "public_name": "설정 명령 만들기",
       "guide_id": "config-builder",
       "route": "config-builder",
       "aliases": [
+        "장비 설정 생성",
+        "CLI 설정 생성",
         "CLI 설정",
         "설정 생성",
         "Config Builder",
@@ -1211,41 +1222,10 @@
         "CSV 또는 XLSX 장비 데이터"
       ],
       "constraints": [
-        "생성 결과는 검토용이며 장비에 자동 적용하지 않습니다."
+        "생성 결과는 검토용이며 장비에 자동 적용하지 않습니다.",
+        "프로파일은 저장 전 Jinja 문법·변수·샘플 렌더를 검증합니다."
       ],
       "risk": "medium",
-      "steps": [],
-      "success_checks": [],
-      "stop_conditions": []
-    },
-    {
-      "feature_id": "assistant",
-      "public_name": "NetOps 어시스턴트",
-      "guide_id": "assistant",
-      "route": "assistant",
-      "aliases": [
-        "AI 채팅",
-        "Codex",
-        "Codex CLI",
-        "AI 모델"
-      ],
-      "intents": [
-        "Codex 연결 설정",
-        "Codex 로그인",
-        "권한 모드",
-        "대화 내보내기"
-      ],
-      "support_level": "ui_guidance",
-      "operations": [
-        "NetOps 기능 안내",
-        "승인 기반 내부 도구 연결",
-        "Codex CLI 대화"
-      ],
-      "inputs": [],
-      "constraints": [
-        "민감 정보와 비밀번호를 프롬프트에 포함하지 않습니다."
-      ],
-      "risk": "high",
       "steps": [],
       "success_checks": [],
       "stop_conditions": []

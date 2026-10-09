@@ -30,6 +30,9 @@ CONNECTION_OVERRIDES = defaultdict(dict)
 # 커스텀 벤더/OS -> 핸들러 동작 오버라이드
 HANDLER_OVERRIDES = defaultdict(dict)
 
+# 사용자 custom_rules의 벤더/OS/장비 모델별 완전 대체 프로파일
+MODEL_PROFILES = defaultdict(lambda: defaultdict(dict))
+
 # custom_rules에서 정의된 벤더/OS 목록
 CUSTOM_RULE_PAIRS: set[tuple[str, str]] = set()
 
@@ -103,7 +106,7 @@ def _load_vendor_modules():
 def _normalize_key(value: object) -> str:
     if not isinstance(value, str):
         return ""
-    return value.strip().lower()
+    return " ".join(value.strip().casefold().split())
 
 def _mark_custom_pair(vendor: str, os_name: str) -> None:
     if vendor and os_name:
@@ -254,6 +257,86 @@ def _merge_connection_overrides(custom_rules: dict) -> None:
             if mapped:
                 CONNECTION_OVERRIDES[vendor][os_name] = mapped
 
+
+def _clean_model_connection_overrides(value: object) -> dict[str, str]:
+    if isinstance(value, str):
+        device_type = _normalize_device_type(value)
+        return {"default": device_type} if device_type else {}
+    if not isinstance(value, dict):
+        return {}
+    mapped: dict[str, str] = {}
+    for conn_key, device_type in value.items():
+        conn = _normalize_key(conn_key)
+        normalized = _normalize_device_type(device_type)
+        if conn in {"ssh", "telnet", "default", "any"} and normalized:
+            mapped[conn] = normalized
+    return mapped
+
+
+def _clean_model_handler_overrides(value: object) -> dict:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: item
+        for key, item in value.items()
+        if key in _HANDLER_OVERRIDE_KEYS and item is not None
+    }
+
+
+def _merge_model_profiles(custom_profiles: dict) -> None:
+    """Load strict model profiles without altering legacy vendor/OS maps."""
+
+    if not isinstance(custom_profiles, dict):
+        return
+    for vendor_value, os_map in custom_profiles.items():
+        vendor = _normalize_key(vendor_value)
+        if not vendor or not isinstance(os_map, dict):
+            continue
+        for os_value, model_map in os_map.items():
+            os_name = _normalize_key(os_value)
+            if not os_name or not isinstance(model_map, dict):
+                continue
+            for model_value, raw_profile in model_map.items():
+                model = _normalize_key(model_value)
+                if not model or not isinstance(raw_profile, dict):
+                    continue
+                commands = raw_profile.get("inspection_commands")
+                if not isinstance(commands, list):
+                    logger.warning(
+                        "model_profiles: inspection_commands 목록 누락으로 무시 (%s/%s/%s)",
+                        vendor,
+                        os_name,
+                        model,
+                    )
+                    continue
+                profile = {
+                    "os_version": str(raw_profile.get("os_version", "") or "").strip(),
+                    "inspection_commands": [
+                        str(command).strip()
+                        for command in commands
+                        if isinstance(command, str) and command.strip()
+                    ],
+                    # 빈 문자열도 백업 비활성화라는 명시적 값으로 보존한다.
+                    "backup_command": str(raw_profile.get("backup_command", "") or "").strip(),
+                    "parsing_rules": dict(raw_profile.get("parsing_rules", {}))
+                    if isinstance(raw_profile.get("parsing_rules"), dict)
+                    else {},
+                    "connection_overrides": _clean_model_connection_overrides(
+                        raw_profile.get("connection_overrides")
+                    ),
+                    "handler_overrides": _clean_model_handler_overrides(
+                        raw_profile.get("handler_overrides")
+                    ),
+                    "output_columns": [
+                        str(column).strip()
+                        for column in raw_profile.get("output_columns", [])
+                        if isinstance(column, str) and column.strip()
+                    ]
+                    if isinstance(raw_profile.get("output_columns"), list)
+                    else [],
+                }
+                MODEL_PROFILES[vendor][os_name][model] = profile
+
 def _load_custom_rules() -> None:
     app_dir = get_app_dir()
     yaml_path = app_dir / "custom_rules.yaml"
@@ -285,6 +368,7 @@ def _load_custom_rules() -> None:
     _merge_parsing_rules(data.get("parsing_rules", {}))
     _merge_connection_overrides(data.get("connection_overrides", {}))
     _merge_handler_overrides(data.get("handler_overrides", {}))
+    _merge_model_profiles(data.get("model_profiles", {}))
 
 
 def _load_user_custom_parsers() -> None:
@@ -325,6 +409,7 @@ __all__ = [
     'CUSTOM_PARSERS',
     'CONNECTION_OVERRIDES',
     'HANDLER_OVERRIDES',
+    'MODEL_PROFILES',
     'CUSTOM_RULE_PAIRS',
     'is_custom_rule_pair',
     'get_custom_handler',

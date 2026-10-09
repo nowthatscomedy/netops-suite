@@ -9,7 +9,8 @@ import re
 import time
 import logging
 import traceback
-import paramiko
+from core.legacy_ssh import LegacySSHError
+from core.ssh_compat import CompatibleSSHClient
 from vendors.base import CustomDeviceHandler, register_handler
 
 logger = logging.getLogger(__name__)
@@ -357,11 +358,10 @@ class AlcatelLucentHandler(CustomDeviceHandler):
         
         try:
             # SSH 클라이언트 초기화
-            self.ssh = paramiko.SSHClient()
-            self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            self.ssh = CompatibleSSHClient(self.device, self.session_log_file)
             
             # 연결 설정
-            self.ssh.connect(
+            connection_args = dict(
                 hostname=self.device['ip'],
                 username=self.device['username'],
                 password=self.device['password'],
@@ -370,6 +370,7 @@ class AlcatelLucentHandler(CustomDeviceHandler):
                 allow_agent=False,
                 look_for_keys=False
             )
+            self.ssh.connect(**connection_args)
             
             # 셸 요청
             self.channel = self.ssh.invoke_shell(width=160, height=1000)
@@ -392,7 +393,7 @@ class AlcatelLucentHandler(CustomDeviceHandler):
                 return True
             else:
                 self.logger.warning("Alcatel-Lucent SSH 접속 상태 불명확: %s", self.device['ip'])
-                return False
+                raise ConnectionError("Alcatel-Lucent SSH 프롬프트를 찾을 수 없습니다.")
             
         except Exception as e:
             self.logger.error("Alcatel-Lucent SSH 접속 실패: %s", e)
@@ -469,6 +470,8 @@ class AlcatelLucentHandler(CustomDeviceHandler):
             
             return result
             
+        except LegacySSHError:
+            raise
         except Exception as e:
             self.logger.error("명령어 실행 실패 (%s): %s", command, e)
             return f"Error executing command: {str(e)}"

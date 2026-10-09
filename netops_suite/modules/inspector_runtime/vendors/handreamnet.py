@@ -11,7 +11,7 @@ import logging
 import time
 from typing import Optional
 
-import paramiko
+from core.ssh_compat import CompatibleSSHClient
 
 from vendors.base import CustomDeviceHandler, register_handler
 
@@ -176,8 +176,7 @@ class HandreamnetHnSSHHandler(CustomDeviceHandler):
         self.logger.debug("Handreamnet HN 장비 SSH 접속 시작: %s", self.device.get("ip"))
 
         try:
-            self.ssh = paramiko.SSHClient()
-            self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            self.ssh = CompatibleSSHClient(self.device, self.session_log_file)
             self.ssh.connect(
                 hostname=self.device["ip"],
                 username=self.device["username"],

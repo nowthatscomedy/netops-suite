@@ -18,7 +18,7 @@ if ($SkipInstall) {
 }
 
 if ($UseProjectData) {
-    $env:NETOPS_SUITE_USE_PROJECT_DATA = "1"
+    Write-Host "-UseProjectData is no longer needed; source runs always store data in .\data."
 }
 
 & $Python main.py

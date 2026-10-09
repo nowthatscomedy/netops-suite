@@ -11,7 +11,6 @@ from PySide6.QtTest import QTest
 from app.app_state import AppState
 from app.guides import GuideCatalog, GuideDialog, GuideEntry
 from app.main_window import MainWindow
-from app.ui.tabs.ai_chat_tab import AiChatTab
 from scripts.generate_guides import build_bundle
 from scripts.validate_guides import validate_repository
 
@@ -163,16 +162,6 @@ def _dialog_catalog(tmp_path: Path) -> GuideCatalog:
 
 def _disable_external_startup(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        AiChatTab,
-        "refresh_provider_status",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        AiChatTab,
-        "_ensure_model_catalog_fresh",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
         MainWindow,
         "_maybe_check_updates_on_startup",
         lambda *_args, **_kwargs: None,
@@ -305,11 +294,13 @@ def test_guide_dialog_search_context_and_anchor_navigation(qapp, tmp_path):
 
         assert dialog.current_entry is not None
         assert dialog.current_entry.id == "diagnostics.ping"
-        expected_cursor = dialog.browser.document().find("Latency details")
-        assert not expected_cursor.isNull()
-        assert dialog.browser.textCursor().position() == expected_cursor.selectionStart()
+        # The jump link list also names the section; the cursor lands on the heading.
+        cursor = dialog.browser.textCursor()
+        assert cursor.block().text() == "Latency details"
+        assert cursor.position() == cursor.block().position()
+        assert cursor.block().blockFormat().headingLevel() == 2
 
-        dialog.search_edit.setText("Searchable latency needle")
+        dialog.search_edit.setText("The result confirms round-trip time")
         qapp.processEvents()
         assert set(dialog._tree_items) == {"getting-started", "diagnostics.ping"}
         dialog.search_edit.returnPressed.emit()
@@ -343,15 +334,16 @@ def test_main_window_manual_help_and_f1_follow_current_context(
     window = MainWindow(state)
     try:
         window.show()
+        window.navigate_to("interface")
         qapp.processEvents()
 
         window.guide_button.click()
         qapp.processEvents()
-        assert window._guide_dialog is not None
-        assert window._guide_dialog.current_entry is not None
-        assert window._guide_dialog.current_entry.id == "interface"
+        assert window.quick_help_panel.current_entry is not None
+        assert window.quick_help_panel.current_entry.id == "interface"
+        assert window.help_dock.isVisible()
 
-        window._guide_dialog.close()
+        window.help_dock.hide()
         window.tab_widget.setCurrentIndex(2)
         window.activateWindow()
         window.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -359,9 +351,10 @@ def test_main_window_manual_help_and_f1_follow_current_context(
         QTest.keyClick(window, Qt.Key.Key_F1)
         qapp.processEvents()
 
-        assert window._guide_dialog.current_entry is not None
-        assert window._guide_dialog.current_entry.id == "wireless"
-        assert window._guide_dialog.isVisible()
+        assert window.quick_help_panel.current_entry is not None
+        assert window.quick_help_panel.current_entry.id == "wireless"
+        assert window.help_dock.isVisible()
+        assert window._guide_dialog is None
     finally:
         window.close()
         state.shutdown()
@@ -392,12 +385,13 @@ def test_first_run_guide_is_persisted_once_without_startup_side_effects(
         window._maybe_show_first_run_guide()
         qapp.processEvents()
 
-        assert opened == ["getting-started"]
+        assert opened == []
+        assert window.tab_widget.currentWidget() is window.home_page
         persisted = json.loads(state.paths.app_config.read_text(encoding="utf-8"))
         assert persisted["guide"]["welcome_seen"] is True
 
         window._maybe_show_first_run_guide()
-        assert opened == ["getting-started"]
+        assert opened == []
     finally:
         window.close()
         state.shutdown()

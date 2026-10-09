@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -27,14 +28,26 @@ from PySide6.QtWidgets import (
 from app.ui.common import make_dialog_intro, polish_dialog
 from app.utils.file_utils import timestamped_export_path
 from netops_suite.modules.inspector import InspectorService
-
-
 from netops_suite.ui.actions import ActionKind, make_action_button
 from netops_suite.ui.numeric_inputs import NoWheelSpinBox
 from netops_suite.ui.selection_inputs import NoWheelComboBox
 
 ERROR_BG = QColor("#fff1ed")
 OK_BG = QColor("#eef8eb")
+_DEVICE_TYPE_RE = re.compile(r"[a-z0-9][a-z0-9_]{0,63}\Z")
+
+
+@lru_cache(maxsize=1)
+def _supported_netmiko_device_types() -> frozenset[str] | None:
+    try:
+        from netmiko.ssh_dispatcher import CLASS_MAPPER
+    except (ImportError, RuntimeError):
+        return None
+    return frozenset(str(name) for name in CLASS_MAPPER)
+
+
+def _has_unsafe_single_line_character(value: str) -> bool:
+    return any(ord(character) < 32 or ord(character) == 127 for character in value)
 
 
 class PythonParserDialog(QDialog):
@@ -176,7 +189,7 @@ class InspectorProfileDialog(QDialog):
         self.preview_timer.setSingleShot(True)
         self.preview_timer.timeout.connect(self.refresh_preview)
 
-        self.setWindowTitle("장비 점검 프로파일 만들기")
+        self.setWindowTitle("장비 작업 자동화 프로파일 만들기")
         self.resize(1120, 780)
         self._build_ui()
         self._load_profile_choices()
@@ -188,6 +201,7 @@ class InspectorProfileDialog(QDialog):
     @staticmethod
     def _empty_state() -> dict[str, Any]:
         return {
+            "profile_scope": "base",
             "vendor": "",
             "model": "",
             "os": "",
@@ -288,6 +302,14 @@ class InspectorProfileDialog(QDialog):
         self.connection_combo.addItem("Telnet", "telnet")
         self.copy_profile_combo = NoWheelComboBox()
         self.copy_profile_combo.currentIndexChanged.connect(self._copy_selected_profile)
+        self.profile_scope_combo = NoWheelComboBox()
+        self.profile_scope_combo.setObjectName("inspectorProfileScopeCombo")
+        self.profile_scope_combo.addItem("벤더/OS 공통", "base")
+        self.profile_scope_combo.addItem("특정 장비 모델 전용", "model")
+        self.profile_scope_combo.setToolTip(
+            "모델 전용은 장비 목록의 model 값이 정확히 일치할 때만 적용됩니다."
+        )
+        form.addRow("적용 범위", self.profile_scope_combo)
         form.addRow("벤더", self.vendor_edit)
         form.addRow("모델", self.model_edit)
         form.addRow("OS", self.os_edit)
@@ -306,6 +328,18 @@ class InspectorProfileDialog(QDialog):
         ):
             widget.textChanged.connect(self._schedule_preview)
         self.connection_combo.currentIndexChanged.connect(self._schedule_preview)
+        self.profile_scope_combo.currentIndexChanged.connect(
+            self._on_profile_scope_changed
+        )
+
+    def _on_profile_scope_changed(self, _index: int | None = None) -> None:
+        model_specific = self.profile_scope_combo.currentData() == "model"
+        self.model_edit.setToolTip(
+            "장비 목록 Excel의 model 값과 대소문자·공백 정규화 후 정확히 일치해야 합니다."
+            if model_specific
+            else "공통 프로파일에서는 기존 profile_metadata의 참고 모델로 저장됩니다."
+        )
+        self._schedule_preview()
 
     def _build_command_tab(self) -> None:
         tab = QWidget()
@@ -594,6 +628,10 @@ class InspectorProfileDialog(QDialog):
         was_loading = self._loading_state
         self._loading_state = True
         try:
+            scope_index = self.profile_scope_combo.findData(
+                self.state.get("profile_scope", "base")
+            )
+            self.profile_scope_combo.setCurrentIndex(max(0, scope_index))
             self.vendor_edit.setText(self.state["vendor"])
             self.model_edit.setText(self.state["model"])
             self.os_edit.setText(self.state["os"])
@@ -615,6 +653,7 @@ class InspectorProfileDialog(QDialog):
     def _collect_state(self) -> None:
         self._persist_command()
         self._persist_column()
+        self.state["profile_scope"] = self.profile_scope_combo.currentData()
         self.state["vendor"] = self.vendor_edit.text().strip()
         self.state["model"] = self.model_edit.text().strip()
         self.state["os"] = self.os_edit.text().strip()
@@ -940,8 +979,11 @@ class InspectorProfileDialog(QDialog):
                 return
         profile = self.copy_profile_combo.currentData()
         if isinstance(profile, dict):
+            self.state["profile_scope"] = profile.get("profile_scope", "base")
             self.state["vendor"] = profile.get("vendor", "")
+            self.state["model"] = profile.get("model", "")
             self.state["os"] = profile.get("os", "")
+            self.state["os_version"] = profile.get("os_version", "")
             self.state["commands"] = [
                 {"command": command, "sample": ""}
                 for command in profile.get("commands", [])
@@ -1042,6 +1084,7 @@ class InspectorProfileDialog(QDialog):
                 model=self.state["model"],
                 os_version=self.state["os_version"],
                 output_columns=[row.get("name", "") for row in self.state["columns"]],
+                model_specific=self.state.get("profile_scope") == "model",
             )
         except Exception as exc:
             issues.append(str(exc))
@@ -1090,22 +1133,69 @@ class InspectorProfileDialog(QDialog):
             issues.append("벤더를 입력하세요. 예: Cisco")
         if not self.state["os"]:
             issues.append("OS를 입력하세요. 예: IOS-XE")
-        if not self._commands():
+        if self.state.get("profile_scope") == "model" and not self.state["model"]:
+            issues.append("모델 전용 프로파일에는 장비 모델을 입력하세요.")
+        commands = self._commands()
+        if not commands:
             issues.append("점검 명령을 하나 이상 입력하세요. 예: show version")
+        if len(self.state["commands"]) > 64:
+            issues.append("점검 명령은 최대 64개까지 저장할 수 있습니다.")
+        seen_commands: set[str] = set()
+        for index, row in enumerate(self.state["commands"], start=1):
+            command = str(row.get("command", "")).strip()
+            sample = str(row.get("sample", ""))
+            if not command:
+                issues.append(f"점검 명령 {index}이 비어 있습니다.")
+                continue
+            if len(command) > 512 or _has_unsafe_single_line_character(command):
+                issues.append(f"점검 명령 {index}은 제어 문자 없는 512자 이하 한 줄이어야 합니다.")
+            normalized_command = command.casefold()
+            if normalized_command in seen_commands:
+                issues.append(f"점검 명령이 중복되었습니다: {command}")
+            seen_commands.add(normalized_command)
+            if len(sample) > 20_000:
+                issues.append(f"점검 명령 {index}의 출력 예시는 20,000자 이하여야 합니다.")
         if self.state["backup_enabled"] and not self.state["backup_command"]:
             issues.append("장비 구성 백업을 사용하려면 백업 명령을 입력하세요.")
+        if self.state["backup_command"] and (
+            len(self.state["backup_command"]) > 512
+            or _has_unsafe_single_line_character(self.state["backup_command"])
+        ):
+            issues.append("백업 명령은 제어 문자 없는 512자 이하 한 줄이어야 합니다.")
+        supported_device_types = _supported_netmiko_device_types()
+        for label, device_type in (
+            ("SSH", self.state["ssh_device_type"]),
+            ("Telnet", self.state["telnet_device_type"]),
+        ):
+            if not device_type:
+                continue
+            if not _DEVICE_TYPE_RE.fullmatch(device_type):
+                issues.append(f"{label} Netmiko 장비 유형 형식이 올바르지 않습니다: {device_type}")
+            elif supported_device_types is None:
+                issues.append(f"{label} Netmiko 장비 유형 지원 여부를 확인할 수 없습니다.")
+            elif device_type not in supported_device_types:
+                issues.append(f"지원되지 않는 {label} Netmiko 장비 유형입니다: {device_type}")
+        if len(self.state["columns"]) > 64:
+            issues.append("Excel 출력 컬럼은 최대 64개까지 저장할 수 있습니다.")
         seen_columns: set[str] = set()
         for column in self.state["columns"]:
             column_name = str(column.get("name", "")).strip()
             if not column_name:
                 issues.append("Excel 컬럼명을 입력하세요. 예: OS버전")
+            elif len(column_name) > 100 or _has_unsafe_single_line_character(column_name):
+                issues.append(f"Excel 컬럼명은 제어 문자 없는 100자 이하 한 줄이어야 합니다: {column_name}")
             elif column_name.casefold() in seen_columns:
                 issues.append(f"Excel 컬럼명이 중복되었습니다: {column_name}")
             else:
                 seen_columns.add(column_name.casefold())
-            if not column.get("command"):
+            referenced_command = str(column.get("command", "")).strip()
+            if not referenced_command:
                 issues.append(
                     f"{column.get('name') or '컬럼'}: 가져올 명령 결과를 선택하세요."
+                )
+            elif referenced_command.casefold() not in seen_commands:
+                issues.append(
+                    f"{column.get('name') or '컬럼'}: 점검 명령 목록에 없는 명령을 참조합니다."
                 )
             if column.get("method") == "keyword_after" and not column.get("keyword"):
                 issues.append(
@@ -1117,11 +1207,16 @@ class InspectorProfileDialog(QDialog):
                     issues.append(f"{column.get('name')}: 정규식을 입력하세요.")
                 else:
                     try:
-                        re.compile(pattern)
+                        compiled = re.compile(pattern)
                     except re.error as exc:
                         issues.append(
                             f"{column.get('name')}: 정규식 오류를 수정하세요. ({exc})"
                         )
+                    else:
+                        if compiled.groups < 1:
+                            issues.append(
+                                f"{column.get('name')}: 정규식에는 값을 가져올 캡처 그룹 (...)이 필요합니다."
+                            )
             if column.get("method") == "python" and not column.get("python_parser"):
                 issues.append(
                     f"{column.get('name')}: Python 추출 함수를 선택하거나 만드세요."
@@ -1132,6 +1227,12 @@ class InspectorProfileDialog(QDialog):
         self, parser_rows: list[dict[str, Any]], issues: list[str]
     ) -> str:
         lines = [
+            "적용 범위: "
+            + (
+                "특정 장비 모델 전용"
+                if self.state.get("profile_scope") == "model"
+                else "벤더/OS 공통"
+            ),
             f"장비: {self.state['vendor']} {self.state['model']} / {self.state['os']} {self.state['os_version']}".strip(),
             f"접속: {self.connection_combo.currentText()}",
             "",
@@ -1158,11 +1259,18 @@ class InspectorProfileDialog(QDialog):
             return
         vendor = self.state["vendor"]
         os_name = self.state["os"]
-        if self.service.custom_profile_exists(vendor, os_name):
+        model_specific = self.state.get("profile_scope") == "model"
+        model = self.state["model"] if model_specific else None
+        if self.service.custom_profile_exists(vendor, os_name, model):
+            target = (
+                f"{vendor} / {os_name} / {self.state['model']}"
+                if model_specific
+                else f"{vendor} / {os_name}"
+            )
             answer = QMessageBox.question(
                 self,
                 "기존 프로파일 덮어쓰기",
-                f"{vendor} / {os_name} 사용자 프로파일이 이미 있습니다.\n"
+                f"{target} 사용자 프로파일이 이미 있습니다.\n"
                 "이 프로파일만 새 내용으로 바꿀까요?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,

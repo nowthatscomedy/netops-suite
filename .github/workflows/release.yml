@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "Release tag name (example: v1.0.11)"
+        description: "Release tag name (example: v1.1.0)"
         required: true
-        default: "v1.0.11"
+        default: "v1.1.0"
       release_name:
         description: "Optional release title"
         required: false
@@ -259,7 +259,11 @@ jobs:
       - name: Run Test Suite
         if: steps.release_guard.outputs.should_release == 'true'
         shell: powershell
-        run: python -m pytest -q
+        # Real DSA/RSA handshake tests run in a separate pinned environment.
+        run: |
+          python scripts/setup_legacy_ssh.py
+          if ($LASTEXITCODE -ne 0) { throw "Legacy SSH test runtime setup failed." }
+          python -m pytest -q
 
       - name: Verify Installer Upgrade Transaction
         if: steps.release_guard.outputs.should_release == 'true'
@@ -373,6 +377,7 @@ jobs:
           name: NetOpsSuite-installer-${{ steps.meta.outputs.tag_name }}
           path: |
             dist/release/NetOpsSuite-setup-*.exe
+            dist/release/NetOpsSuite-portable-*.zip
             dist/release/SHA256SUMS.txt
             dist/release/python-dependencies.cdx.json
           if-no-files-found: error
@@ -394,6 +399,7 @@ jobs:
           $asset = (Resolve-Path "dist/release/NetOpsSuite-setup-$($env:RELEASE_VERSION).exe").Path
           $checksum = Get-ChildItem -Path dist/release/SHA256SUMS.txt | Select-Object -First 1 -ExpandProperty FullName
           $dependencySbom = (Resolve-Path "dist/release/python-dependencies.cdx.json").Path
+          $portableZip = (Resolve-Path "dist/release/NetOpsSuite-portable-$($env:RELEASE_VERSION).zip").Path
           $isPrerelease = [System.Convert]::ToBoolean($env:IS_PRERELEASE)
           $publishArgs = @{
             Repository = $env:REPOSITORY
@@ -402,7 +408,7 @@ jobs:
             TargetCommitish = $env:TARGET_COMMITISH
             AssetPath = $asset
             ChecksumPath = $checksum
-            AdditionalAssetPath = @($dependencySbom)
+            AdditionalAssetPath = @($portableZip, $dependencySbom)
           }
           if ($isPrerelease) {
             $publishArgs["IsPrerelease"] = $true

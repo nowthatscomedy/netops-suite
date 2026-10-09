@@ -32,7 +32,8 @@ from PySide6.QtWidgets import (
 from app.app_state import AppState
 from app.models.network_models import PublicIperfServer
 from app.models.result_models import PingResult, TcpCheckResult
-from app.ui.common import JobRunner, make_step_hint, nullable_number_sort_value, sortable_table_item
+from app.ui.common import JobRunner, nullable_number_sort_value, sortable_table_item
+from app.ui.common.disclosure import make_page_header
 from app.ui.tabs.diagnostics.dns import DnsDiagnosticsMixin
 from app.ui.tabs.diagnostics.ftp import FtpDiagnosticsMixin
 from app.ui.tabs.diagnostics.iperf import IperfDiagnosticsMixin
@@ -46,7 +47,23 @@ from app.ui.tabs.diagnostics.trace import TraceDiagnosticsMixin
 from app.utils.file_utils import timestamped_export_path
 from app.utils.validators import ValidationError, parse_positive_int, validate_host_input
 from netops_suite.ui.actions import ActionKind, make_action_button
+from netops_suite.ui.selection_inputs import NoWheelComboBox
 
+
+
+# One sentence per tool, written for first-time users.
+TOOL_PURPOSES = {
+    "ping": "상대 장비가 살아 있는지(응답하는지) 확인합니다. 예: 게이트웨이, DNS 서버, 스위치 관리 IP",
+    "tcp": "특정 서비스 포트가 열려 있는지 확인합니다. 예: 22(SSH), 443(웹), 3389(원격 데스크톱)",
+    "dns": "도메인 이름이 어떤 IP 주소로 바뀌는지 확인합니다. 예: 사내 서버 이름이 안 열릴 때",
+    "trace": "목적지까지 거쳐 가는 장비 경로와 어디서 막히는지 찾습니다.",
+    "iperf": "두 지점 사이의 실제 전송 속도(대역폭)를 측정합니다.",
+    "arp": "내 PC와 같은 네트워크에 있는 장비를 찾아 IP·MAC 목록으로 보여 줍니다.",
+    "subnet": "IP와 서브넷 마스크로 네트워크 범위와 쓸 수 있는 주소를 계산합니다.",
+    "oui": "MAC 주소로 장비 제조사를 찾습니다.",
+    "transfer": "장비와 파일을 주고받습니다. 파일 전송 화면에서 사용합니다.",
+    "commands": "ipconfig, route 같은 Windows 네트워크 명령의 결과를 봅니다.",
+}
 
 class DiagnosticsTab(
     ResultDockMixin,
@@ -63,6 +80,9 @@ class DiagnosticsTab(
 ):
     result_dock_visibility_changed = Signal(str, bool)
     tool_settings_requested = Signal(str)
+    transfer_requested = Signal()
+    wireless_requested = Signal()
+    current_tool_changed = Signal(str)
 
     DNS_TYPES = [
         ("A - IPv4 주소", "A", "도메인의 IPv4 주소를 조회합니다."),
@@ -78,6 +98,7 @@ class DiagnosticsTab(
         self._job_runner = JobRunner(self.state.thread_pool, self)
         self._active_workers = self._job_runner._active_workers
         self._shutting_down = False
+        self._running_tasks: set[str] = set()
         self._floating_result_docks = {"ping": None, "tcp": None}
         self._result_hosts: dict[str, QWidget] = {}
         self._result_host_layouts: dict[str, QVBoxLayout] = {}
@@ -136,6 +157,15 @@ class DiagnosticsTab(
             return
         if self.diagnostic_stack.currentIndex() != index:
             self.diagnostic_stack.setCurrentIndex(index)
+        key = self._diagnostic_tool_keys[index]
+        combo_index = self.diagnostic_tool_combo.findData(key)
+        self.diagnostic_tool_combo.blockSignals(True)
+        self.diagnostic_tool_combo.setCurrentIndex(combo_index)
+        self.diagnostic_tool_combo.blockSignals(False)
+        self.diagnostic_tool_hint.setText(TOOL_PURPOSES.get(key, ""))
+        self.current_tool_changed.emit(key)
+        if key == "transfer" and getattr(self, "_transfer_page_taken", False):
+            self.transfer_requested.emit()
         if not self._startup_activated:
             return
         self._start_tool_initialization(self._diagnostic_tool_keys[index])
@@ -169,8 +199,30 @@ class DiagnosticsTab(
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
-        layout.addWidget(make_step_hint("작업 흐름: 도구 선택, 대상 입력, 실행, 결과 저장"), 0)
-        layout.addWidget(self._build_quick_diagnostics_bar(), 0)
+        layout.addWidget(make_page_header("연결 진단", "도구를 고르고 대상을 입력한 뒤 실행하세요."), 0)
+        # Retain legacy actions for saved integrations without exposing a second
+        # target entry or sixteen competing launch buttons.
+        self.quick_diagnostics_bar = self._build_quick_diagnostics_bar()
+        self.quick_diagnostics_bar.setParent(self)
+        self.quick_diagnostics_bar.hide()
+        selector_row = QHBoxLayout()
+        selector_label = QLabel("무엇을 확인할까요?")
+        selector_label.setObjectName("diagnosticToolQuestion")
+        selector_row.addWidget(selector_label)
+        self.diagnostic_tool_combo = NoWheelComboBox()
+        self.diagnostic_tool_combo.setObjectName("diagnosticToolSelector")
+        self.diagnostic_tool_combo.setAccessibleName("진단 도구 선택")
+        selector_row.addWidget(self.diagnostic_tool_combo, 1)
+        self.wireless_button = make_action_button("Wi-Fi 확인", ActionKind.UTILITY)
+        self.wireless_button.clicked.connect(self.wireless_requested.emit)
+        selector_row.addWidget(self.wireless_button)
+        layout.addLayout(selector_row)
+        # Plain-language purpose of the chosen tool for people who do not know
+        # what Ping or TCPing mean.
+        self.diagnostic_tool_hint = QLabel()
+        self.diagnostic_tool_hint.setObjectName("diagnosticToolHint")
+        self.diagnostic_tool_hint.setWordWrap(True)
+        layout.addWidget(self.diagnostic_tool_hint)
 
         self.diagnostic_tool_list = QListWidget()
         self.diagnostic_tool_list.setObjectName("diagnosticToolList")
@@ -203,6 +255,8 @@ class DiagnosticsTab(
         ]
         for key, label, builder in tool_pages:
             self._add_diagnostic_tool(key, builder(), label)
+            if key != "transfer":
+                self.diagnostic_tool_combo.addItem(label, key)
         self._refresh_oui_status_labels()
 
         self.diagnostic_tool_list.hide()
@@ -210,7 +264,64 @@ class DiagnosticsTab(
 
         self.diagnostic_tool_list.currentRowChanged.connect(self._handle_tool_changed)
         self.diagnostic_stack.currentChanged.connect(self._sync_tool_list_to_stack)
+        self.diagnostic_tool_combo.currentIndexChanged.connect(
+            lambda _index: self.select_tool(str(self.diagnostic_tool_combo.currentData() or "ping"))
+        )
         self.diagnostic_tool_list.setCurrentRow(0)
+
+    def take_transfer_page(self) -> QWidget:
+        """Move the existing transfer view once, keeping workers and saved state."""
+        if getattr(self, "_transfer_page_taken", False):
+            raise RuntimeError("The transfer page already belongs to its workspace")
+        index = self._diagnostic_tool_index_by_key["transfer"]
+        page = self.diagnostic_stack.widget(index)
+        current_index = self.diagnostic_stack.currentIndex()
+        self.diagnostic_stack.blockSignals(True)
+        self.diagnostic_stack.removeWidget(page)
+        placeholder = QWidget()
+        placeholder_layout = QVBoxLayout(placeholder)
+        open_button = make_action_button("파일 전송 열기", ActionKind.OPEN)
+        open_button.clicked.connect(self.transfer_requested.emit)
+        placeholder_layout.addWidget(open_button)
+        placeholder_layout.addStretch(1)
+        self.diagnostic_stack.insertWidget(index, placeholder)
+        self.diagnostic_stack.setCurrentIndex(current_index)
+        self.diagnostic_stack.blockSignals(False)
+        self._transfer_page_taken = True
+        page.setParent(None)
+        return page
+
+    def select_tool(self, key: str) -> bool:
+        """Select a tool without starting a diagnostic or a transfer."""
+        return self.select_diagnostic_tab(key)
+
+    def _set_diagnostic_running(self, key: str, running: bool) -> None:
+        if running:
+            self._running_tasks.add(key)
+        else:
+            self._running_tasks.discard(key)
+
+    def is_transfer_running(self) -> bool:
+        return any(
+            getattr(self, f"_{protocol}_{state}", False)
+            for protocol in ("ftp", "scp", "tftp")
+            for state in ("client_busy", "server_running")
+        )
+
+    def active_task_keys(self) -> set[str]:
+        """Running jobs, including cancellation requests awaiting completion."""
+        active = set(self._running_tasks)
+        if self.is_transfer_running():
+            active.add("transfer")
+        return active
+
+    @staticmethod
+    def _show_diagnostic_input_error(label: QLabel, field: QWidget, message: str) -> None:
+        label.setText(message)
+        label.setStyleSheet("color:#b42318;")
+        label.setWordWrap(True)
+        label.show()
+        field.setFocus()
 
     def _build_quick_diagnostics_bar(self) -> QWidget:
         bar = QFrame()

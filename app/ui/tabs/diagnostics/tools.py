@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import re
 from threading import Event
 from typing import Callable
@@ -15,7 +16,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPlainTextEdit,
     QSizePolicy,
     QSplitter,
@@ -29,11 +29,12 @@ from app.models.result_models import OperationResult
 from app.ui.common import (
     confirm_risky_action,
     make_empty_state,
+    make_inline_status,
     make_table_item,
     make_table_log_splitter,
     set_table_minimums,
 )
-from app.utils.validators import ValidationError, calculate_subnet_details
+from app.utils.validators import ValidationError, calculate_subnet_details, validate_ipv4
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
@@ -44,10 +45,41 @@ class ToolsDiagnosticsMixin:
         page = QWidget()
         layout = QVBoxLayout(page)
 
+        command_row = QHBoxLayout()
+        self.command_tool_combo = NoWheelComboBox()
+        self.command_tool_combo.setAccessibleName("시스템 정보 명령 선택")
+        for title, key in (
+            ("공인 IP 확인", "public_ip"), ("인터페이스 정보", "interfaces"),
+            ("전체 IP 설정 (ipconfig /all)", "ipconfig"),
+            ("라우팅 테이블 (route print)", "route"),
+            ("ARP 테이블 (arp -a)", "arp"), ("DNS 캐시 비우기", "flush_dns"),
+        ):
+            self.command_tool_combo.addItem(title, key)
+        self.command_run_button = make_action_button("실행", ActionKind.START)
+        self.command_run_button.clicked.connect(self._run_selected_system_command)
+        command_row.addWidget(QLabel("명령"))
+        command_row.addWidget(self.command_tool_combo, 1)
+        command_row.addWidget(self.command_run_button)
+        layout.addLayout(command_row)
+
         self.tools_output = self._output()
-        self.tools_output.setPlaceholderText("명령을 선택하면 결과가 여기에 표시됩니다.")
+        self.tools_output.setPlaceholderText("명령을 선택하고 실행하면 결과가 여기에 표시됩니다.")
         layout.addWidget(self.tools_output, 1)
         return page
+
+    def _run_selected_system_command(self) -> None:
+        if not self.command_run_button.isEnabled():
+            return
+        handler = {
+            "public_ip": self.run_quick_public_ip,
+            "interfaces": self.run_quick_interface_snapshot,
+            "ipconfig": self.run_quick_ipconfig,
+            "route": self.run_quick_route_print,
+            "arp": self.run_quick_arp_table,
+            "flush_dns": self.run_quick_flush_dns_cache,
+        }.get(self.command_tool_combo.currentData())
+        if handler is not None:
+            handler()
 
     def _confirm_and_flush_dns_cache(self) -> None:
         if not confirm_risky_action(
@@ -196,6 +228,8 @@ class ToolsDiagnosticsMixin:
         form.addWidget(QLabel("OUI 캐시"), 2, 2)
         form.addWidget(self.arp_oui_status_label, 2, 3)
         form.addLayout(action_row, 3, 1, 1, 3)
+        self.arp_input_error = make_inline_status("error", "")
+        form.addWidget(self.arp_input_error, 4, 1, 1, 3)
         layout.addWidget(group)
 
         self.arp_table = QTableWidget(0, 8)
@@ -255,6 +289,8 @@ class ToolsDiagnosticsMixin:
         action_row.addStretch(1)
 
         form.addRow("MAC 주소 목록", self.oui_mac_edit)
+        self.oui_input_error = make_inline_status("error", "")
+        form.addRow(self.oui_input_error)
         form.addRow("", action_row)
         form.addRow("캐시 상태", self.oui_status_label)
         layout.addWidget(group)
@@ -343,19 +379,24 @@ class ToolsDiagnosticsMixin:
             self._set_quick_status(result.message or "공인 IP 확인 실패", "error")
 
     def _begin_tools_request(self, loading_text: str) -> int:
+        self._set_diagnostic_running("commands", True)
         self._tools_request_generation += 1
         generation = self._tools_request_generation
         self.tools_output.setPlainText(loading_text)
+        self.command_run_button.setEnabled(False)
         return generation
 
     def _finish_tools_request(self, generation: int, text: str) -> None:
         if generation != self._tools_request_generation:
             return
+        self._set_diagnostic_running("commands", False)
         self.tools_output.setPlainText(text)
+        self.command_run_button.setEnabled(True)
 
     def _fail_tools_request(self, generation: int, message: str) -> None:
         if generation != self._tools_request_generation:
             return
+        self._set_diagnostic_running("commands", False)
         detail = str(message).strip() or "명령 실행 중 오류가 발생했습니다."
         self.tools_output.setPlainText(
             "명령을 완료하지 못했습니다.\n\n"
@@ -363,22 +404,27 @@ class ToolsDiagnosticsMixin:
             "입력과 네트워크 상태를 확인한 뒤 다시 실행해 주세요."
         )
         self._set_quick_status("명령 실행 실패", "error")
+        self.command_run_button.setEnabled(True)
 
     def calculate_subnet_from_tools_inputs(self) -> None:
         ip_text = self.subnet_calc_ip_edit.text().strip()
         prefix_text = self.subnet_calc_prefix_edit.text().strip()
 
         if not ip_text and not prefix_text:
-            self.subnet_calc_status_label.setText("IPv4와 프리픽스를 입력하면 서브넷 정보를 계산합니다.")
-            self.subnet_calc_status_label.setStyleSheet("color:#475467;")
+            self._show_diagnostic_input_error(
+                self.subnet_calc_status_label, self.subnet_calc_ip_edit,
+                "IPv4와 프리픽스를 입력해 주세요. 예: 192.168.0.10, 24",
+            )
             self._clear_subnet_calc_results()
             return
 
+        invalid_field = self.subnet_calc_ip_edit
         try:
+            validate_ipv4(ip_text, "IPv4")
+            invalid_field = self.subnet_calc_prefix_edit
             details = calculate_subnet_details(ip_text, prefix_text)
         except ValidationError as exc:
-            self.subnet_calc_status_label.setText(str(exc))
-            self.subnet_calc_status_label.setStyleSheet("color:#475467;")
+            self._show_diagnostic_input_error(self.subnet_calc_status_label, invalid_field, str(exc))
             self._clear_subnet_calc_results()
             return
 
@@ -446,7 +492,10 @@ class ToolsDiagnosticsMixin:
     def use_selected_subnet_calc_interface(self) -> None:
         data = self.subnet_calc_interface_combo.currentData()
         if not isinstance(data, dict):
-            QMessageBox.warning(self, "선택 필요", "먼저 인터페이스 목록을 불러오고 선택해 주세요.")
+            self._show_diagnostic_input_error(
+                self.subnet_calc_status_label, self.subnet_calc_interface_combo,
+                "목록을 눌러 인터페이스를 불러온 뒤 선택해 주세요.",
+            )
             return
 
         self.subnet_calc_ip_edit.setText(str(data.get("ip", "") or ""))
@@ -483,16 +532,30 @@ class ToolsDiagnosticsMixin:
     def use_selected_arp_subnet(self) -> None:
         subnet = str(self.arp_subnet_combo.currentData() or "").strip()
         if not subnet:
-            QMessageBox.warning(self, "선택 필요", "먼저 인터페이스 목록을 불러오고 선택해 주세요.")
+            self._show_diagnostic_input_error(
+                self.arp_input_error, self.arp_subnet_combo,
+                "목록을 눌러 인터페이스를 불러온 뒤 선택해 주세요.",
+            )
             return
         self.arp_subnet_edit.setText(subnet)
+        self.arp_input_error.hide()
 
     def start_arp_scan(self) -> None:
+        self.arp_input_error.hide()
+        invalid_field = self.arp_subnet_edit
         try:
+            try:
+                subnet = ipaddress.ip_network(self.arp_subnet_edit.text().strip(), strict=False)
+            except ValueError as exc:
+                raise ValidationError("스캔할 IPv4 서브넷을 입력해 주세요. 예: 192.168.0.0/24") from exc
+            if subnet.version != 4:
+                raise ValidationError("ARP 스캔은 IPv4 서브넷을 사용합니다. 예: 192.168.0.0/24")
+            invalid_field = self.arp_timeout_edit
             timeout_ms = self._positive_int_or_default(self.arp_timeout_edit, "ARP Timeout", 800)
+            invalid_field = self.arp_workers_edit
             workers = self._positive_int_or_default(self.arp_workers_edit, "ARP 동시 실행 수", 64)
         except ValidationError as exc:
-            QMessageBox.warning(self, "입력 확인", str(exc))
+            self._show_diagnostic_input_error(self.arp_input_error, invalid_field, str(exc))
             return
 
         if not confirm_risky_action(
@@ -642,6 +705,7 @@ class ToolsDiagnosticsMixin:
         return tuple(parts) if len(parts) == 4 else (999, 999, 999, 999)
 
     def _set_arp_running(self, running: bool) -> None:
+        self._set_diagnostic_running("arp", running)
         self.arp_start_button.setEnabled(not running)
         self.arp_cancel_button.setEnabled(running)
         self.arp_refresh_subnets_button.setEnabled(not running)
@@ -653,9 +717,13 @@ class ToolsDiagnosticsMixin:
             self.arp_cancel_event.set()
 
     def lookup_oui_vendor(self) -> None:
+        self.oui_input_error.hide()
         raw_text = self.oui_mac_edit.toPlainText().strip()
         if not raw_text:
-            QMessageBox.warning(self, "입력 확인", "조회할 MAC 주소를 한 줄에 하나씩 입력해 주세요.")
+            self._show_diagnostic_input_error(
+                self.oui_input_error, self.oui_mac_edit,
+                "MAC 주소를 한 줄에 하나씩 입력해 주세요. 예: 00:11:22:33:44:55",
+            )
             return
 
         entries = [
@@ -664,7 +732,10 @@ class ToolsDiagnosticsMixin:
             if line.strip()
         ]
         if not entries:
-            QMessageBox.warning(self, "입력 확인", "조회할 MAC 주소를 한 줄에 하나씩 입력해 주세요.")
+            self._show_diagnostic_input_error(
+                self.oui_input_error, self.oui_mac_edit,
+                "MAC 주소를 한 줄에 하나씩 입력해 주세요. 예: 00:11:22:33:44:55",
+            )
             return
 
         self.oui_table.setRowCount(0)
@@ -716,6 +787,11 @@ class ToolsDiagnosticsMixin:
         )
         self.oui_result_output.setPlainText("\n".join(lines))
         self.oui_empty_label.setVisible(self.oui_table.rowCount() == 0)
+        if invalid_count:
+            self._show_diagnostic_input_error(
+                self.oui_input_error, self.oui_mac_edit,
+                f"MAC 주소 {invalid_count}개의 형식을 확인해 주세요. 예: 00:11:22:33:44:55",
+            )
 
     def refresh_oui_cache(self, output_widget: QPlainTextEdit) -> None:
         output_widget.clear()

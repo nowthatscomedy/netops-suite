@@ -83,7 +83,7 @@ def test_nearby_ap_empty_state_is_visible_before_scan(qapp):
         tab.close()
 
 
-def test_nearby_ap_table_keeps_readable_height_and_splitter(qapp):
+def test_nearby_ap_table_keeps_readable_height_in_scroll_workspace(qapp):
     tab = _build_wireless_tab(qapp)
     try:
         tab.resize(1280, 720)
@@ -98,9 +98,9 @@ def test_nearby_ap_table_keeps_readable_height_and_splitter(qapp):
 
         assert tab.nearby_table.minimumHeight() >= 240
         assert tab.nearby_table.rowCount() == 20
-        sizes = tab.wireless_main_splitter.sizes()
-        assert len(sizes) == 2
-        assert sizes[1] > sizes[0]
+        qapp.processEvents()
+        assert tab.nearby_table.viewport().height() >= 180
+        assert tab.wireless_scroll_area.isAncestorOf(tab.nearby_table)
     finally:
         tab.close()
 
@@ -124,6 +124,7 @@ def test_wireless_status_cards_stay_compact_when_window_is_narrow(qapp):
         assert positions
         assert len({column for _row, column in positions}) >= 2
         assert max(row for row, _column in positions) + 1 <= 5
-        assert max(card.maximumHeight() for card in tab.status_cards.values()) <= 58
+        assert len({column for _row, column in positions}) == 2
+        assert min(card.minimumHeight() for card in tab.status_cards.values()) >= 80
     finally:
         tab.close()

@@ -28,7 +28,20 @@ publishing source archives or Windows installer builds.
 | Pygments | BSD-2-Clause |
 | InquirerPy | MIT |
 
+## Optional Legacy SSH Runtime
+
+The Inspector SSH compatibility helper uses an independently installed Paramiko 3.5.1
+(LGPL-2.1-or-later) environment. Its exact dependencies and artifact hashes are
+recorded in `requirements-legacy-ssh-lock.txt`. It is not installed into the main
+application environment or automatically bundled in the Windows installer.
+Package license files are retained by the isolated pip installation. Include this
+runtime in dependency review and SBOM generation if distributing it separately.
+
 ## Binary Release Notes
+
+- The offline desktop UI includes original Lucide SVG icons (ISC; selected
+  Feather-derived icons under MIT). Source revision and full notices are in
+  `assets/icons/lucide/SOURCE.md` and `assets/icons/lucide/LICENSE`.
 
 - Windows installer builds include a PySide6/Qt runtime through PyInstaller. If
   the LGPL option is used, keep the installed bundle in a form that lets users

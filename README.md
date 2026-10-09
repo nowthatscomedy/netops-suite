@@ -57,7 +57,7 @@ NetOps Suite는 Windows 현장 네트워크 작업을 한 앱에서 처리하기
 - 사용자 명령의 장비별 Excel 변수 치환
 - 장비별 진행률과 세션 로그
 - 결과 Excel, 설정 백업 TXT, raw command output 저장
-- 벤더 / 모델 / OS별 장비 점검 프로파일 작성
+- 벤더 / 모델 / OS별 장비 작업 프로파일 작성
 - 줄 번호 / 값 번호 기반 쉬운 파싱과 정규식 / Python 고급 추출 지원
 
 사용자 명령 파일에서는 장비 목록 Excel의 열을 `{{ variable_name }}` 형식으로
@@ -105,11 +105,7 @@ show vlan {{ vlan_id }}
 .\scripts\run_dev.ps1
 ```
 
-개발 중 프로젝트 폴더 아래 `config/`, `logs/`를 사용하려면 다음처럼 실행합니다.
-
-```powershell
-.\scripts\run_dev.ps1 -UseProjectData
-```
+설치 없이 실행하면 설정·결과·로그가 모두 프로젝트 폴더의 `data/` 하나에 저장되므로 폴더째 옮겨 쓸 수 있습니다. 가상 환경을 만든 뒤에는 `run_netops_suite.bat`로도 실행할 수 있습니다.
 
 ## 관리자 권한
 
@@ -125,8 +121,22 @@ show vlan {{ vlan_id }}
 
 ## 데이터 저장 위치
 
-기본 런타임 데이터는 `%LOCALAPPDATA%\NetOps Suite` 아래로 저장됩니다.
-개발 중 프로젝트 폴더 아래의 `config/`, `logs/`, `inspector/`, `config_builder/` 등을 사용하려면 `NETOPS_SUITE_USE_PROJECT_DATA=1` 환경 변수 또는 `.\scripts\run_dev.ps1 -UseProjectData`를 사용하세요.
+모든 설정과 결과는 데이터 폴더 하나에 저장됩니다.
+
+- 설치본: `%LOCALAPPDATA%\NetOps Suite`
+- 설치 없이 실행(소스 실행 또는 압축을 푼 실행 파일): 프로그램 폴더의 `data`
+- `NETOPS_SUITE_DATA_ROOT` 환경 변수로 다른 폴더를 지정할 수 있습니다.
+
+```text
+<데이터 폴더>
+├─ config/          앱 설정, IP·FTP·SCP 프로파일, FTP 키
+├─ inspector/       장비 점검 사용자 규칙·파서
+├─ config_builder/  설정 생성 사용자 프로파일·장비 값
+├─ results/         점검 결과 Excel, backup/<시각>, session_logs/<시각>, 내보낸 파일
+└─ logs/            app.log
+```
+
+설치 없이 처음 실행할 때 `data`가 비어 있고 이 PC에 설치본 데이터가 있으면 설정과 사용자 프로파일을 복사해 옵니다. 이전 버전이 `logs/exports`, `inspector/runs`, `config_builder/outputs`에 저장한 결과는 첫 실행 때 `results`로 옮겨지며, 같은 이름의 파일은 덮어쓰지 않습니다.
 
 운영 민감 데이터가 포함될 수 있는 항목:
 
@@ -171,7 +181,7 @@ gitleaks dir --no-banner --redact .
 ```powershell
 pip install -r requirements-dev-lock.txt
 pip install "pyinstaller==6.21.0" "pyinstaller-hooks-contrib==2026.6"
-powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.0.11 -Clean
+powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.1.0 -Clean
 ```
 
 Windows 설치 파일 빌드에는 Inno Setup 6가 필요합니다.
@@ -204,7 +214,7 @@ GitHub Actions 릴리즈 빌드는 `workflow_dispatch`로 수동 실행하며, �
 ```powershell
 $env:WINDOWS_CODESIGN_CERT_PATH = "C:\path\codesign.pfx"
 $env:WINDOWS_CODESIGN_CERT_PASSWORD = "<pfx password>"
-powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.0.11 -Clean -RequireCodeSigning
+powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.1.0 -Clean -RequireCodeSigning
 ```
 
 ## 프로젝트 구조

@@ -6,13 +6,12 @@ openpyxl>=3.1,<4
 PyYAML>=6,<7
 Jinja2>=3.1,<4
 
-# Netmiko 4.7 still requires Paramiko <5. Paramiko 5 is the first release
-# fixing GHSA-r374-rxx8-8654. scripts/audit_dependencies.py carries a narrow,
-# expiring exception until an officially compatible Netmiko version is available.
-paramiko>=3.5,<5
+# Paramiko 5 is the first release fixing GHSA-r374-rxx8-8654 and needs Netmiko 4.8+.
+# SHA-1-only devices fall back to the isolated legacy runtime (requirements-legacy-ssh.txt).
+paramiko>=5,<6
 cryptography>=50,<51
 pyOpenSSL>=26.4,<27
-netmiko>=4.7,<5
+netmiko>=4.8,<5
 telnetlib3>=2,<5
 
 pyftpdlib>=2,<3

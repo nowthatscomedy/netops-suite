@@ -7,7 +7,7 @@ Piolink 장비의 명령어, 파싱 규칙, 핸들러 클래스를 제공합니�
 
 import time
 import logging
-import paramiko
+from core.ssh_compat import CompatibleSSHClient
 import re
 import datetime
 from vendors.base import CustomDeviceHandler, register_handler
@@ -216,8 +216,7 @@ class PiolinkTifrontSSHHandler(CustomDeviceHandler):
         self.logger.debug("Piolink Tifront 장비 SSH 접속 시작: %s", self.device['ip'])
         
         try:
-            self.ssh = paramiko.SSHClient()
-            self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            self.ssh = CompatibleSSHClient(self.device, self.session_log_file)
             
             self.ssh.connect(
                 hostname=self.device['ip'],

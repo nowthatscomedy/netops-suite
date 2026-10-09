@@ -28,8 +28,9 @@ from PySide6.QtWidgets import (
 from app.app_state import AppState
 from app.models.network_models import NetworkAdapterInfo
 from app.models.profile_models import IPProfile
-from app.ui.common import confirm_risky_action, make_empty_state, make_inline_status, make_step_hint, make_table_item
+from app.ui.common import confirm_risky_action, make_empty_state, make_inline_status, make_table_item, set_inline_status
 from app.ui.dialogs.profile_editor_dialog import ProfileEditorDialog
+from app.ui.common.disclosure import CollapsibleSection, make_page_header
 from app.utils.threading_utils import FunctionWorker
 from app.utils.validators import (
     ValidationError,
@@ -46,12 +47,14 @@ from netops_suite.ui.selection_inputs import NoWheelComboBox
 
 class InterfaceTab(QWidget):
     status_message = Signal(str)
+    admin_requested = Signal()
 
     def __init__(self, state: AppState, parent=None) -> None:
         super().__init__(parent)
         self.state = state
         self.adapters: list[NetworkAdapterInfo] = []
         self._active_workers: list[FunctionWorker] = []
+        self._network_change_running = False
         self._pending_ui_state: dict = {}
         self._startup_refresh_requested = False
 
@@ -73,7 +76,7 @@ class InterfaceTab(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
-        layout.addWidget(make_step_hint("작업 흐름: 어댑터 선택, DHCP/수동 설정, 변경 내용 확인, 적용"))
+        layout.addWidget(make_page_header("내 PC의 IP 변경", "어댑터와 적용할 설정을 선택한 뒤 변경 내용을 검토하세요."))
 
         self.admin_banner = QWidget()
         admin_layout = QHBoxLayout(self.admin_banner)
@@ -81,6 +84,9 @@ class InterfaceTab(QWidget):
         self.admin_label = QLabel()
         self.admin_label.setWordWrap(True)
         admin_layout.addWidget(self.admin_label, 1)
+        self.admin_restart_button = make_action_button("관리자로 다시 실행", ActionKind.UTILITY)
+        self.admin_restart_button.clicked.connect(self.admin_requested.emit)
+        admin_layout.addWidget(self.admin_restart_button)
         layout.addWidget(self.admin_banner)
 
         top_row = QHBoxLayout()
@@ -117,7 +123,7 @@ class InterfaceTab(QWidget):
         self.adapter_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.adapter_table.verticalHeader().setVisible(False)
         self.adapter_table.horizontalHeader().setStretchLastSection(True)
-        self.adapter_empty_label = make_empty_state("어댑터 목록 새로고침을 눌러 어댑터를 불러오세요.")
+        self.adapter_empty_label = make_empty_state("새로고침을 눌러 어댑터 목록을 불러오세요.")
         adapter_layout.addWidget(self.adapter_table)
         adapter_layout.addWidget(self.adapter_empty_label)
         splitter.addWidget(adapter_group)
@@ -146,12 +152,12 @@ class InterfaceTab(QWidget):
         self.gateway_edit = QLineEdit()
         self.gateway_edit.setPlaceholderText("예: 192.168.0.1")
         self.dns_edit = QPlainTextEdit()
-        self.dns_edit.setMaximumHeight(46)
+        self.dns_edit.setMinimumHeight(72)
+        self.dns_edit.setMaximumHeight(96)
         self.dns_edit.setPlaceholderText("예: 8.8.8.8, 1.1.1.1")
         self.form_status_label = make_inline_status(
             "info", "왼쪽에서 어댑터를 선택하면 현재 설정을 확인하고 변경할 수 있습니다."
         )
-        self.form_status_label.setMaximumHeight(38)
 
         apply_row = QHBoxLayout()
         self.apply_button = make_action_button(
@@ -170,17 +176,24 @@ class InterfaceTab(QWidget):
 
         form_layout.addRow("인터페이스", self.selected_interface_label)
         form_layout.addRow("적용 모드", self.mode_combo)
-        form_layout.addRow("로컬 IPv4", self.ip_edit)
-        form_layout.addRow("프리픽스 / 마스크", self.prefix_edit)
-        form_layout.addRow("게이트웨이", self.gateway_edit)
-        form_layout.addRow("DNS", self.dns_edit)
+        self.current_settings_label = QLabel("어댑터를 선택하세요.")
+        self.current_settings_label.setWordWrap(True)
+        form_group_layout.addWidget(self.current_settings_label)
+        self.static_fields = QWidget()
+        static_form = QFormLayout(self.static_fields)
+        static_form.setContentsMargins(0, 0, 0, 0)
+        static_form.setSizeConstraint(QFormLayout.SizeConstraint.SetMinimumSize)
+        static_form.addRow("로컬 IPv4", self.ip_edit)
+        static_form.addRow("프리픽스 / 마스크", self.prefix_edit)
+        static_form.addRow("게이트웨이", self.gateway_edit)
+        static_form.addRow("DNS", self.dns_edit)
+        form_group_layout.addWidget(self.static_fields)
         form_group_layout.addWidget(self.form_status_label)
         form_group_layout.addLayout(apply_row)
         right_layout.addWidget(form_group)
 
-        profile_group = QGroupBox("저장된 IP 프로파일")
-        profile_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
-        profile_layout = QVBoxLayout(profile_group)
+        self.profile_section = CollapsibleSection("저장된 IP 프로파일")
+        profile_layout = self.profile_section.content_layout
 
         button_row = QGridLayout()
         self.profile_apply_button = make_action_button(
@@ -210,7 +223,7 @@ class InterfaceTab(QWidget):
         detail_form.addRow("설정", self.profile_summary_label)
         profile_layout.addLayout(detail_form)
 
-        right_layout.addWidget(profile_group)
+        right_layout.addWidget(self.profile_section)
         right_layout.addStretch(1)
         right_scroll = QScrollArea()
         right_scroll.setWidgetResizable(True)
@@ -270,7 +283,7 @@ class InterfaceTab(QWidget):
         else:
             self.admin_banner.show()
             self.admin_label.setText(
-                "일반 권한으로 실행 중입니다. 네트워크 설정 변경은 왼쪽 아래 '관리자'에서 다시 실행한 뒤 사용할 수 있습니다."
+                "IP를 변경하려면 관리자 권한으로 다시 실행하세요."
             )
             self.admin_label.setStyleSheet(
                 "background:transparent; color:#475467; padding:4px 0 4px 9px; "
@@ -359,6 +372,8 @@ class InterfaceTab(QWidget):
             self.status_message.emit(f"네트워크 인터페이스 {len(adapters)}개를 불러왔습니다.")
         else:
             self.selected_interface_label.setText("-")
+            self.current_settings_label.setText("어댑터를 선택하세요.")
+            self.static_fields.hide()
             self._update_action_states()
             self.status_message.emit("네트워크 인터페이스를 찾지 못했습니다.")
 
@@ -381,9 +396,12 @@ class InterfaceTab(QWidget):
         adapter = self._selected_adapter()
         if not adapter:
             self.selected_interface_label.setText("-")
+            self.current_settings_label.setText("어댑터를 선택하세요.")
+            self.static_fields.hide()
             self._update_action_states()
             return
         self.selected_interface_label.setText(adapter.name)
+        self.current_settings_label.setText("현재 설정 · " + " · ".join(self._adapter_summary_lines(adapter)))
         self.mode_combo.setCurrentIndex(0 if adapter.dhcp_enabled else 1)
         self.ip_edit.setText(adapter.ipv4 or "")
         self.prefix_edit.setText(str(adapter.prefix_length or 24))
@@ -400,6 +418,7 @@ class InterfaceTab(QWidget):
         self.prefix_edit.setEnabled(is_static)
         self.gateway_edit.setEnabled(is_static)
         self.dns_edit.setEnabled(is_static)
+        self.static_fields.setVisible(is_static)
         self._update_action_states()
 
     def _update_action_states(self) -> None:
@@ -408,8 +427,8 @@ class InterfaceTab(QWidget):
         has_adapter = self._selected_adapter() is not None
         has_profile = self._selected_profile() is not None
         can_change_network = bool(self.state.is_admin)
-        self.apply_button.setEnabled(can_change_network and has_adapter)
-        self.profile_apply_button.setEnabled(can_change_network and has_profile)
+        self.apply_button.setEnabled(can_change_network and has_adapter and not self._network_change_running)
+        self.profile_apply_button.setEnabled(can_change_network and has_profile and not self._network_change_running)
         self.save_current_button.setEnabled(has_adapter)
         if not can_change_network:
             admin_tip = "관리자 권한으로 다시 실행 후 사용할 수 있습니다."
@@ -442,6 +461,8 @@ class InterfaceTab(QWidget):
         self._update_action_states()
 
     def apply_current_settings(self) -> None:
+        if self._network_change_running:
+            return
         adapter = self._selected_adapter()
         if not adapter:
             QMessageBox.warning(self, "선택 필요", "먼저 인터페이스를 선택해 주세요.")
@@ -462,25 +483,32 @@ class InterfaceTab(QWidget):
                 ],
             ):
                 return
-            self._start_worker(
+            self._start_network_change(
                 self.state.network_interface_service.set_dhcp,
                 adapter.name,
-                on_result=lambda result: self._handle_operation_result(result, refresh_after=True),
                 error_title="DHCP 적용 실패",
             )
             return
 
         try:
+            validation_target = self.ip_edit
             ip_value = validate_ipv4(self.ip_edit.text(), "로컬 IPv4")
+            validation_target = self.prefix_edit
             prefix_value = validate_prefix(self.prefix_edit.text())
+            validation_target = self.gateway_edit
             gateway_value = validate_optional_ipv4(self.gateway_edit.text(), "게이트웨이")
+            validation_target = self.dns_edit
             dns_servers = (
                 parse_dns_servers(self.dns_edit.toPlainText()) if self.dns_edit.toPlainText().strip() else []
             )
         except ValidationError as exc:
-            QMessageBox.warning(self, "입력 확인", str(exc))
+            set_inline_status(self.form_status_label, "error", f"{exc} 입력값을 수정한 뒤 다시 검토하세요.")
+            self.form_status_label.show()
+            validation_target.setFocus(Qt.FocusReason.OtherFocusReason)
+            validation_target.selectAll()
             return
 
+        self.form_status_label.hide()
         if not self._confirm_apply(
             title="수동 IP 적용 확인",
             interface_name=adapter.name,
@@ -489,14 +517,13 @@ class InterfaceTab(QWidget):
         ):
             return
 
-        self._start_worker(
+        self._start_network_change(
             self.state.network_interface_service.set_static,
             adapter.name,
             ip_value,
             prefix_value,
             gateway_value,
             dns_servers,
-            on_result=lambda result: self._handle_operation_result(result, refresh_after=True),
             error_title="수동 IP 적용 실패",
         )
 
@@ -541,6 +568,8 @@ class InterfaceTab(QWidget):
             self.status_message.emit(f"프로파일을 수정했습니다: {updated.name}")
 
     def apply_selected_profile(self) -> None:
+        if self._network_change_running:
+            return
         profile = self._selected_profile()
         adapter = self._selected_adapter()
         if not profile:
@@ -563,11 +592,10 @@ class InterfaceTab(QWidget):
         if not self._confirm_apply("저장된 프로파일 적용 확인", interface_name, current_lines, target_lines):
             return
 
-        self._start_worker(
+        self._start_network_change(
             self.state.network_interface_service.apply_profile,
             interface_name,
             profile,
-            on_result=lambda result: self._handle_operation_result(result, refresh_after=True),
             error_title="프로파일 적용 실패",
         )
 
@@ -778,6 +806,23 @@ class InterfaceTab(QWidget):
             if on_finished:
                 on_finished()
             QMessageBox.warning(self, error_title, str(exc))
+
+    def _start_network_change(self, fn: Callable, *args, error_title: str) -> None:
+        if self._network_change_running:
+            return
+        self._network_change_running = True
+        self._update_action_states()
+        self._start_worker(
+            fn,
+            *args,
+            on_result=lambda result: self._handle_operation_result(result, refresh_after=True),
+            on_finished=self._finish_network_change,
+            error_title=error_title,
+        )
+
+    def _finish_network_change(self) -> None:
+        self._network_change_running = False
+        self._update_action_states()
 
     def _discard_worker(self, worker: FunctionWorker) -> None:
         if worker in self._active_workers:

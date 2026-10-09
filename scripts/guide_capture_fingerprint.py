@@ -39,6 +39,7 @@ TEXT_SOURCE_SUFFIXES = {
     ".ps1",
     ".py",
     ".spec",
+    ".svg",
     ".toml",
     ".txt",
     ".yaml",
@@ -496,7 +497,19 @@ def capture_manifest_errors(
             errors.append(str(exc))
             continue
         expected_dimensions = tuple(fingerprint["viewport"])
-        if dimensions != expected_dimensions:
+        if scenario.get("capture_target") == "page":
+            # Work-area captures omit the navigation and status bar, so they
+            # must fit inside the window viewport instead of matching it.
+            fits = (
+                0 < dimensions[0] <= expected_dimensions[0]
+                and 0 < dimensions[1] <= expected_dimensions[1]
+            )
+            if not fits:
+                errors.append(
+                    f"capture {scenario_id}: PNG dimensions {dimensions[0]}x{dimensions[1]} "
+                    f"exceed viewport {expected_dimensions[0]}x{expected_dimensions[1]}"
+                )
+        elif dimensions != expected_dimensions:
             errors.append(
                 f"capture {scenario_id}: PNG dimensions {dimensions[0]}x{dimensions[1]} "
                 f"do not match viewport {expected_dimensions[0]}x{expected_dimensions[1]}"

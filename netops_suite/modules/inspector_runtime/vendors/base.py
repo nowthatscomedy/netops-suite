@@ -11,7 +11,7 @@ import importlib
 import pkgutil
 import time
 import re
-import paramiko
+from core.ssh_compat import CompatibleSSHClient
 
 logger = logging.getLogger(__name__)
 
@@ -113,8 +113,7 @@ class GenericParamikoHandler(CustomDeviceHandler):
 
         self.logger.debug("GenericParamiko SSH 접속 시작: %s", self.device.get('ip'))
         try:
-            self.ssh = paramiko.SSHClient()
-            self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            self.ssh = CompatibleSSHClient(self.device, self.session_log_file)
             self.ssh.connect(
                 hostname=self.device["ip"],
                 username=self.device["username"],
@@ -297,4 +296,4 @@ def get_custom_handler(device, timeout=10, session_log_file=None):
         return handler_class(device, timeout, session_log_file)
         
     logger.debug("커스텀 핸들러를 찾을 수 없음: %s", key)
-    return None 
+    return None

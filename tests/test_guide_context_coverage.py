@@ -5,20 +5,9 @@ from PySide6.QtWidgets import QWidget
 
 from app.app_state import AppState
 from app.main_window import MainWindow
-from app.ui.tabs.ai_chat_tab import AiChatTab
 
 
 def _disable_external_startup(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        AiChatTab,
-        "refresh_provider_status",
-        lambda *_args, **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        AiChatTab,
-        "_ensure_model_catalog_fresh",
-        lambda *_args, **_kwargs: None,
-    )
     monkeypatch.setattr(
         MainWindow,
         "_maybe_check_updates_on_startup",

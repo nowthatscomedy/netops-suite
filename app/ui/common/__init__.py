@@ -11,6 +11,7 @@ from app.ui.common.theme import apply_app_theme
 from app.ui.common.ux import (
     confirm_risky_action,
     ensure_visible_checkbox,
+    fit_wrapped_label_height,
     make_inline_status,
     make_dialog_intro,
     make_menu_button,
@@ -29,6 +30,7 @@ __all__ = [
     "configure_result_table",
     "confirm_risky_action",
     "ensure_visible_checkbox",
+    "fit_wrapped_label_height",
     "make_inline_status",
     "make_dialog_intro",
     "make_menu_button",

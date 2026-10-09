@@ -1,7 +1,7 @@
 """Reference examples for user-defined Inspector parsing functions.
 
 Copy the function you need into:
-%LOCALAPPDATA%\\NetOps Suite\\inspector\\custom_parsers\\<function_name>.py
+<data folder>\\inspector\\custom_parsers\\<function_name>.py
 
 Function names must start with ``parsing_``. Each function receives the full
 command output as a string and returns either one Excel cell value or a dict of

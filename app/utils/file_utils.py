@@ -12,8 +12,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from app.models.ai_models import default_ai_chat_config
-
 DEFAULT_UPDATE_REPO = "nowthatscomedy/netops-suite"
 DEFAULT_UPDATE_ASSET_PATTERN = (
     r"^NetOpsSuite-setup-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\.exe$"
@@ -23,6 +21,8 @@ DATA_ROOT_ENV = "NETOPS_SUITE_DATA_ROOT"
 PATH_SETTINGS_FILENAME = "path_settings.json"
 PATH_SETTINGS_VERSION = 1
 PATH_SETTING_KEYS = ("config_dir", "logs_dir", "exports_dir")
+PORTABLE_DATA_DIRNAME = "data"
+RESULTS_DIRNAME = "results"
 
 LOGGER = logging.getLogger("netops_suite.file_utils")
 _SAVE_JSON_LOCK = threading.RLock()
@@ -44,7 +44,6 @@ class AppPaths:
     tftp_runtime: Path
     vendor_presets: Path
     public_iperf_cache: Path
-    ai_model_catalog_cache: Path
     oui_cache: Path
     ftp_keys_dir: Path
     app_log: Path
@@ -91,6 +90,20 @@ def resolve_asset_path(*parts: str) -> Path:
             return candidate
 
     return unique_candidates[0]
+
+
+def portable_data_root(root: Path) -> Path:
+    return Path(root) / PORTABLE_DATA_DIRNAME
+
+
+def _is_installed_copy(root: Path) -> bool:
+    # Inno Setup places its uninstaller next to the installed executable.
+    if not is_packaged_runtime():
+        return False
+    try:
+        return any(Path(root).glob("unins*.exe"))
+    except OSError:
+        return False
 
 
 def default_data_root() -> Path:
@@ -157,13 +170,41 @@ def detect_data_root(root: Path, *, prefer_project_data: bool = False) -> Path:
     if override:
         return Path(override).expanduser()
 
-    if (
-        prefer_project_data or _env_flag_enabled(PROJECT_DATA_ENV)
-    ) and not _is_protected_install_root(root):
+    if _is_protected_install_root(root):
+        return default_data_root()
+
+    if prefer_project_data:
         if _is_writable_directory(root):
             return root
+        return default_data_root()
+
+    # Source runs and unzipped packaged copies keep every setting and result in
+    # one "data" folder next to the program. Installed copies use LOCALAPPDATA.
+    if _env_flag_enabled(PROJECT_DATA_ENV) or not _is_installed_copy(root):
+        candidate = portable_data_root(root)
+        if _is_writable_directory(candidate):
+            return candidate
 
     return default_data_root()
+
+
+def is_portable_data_root(paths: AppPaths) -> bool:
+    root = getattr(paths, "root", None)
+    data_root = getattr(paths, "data_root", None)
+    if root is None or data_root is None:
+        return False
+    try:
+        return Path(data_root).resolve(strict=False) == portable_data_root(
+            Path(root)
+        ).resolve(strict=False)
+    except OSError:
+        return False
+
+
+def storage_mode_label(paths: AppPaths) -> str:
+    if is_portable_data_root(paths):
+        return "프로그램 폴더의 data 폴더 (설치 없이 실행)"
+    return "사용자 데이터 폴더"
 
 
 def default_path_settings() -> dict[str, Any]:
@@ -198,6 +239,25 @@ def normalize_path_settings(settings: Any) -> dict[str, Any]:
     return normalized
 
 
+def upgrade_legacy_path_settings(settings: Any, data_root: Path) -> Any:
+    """Drop a saved results folder that only pointed at the old default."""
+    if not isinstance(settings, dict):
+        return settings
+    value = settings.get("exports_dir", "")
+    if not isinstance(value, str) or not value.strip():
+        return settings
+    legacy_default = _absolute_path_text(Path(data_root) / "logs" / "exports")
+    try:
+        saved = _absolute_path_text(os.path.expandvars(value.strip()))
+    except (OSError, ValueError):
+        return settings
+    if saved.casefold() != legacy_default.casefold():
+        return settings
+    upgraded = dict(settings)
+    upgraded["exports_dir"] = ""
+    return upgraded
+
+
 def _absolute_path_text(path: str | Path) -> str:
     return str(Path(path).expanduser().resolve(strict=False))
 
@@ -213,12 +273,11 @@ def effective_path_settings(paths: AppPaths) -> dict[str, Any]:
 
 def default_effective_path_settings(paths: AppPaths) -> dict[str, Any]:
     data_root = Path(paths.data_root)
-    logs_dir = data_root / "logs"
     return {
         "version": PATH_SETTINGS_VERSION,
         "config_dir": _absolute_path_text(data_root / "config"),
-        "logs_dir": _absolute_path_text(logs_dir),
-        "exports_dir": _absolute_path_text(logs_dir / "exports"),
+        "logs_dir": _absolute_path_text(data_root / "logs"),
+        "exports_dir": _absolute_path_text(data_root / RESULTS_DIRNAME),
     }
 
 
@@ -262,11 +321,7 @@ def resolve_app_paths_with_settings(current_paths: AppPaths, settings: Any) -> A
     defaults = default_effective_path_settings(current_paths)
     config_dir = Path(validated["config_dir"] or defaults["config_dir"])
     logs_dir = Path(validated["logs_dir"] or defaults["logs_dir"])
-    exports_dir = (
-        Path(validated["exports_dir"])
-        if validated["exports_dir"]
-        else logs_dir / "exports"
-    )
+    exports_dir = Path(validated["exports_dir"] or defaults["exports_dir"])
     path_settings = current_paths.path_settings or (
         Path(current_paths.data_root) / PATH_SETTINGS_FILENAME
     )
@@ -286,8 +341,6 @@ def resolve_app_paths_with_settings(current_paths: AppPaths, settings: Any) -> A
         tftp_runtime=config_dir / Path(current_paths.tftp_runtime).name,
         vendor_presets=config_dir / Path(current_paths.vendor_presets).name,
         public_iperf_cache=config_dir / Path(current_paths.public_iperf_cache).name,
-        ai_model_catalog_cache=config_dir
-        / Path(current_paths.ai_model_catalog_cache).name,
         oui_cache=config_dir / Path(current_paths.oui_cache).name,
         ftp_keys_dir=config_dir / Path(current_paths.ftp_keys_dir).name,
         app_log=logs_dir / Path(current_paths.app_log).name,
@@ -378,12 +431,202 @@ def migrate_config_directory(
     return tuple(copied), tuple(skipped)
 
 
+def _move_directory_contents(source: Path, target: Path) -> tuple[int, int]:
+    """Move regular files from ``source`` into ``target`` without overwriting."""
+    try:
+        if not source.is_dir() or source.is_symlink():
+            return 0, 0
+        source_dir = source.resolve(strict=False)
+        target_dir = target.resolve(strict=False)
+    except OSError:
+        return 0, 0
+    if source_dir == target_dir or _is_relative_to(target_dir, source_dir):
+        return 0, 0
+
+    moved = 0
+    skipped = 0
+    for source_path in sorted(source_dir.rglob("*")):
+        relative_path = source_path.relative_to(source_dir)
+        if source_path.is_symlink() or any(
+            source_dir.joinpath(*relative_path.parts[:index]).is_symlink()
+            for index in range(1, len(relative_path.parts))
+        ):
+            skipped += 1
+            continue
+        if not source_path.is_file() or source_path.name == ".gitkeep":
+            continue
+        target_path = target_dir / relative_path
+        if target_path.exists() or target_path.is_symlink():
+            skipped += 1
+            continue
+        try:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(source_path), str(target_path))
+        except OSError as exc:
+            LOGGER.warning("Failed to move %s to %s: %s", source_path, target_path, exc)
+            skipped += 1
+            continue
+        moved += 1
+
+    _remove_empty_directories(source_dir)
+    return moved, skipped
+
+
+def _remove_empty_directories(directory: Path) -> None:
+    if not directory.is_dir() or directory.is_symlink():
+        return
+    for child in sorted(directory.rglob("*"), key=lambda path: len(path.parts), reverse=True):
+        if child.is_dir() and not child.is_symlink():
+            _remove_directory_if_empty(child)
+    _remove_directory_if_empty(directory)
+
+
+def _remove_directory_if_empty(directory: Path) -> None:
+    try:
+        entries = list(directory.iterdir())
+        for entry in entries:
+            if entry.name != ".gitkeep" or not entry.is_file():
+                return
+        for entry in entries:
+            entry.unlink()
+        directory.rmdir()
+    except OSError:
+        pass
+
+
+def migrate_legacy_data_layout(paths: AppPaths) -> list[str]:
+    """Move results stored by older versions into the flat results/logs layout.
+
+    Older versions kept results under ``logs/exports``, ``inspector/runs`` and
+    ``config_builder/outputs``. Existing files are never overwritten; anything
+    that cannot be moved stays where it was.
+    """
+    data_root = Path(paths.data_root)
+    results_dir = Path(paths.exports_dir)
+    logs_dir = Path(paths.logs_dir)
+    messages: list[str] = []
+
+    builder_outputs = data_root / "config_builder" / "outputs"
+    activity_log = builder_outputs / "desktop_activity.log"
+    target_activity_log = logs_dir / "config_builder_activity.log"
+    if activity_log.is_file() and not activity_log.is_symlink():
+        if not target_activity_log.exists():
+            try:
+                logs_dir.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(activity_log), str(target_activity_log))
+                messages.append(f"{activity_log} -> {target_activity_log}")
+            except OSError as exc:
+                LOGGER.warning("Failed to move %s: %s", activity_log, exc)
+
+    moves = (
+        (data_root / "inspector" / "runs" / "results", results_dir),
+        (data_root / "inspector" / "runs", results_dir),
+        (builder_outputs / "backups", results_dir / "backup"),
+        (builder_outputs, results_dir),
+        (data_root / "logs" / "exports", results_dir),
+    )
+    for source, target in moves:
+        moved, skipped = _move_directory_contents(source, target)
+        if moved or skipped:
+            messages.append(
+                f"{source} -> {target} (moved={moved}, skipped={skipped})"
+            )
+    return messages
+
+
+def import_installed_settings(
+    paths: AppPaths, source_root: Path | None = None
+) -> list[str]:
+    """Copy settings from an installed copy into a fresh portable data folder."""
+    if not is_portable_data_root(paths):
+        return []
+    source = Path(source_root) if source_root else default_data_root()
+    data_root = Path(paths.data_root)
+    try:
+        if not source.is_dir() or source.resolve(strict=False) == data_root.resolve(
+            strict=False
+        ):
+            return []
+    except OSError:
+        return []
+    if Path(paths.app_config).exists():
+        return []
+
+    source_settings = normalize_path_settings(
+        load_json(source / PATH_SETTINGS_FILENAME, default_path_settings())
+    )
+    source_config = Path(source_settings["config_dir"] or source / "config")
+    copies = [(source_config, Path(paths.config_dir))]
+    for folder, excluded in (("inspector", "runs"), ("config_builder", "outputs")):
+        source_folder = source / folder
+        if not source_folder.is_dir():
+            continue
+        for entry in sorted(source_folder.iterdir()):
+            if entry.name == excluded or entry.is_symlink():
+                continue
+            copies.append((entry, data_root / folder / entry.name))
+
+    messages: list[str] = []
+    for source_path, target_path in copies:
+        try:
+            if source_path.is_dir():
+                copied, _skipped = migrate_config_directory(source_path, target_path)
+                count = len(copied)
+            elif source_path.is_file() and not target_path.exists():
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source_path, target_path)
+                count = 1
+            else:
+                count = 0
+        except (OSError, ValueError) as exc:
+            LOGGER.warning("Failed to import %s: %s", source_path, exc)
+            continue
+        if count:
+            messages.append(f"{source_path} -> {target_path} (copied={count})")
+    return messages
+
+
+# Caches written only by removed features. They hold no user settings or
+# results, so upgrades delete them instead of carrying them forward.
+RETIRED_CONFIG_FILES = ("ai_model_catalog_cache.json",)
+
+
+def remove_retired_files(paths: AppPaths) -> list[str]:
+    """Delete files that only removed features of earlier versions used."""
+    removed: list[str] = []
+    for name in RETIRED_CONFIG_FILES:
+        target = Path(paths.config_dir) / name
+        if not target.is_file() or target.is_symlink():
+            continue
+        try:
+            target.unlink()
+        except OSError as exc:
+            LOGGER.warning("Failed to remove retired file %s: %s", target, exc)
+            continue
+        removed.append(str(target))
+    return removed
+
+
+def prepare_data_root(paths: AppPaths) -> list[str]:
+    """Import installed settings, flatten legacy layouts and drop retired files."""
+    messages = [f"imported {item}" for item in import_installed_settings(paths)]
+    if paths.path_settings is not None and paths.path_settings.is_file():
+        saved = load_json(paths.path_settings, None)
+        upgraded = upgrade_legacy_path_settings(saved, Path(paths.data_root))
+        if upgraded is not saved:
+            save_json(paths.path_settings, upgraded)
+            messages.append("reset results folder from logs/exports to results")
+    messages.extend(f"moved {item}" for item in migrate_legacy_data_layout(paths))
+    messages.extend(f"removed {item}" for item in remove_retired_files(paths))
+    return messages
+
+
 def build_app_paths(root_dir: Path | None = None) -> AppPaths:
     root = Path(root_dir) if root_dir else detect_root_path()
     data_root = detect_data_root(root, prefer_project_data=root_dir is not None)
     config_dir = data_root / "config"
     logs_dir = data_root / "logs"
-    exports_dir = logs_dir / "exports"
+    exports_dir = data_root / RESULTS_DIRNAME
     base_paths = AppPaths(
         root=root,
         data_root=data_root,
@@ -399,13 +642,14 @@ def build_app_paths(root_dir: Path | None = None) -> AppPaths:
         tftp_runtime=config_dir / "tftp_runtime.json",
         vendor_presets=config_dir / "vendor_presets.json",
         public_iperf_cache=config_dir / "public_iperf_servers_cache.json",
-        ai_model_catalog_cache=config_dir / "ai_model_catalog_cache.json",
         oui_cache=config_dir / "oui_cache.json",
         ftp_keys_dir=config_dir / "ftp_keys",
         app_log=logs_dir / "app.log",
         path_settings=data_root / PATH_SETTINGS_FILENAME,
     )
-    raw_settings = load_json(base_paths.path_settings, default_path_settings())
+    raw_settings = upgrade_legacy_path_settings(
+        load_json(base_paths.path_settings, default_path_settings()), data_root
+    )
     try:
         return resolve_app_paths_with_settings(base_paths, raw_settings)
     except ValueError as exc:
@@ -426,7 +670,6 @@ def default_app_config() -> dict[str, Any]:
             "welcome_seen": False,
         },
         "update": default_update_config(),
-        "ai_chat": default_ai_chat_config(),
     }
 
 

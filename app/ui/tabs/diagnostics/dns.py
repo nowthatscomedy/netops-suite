@@ -6,12 +6,12 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QVBoxLayout,
     QWidget,
 )
 
 from app.ui.common import make_empty_state, make_inline_status, set_inline_status
+from app.ui.common.disclosure import CollapsibleSection
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
@@ -46,16 +46,25 @@ class DnsDiagnosticsMixin:
         form.addRow("도메인 / IP", self.dns_query_edit)
         form.addRow("레코드 타입", self.dns_type_combo)
         form.addRow("", self.dns_type_hint)
-        form.addRow("DNS 서버", self.dns_server_edit)
+        self.dns_options_section = CollapsibleSection("실행 옵션")
+        options_form = QFormLayout()
+        options_form.addRow("DNS 서버", self.dns_server_edit)
+        self.dns_options_section.content_layout.addLayout(options_form)
+        self.dns_options_section.watch(self.dns_server_edit)
+        form.addRow(self.dns_options_section)
         form.addRow("", button_row)
+        self.dns_input_error = make_inline_status("error", "")
+        form.addRow(self.dns_input_error)
         layout.addWidget(group)
 
         self.dns_status_label = make_inline_status("info", "")
         layout.addWidget(self.dns_status_label)
         self.dns_empty_label = make_empty_state("도메인 또는 IP를 입력하고 조회를 누르면 결과가 표시됩니다.")
+        self.dns_empty_label.setMaximumHeight(72)
         layout.addWidget(self.dns_empty_label)
         self.dns_output = self._output()
         self.dns_output.setPlaceholderText("DNS 조회 결과가 여기에 표시됩니다.")
+        self.dns_output.hide()
         layout.addWidget(self.dns_output, 1)
 
         self.dns_type_combo.currentIndexChanged.connect(self._update_dns_type_hint)
@@ -68,9 +77,13 @@ class DnsDiagnosticsMixin:
         self.dns_type_hint.setText(description)
 
     def run_dns_lookup(self) -> None:
+        if not self.dns_run_button.isEnabled():
+            return
+        set_inline_status(self.dns_input_error, "error", "")
         query = self.dns_query_edit.text().strip()
         if not query:
-            QMessageBox.warning(self, "입력 확인", "도메인 또는 IP를 입력해 주세요.")
+            set_inline_status(self.dns_input_error, "error", "도메인 또는 IP를 입력해 주세요.")
+            self.dns_query_edit.setFocus()
             return
 
         record_type, _description = self.dns_type_combo.currentData()
@@ -79,6 +92,7 @@ class DnsDiagnosticsMixin:
             "도메인 또는 IP를 입력하고 조회를 누르면 결과가 표시됩니다."
         )
         self.dns_output.clear()
+        self.dns_output.show()
         self.dns_export_button.setEnabled(False)
         self._set_dns_running(True)
         set_inline_status(self.dns_status_label, "info", "DNS 조회(nslookup)를 실행 중입니다...")
@@ -111,6 +125,7 @@ class DnsDiagnosticsMixin:
         set_inline_status(self.dns_status_label, "error", f"DNS 조회 실패: {detail}")
 
     def _set_dns_running(self, running: bool) -> None:
+        self._set_diagnostic_running("dns", running)
         self.dns_run_button.setEnabled(not running)
         self.dns_query_edit.setEnabled(not running)
         self.dns_type_combo.setEnabled(not running)

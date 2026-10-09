@@ -134,6 +134,10 @@ def test_windows_powershell_sends_korean_release_json_as_utf8_bytes(tmp_path):
     received: dict[str, object] = {}
 
     class CaptureHandler(BaseHTTPRequestHandler):
+        # Windows PowerShell 5.1 expects a keep-alive HTTP/1.1 peer. When the
+        # server closes first, the client intermittently reports a receive error.
+        protocol_version = "HTTP/1.1"
+
         def do_POST(self):
             length = int(self.headers["Content-Length"])
             received["content_type"] = self.headers["Content-Type"]
@@ -148,7 +152,12 @@ def test_windows_powershell_sends_korean_release_json_as_utf8_bytes(tmp_path):
         def log_message(self, _format, *args):
             return
 
-    server = ThreadingHTTPServer(("127.0.0.1", 0), CaptureHandler)
+    class QuietServer(ThreadingHTTPServer):
+        def handle_error(self, request, client_address):
+            # The PowerShell process exits without closing its kept-alive socket.
+            return
+
+    server = QuietServer(("127.0.0.1", 0), CaptureHandler)
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
     try:

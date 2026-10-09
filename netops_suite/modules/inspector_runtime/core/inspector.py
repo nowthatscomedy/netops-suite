@@ -1,5 +1,5 @@
 import re
-from netmiko import ConnectHandler
+from core.ssh_compat import compatible_connect_handler as ConnectHandler
 import os
 from datetime import datetime
 import threading
@@ -10,16 +10,14 @@ import traceback
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import sys
+from paramiko.ssh_exception import IncompatiblePeer
+from core.legacy_ssh import LegacySSHError, validate_legacy_device
 
 from core.settings import canonicalize_column_name, make_profile_key
+from core.profile_resolver import ResolvedDeviceProfile, resolve_device_profile
 from vendors import (
-    INSPECTION_COMMANDS,
-    BACKUP_COMMANDS,
-    PARSING_RULES,
     get_custom_handler,
     CUSTOM_PARSERS,
-    CONNECTION_OVERRIDES,
-    HANDLER_OVERRIDES,
     is_custom_rule_pair
 )
 
@@ -40,7 +38,7 @@ class NetworkInspector:
     ):
         file_name, file_ext = os.path.splitext(output_excel)
         timestamp = run_timestamp or datetime.now().strftime('%Y%m%d_%H%M%S')
-        self.output_dir = "results"
+        self.output_dir = os.curdir
         os.makedirs(self.output_dir, exist_ok=True)
         self.output_excel = os.path.join(self.output_dir, f"{file_name}_{timestamp}{file_ext}")
         self.max_retries = max_retries
@@ -105,26 +103,62 @@ class NetworkInspector:
 
         return canonical_result
 
-    def _get_device_commands(self, vendor: str, model: str) -> list[str]:
+    @staticmethod
+    def _resolve_device_profile(device: dict) -> ResolvedDeviceProfile:
+        return resolve_device_profile(
+            device.get("vendor", ""),
+            device.get("os", ""),
+            device.get("model", ""),
+        )
+
+    def _get_device_commands(
+        self,
+        vendor: str,
+        os_name: str,
+        device_model: str = "",
+        *,
+        resolved_profile: ResolvedDeviceProfile | None = None,
+    ) -> list[str]:
         """장비별 점검 명령어를 가져옵니다."""
         try:
-            self.logger.debug("장비 명령어 조회 시작: %s %s", vendor, model)
-            v = str(vendor).strip().lower()
-            m = str(model).strip().lower()
-            cmds = INSPECTION_COMMANDS.get(v, {}).get(m, [])
-            excludes = set(self.inspection_excludes.get(v, {}).get(m, []))
+            profile = resolved_profile or resolve_device_profile(
+                vendor, os_name, device_model
+            )
+            self.logger.debug(
+                "장비 명령어 조회 시작: %s %s %s",
+                profile.vendor,
+                profile.os_name,
+                profile.model,
+            )
+            cmds = list(profile.inspection_commands)
+            excludes = set(
+                self.inspection_excludes.get(profile.vendor, {}).get(
+                    profile.os_name, []
+                )
+            )
             if excludes:
                 filtered_cmds: list[str] = []
                 for cmd in cmds:
                     if cmd in excludes:
                         continue
-                    parse_ids = self._get_parse_ids_for_command(v, m, cmd)
+                    parse_ids = self._get_parse_ids_for_command(
+                        profile.vendor,
+                        profile.os_name,
+                        cmd,
+                        profile.model,
+                        resolved_profile=profile,
+                    )
                     if parse_ids and parse_ids.issubset(excludes):
                         continue
                     filtered_cmds.append(cmd)
                 cmds = filtered_cmds
             if not cmds:
-                self.logger.warning("점검 명령어를 찾을 수 없음: %s %s", v, m)
+                self.logger.warning(
+                    "점검 명령어를 찾을 수 없음: %s %s %s",
+                    profile.vendor,
+                    profile.os_name,
+                    profile.model,
+                )
             else:
                 self.logger.debug("점검 명령어 목록: %s", cmds)
             return cmds
@@ -132,15 +166,33 @@ class NetworkInspector:
             self.logger.error("장비 명령어 조회 중 오류 발생: %s", e)
             return []
     
-    def _get_backup_command(self, vendor: str, model: str) -> str:
+    def _get_backup_command(
+        self,
+        vendor: str,
+        os_name: str,
+        device_model: str = "",
+        *,
+        resolved_profile: ResolvedDeviceProfile | None = None,
+    ) -> str:
         """장비별 백업 명령어를 가져옵니다."""
         try:
-            self.logger.debug("백업 명령어 조회 시작: %s %s", vendor, model)
-            v = str(vendor).strip().lower()
-            m = str(model).strip().lower()
-            cmd = BACKUP_COMMANDS.get(v, {}).get(m, '')
+            profile = resolved_profile or resolve_device_profile(
+                vendor, os_name, device_model
+            )
+            self.logger.debug(
+                "백업 명령어 조회 시작: %s %s %s",
+                profile.vendor,
+                profile.os_name,
+                profile.model,
+            )
+            cmd = profile.backup_command
             if not cmd:
-                self.logger.warning("백업 명령어를 찾을 수 없음: %s %s", v, m)
+                self.logger.warning(
+                    "백업 명령어를 찾을 수 없음: %s %s %s",
+                    profile.vendor,
+                    profile.os_name,
+                    profile.model,
+                )
             else:
                 self.logger.debug("백업 명령어: %s", cmd)
             return cmd
@@ -148,31 +200,37 @@ class NetworkInspector:
             self.logger.error("백업 명령어 조회 중 오류 발생: %s", e)
             return ""
     
-    def _parse_command_output(self, vendor: str, model: str, command: str, output: str) -> dict:
+    def _parse_command_output(
+        self,
+        vendor: str,
+        os_name: str,
+        command: str,
+        output: str,
+        device_model: str = "",
+        *,
+        resolved_profile: ResolvedDeviceProfile | None = None,
+    ) -> dict:
         """명령어 출력을 파싱합니다."""
         self.logger.debug("명령어 출력 파싱 시작: %s", command)
         result = {}
-        vendor_lower = str(vendor).lower()
-        model_lower = str(model).lower()
-        excludes = set(self.inspection_excludes.get(vendor_lower, {}).get(model_lower, []))
+        profile = resolved_profile or resolve_device_profile(
+            vendor, os_name, device_model
+        )
+        excludes = set(
+            self.inspection_excludes.get(profile.vendor, {}).get(
+                profile.os_name, []
+            )
+        )
         if command in excludes:
             self.logger.debug("파싱 제외(명령어 단위): %s", command)
             return result
         
-        if vendor_lower not in PARSING_RULES:
-            self.logger.debug("파싱 규칙 없음 (벤더): %s", vendor)
-            return result
-            
-        if model_lower not in PARSING_RULES[vendor_lower]:
-            self.logger.debug("파싱 규칙 없음 (모델): %s", model)
-            return result
-            
-        if command not in PARSING_RULES[vendor_lower][model_lower]:
+        if command not in profile.parsing_rules:
             self.logger.debug("파싱 규칙 없음 (명령어): %s", command)
             return result
         
         try:
-            rules = PARSING_RULES[vendor_lower][model_lower][command]
+            rules = profile.parsing_rules[command]
             
             if rules.get('parser_type') == 'split_fields':
                 column = rules.get('output_column')
@@ -386,8 +444,19 @@ class NetworkInspector:
             return ""
         return lines[line_number - 1].strip()
 
-    def _get_parse_ids_for_command(self, vendor: str, model: str, command: str) -> set[str]:
-        rules = PARSING_RULES.get(vendor, {}).get(model, {}).get(command, {})
+    def _get_parse_ids_for_command(
+        self,
+        vendor: str,
+        os_name: str,
+        command: str,
+        device_model: str = "",
+        *,
+        resolved_profile: ResolvedDeviceProfile | None = None,
+    ) -> set[str]:
+        profile = resolved_profile or resolve_device_profile(
+            vendor, os_name, device_model
+        )
+        rules = profile.parsing_rules.get(command, {})
         if not isinstance(rules, dict):
             return set()
 
@@ -425,11 +494,20 @@ class NetworkInspector:
         parse_ids.discard(f"{command}::")
         return parse_ids
 
-    def _get_output_columns_for_command(self, vendor: str, model: str, command: str) -> list[str]:
+    def _get_output_columns_for_command(
+        self,
+        vendor: str,
+        os_name: str,
+        command: str,
+        device_model: str = "",
+        *,
+        resolved_profile: ResolvedDeviceProfile | None = None,
+    ) -> list[str]:
         """명령어에 매핑되는 출력 컬럼 목록을 순서대로 반환합니다."""
-        vendor_key = str(vendor).strip().lower()
-        model_key = str(model).strip().lower()
-        rules = PARSING_RULES.get(vendor_key, {}).get(model_key, {}).get(command, {})
+        profile = resolved_profile or resolve_device_profile(
+            vendor, os_name, device_model
+        )
+        rules = profile.parsing_rules.get(command, {})
         if not isinstance(rules, dict):
             return []
 
@@ -475,14 +553,29 @@ class NetworkInspector:
 
         for device in devices:
             vendor = str(device.get("vendor", "")).strip()
-            model = str(device.get("os", "")).strip()
-            vendor_key = vendor.lower()
-            model_key = model.lower()
-            excludes = set(self.inspection_excludes.get(vendor_key, {}).get(model_key, []))
+            os_name = str(device.get("os", "")).strip()
+            model = str(device.get("model", "")).strip()
+            profile = self._resolve_device_profile(device)
+            excludes = set(
+                self.inspection_excludes.get(profile.vendor, {}).get(
+                    profile.os_name, []
+                )
+            )
 
-            commands = self._get_device_commands(vendor, model)
+            commands = self._get_device_commands(
+                vendor,
+                os_name,
+                model,
+                resolved_profile=profile,
+            )
             for cmd in commands:
-                for col in self._get_output_columns_for_command(vendor, model, cmd):
+                for col in self._get_output_columns_for_command(
+                    vendor,
+                    os_name,
+                    cmd,
+                    model,
+                    resolved_profile=profile,
+                ):
                     parse_id = f"{cmd}::{col}"
                     if cmd in excludes or parse_id in excludes:
                         continue
@@ -555,6 +648,19 @@ class NetworkInspector:
         """장비에 연결하고 명령어를 실행합니다."""
         if self._is_cancelled():
             return device, {"error": "작업이 취소되었습니다."}
+        try:
+            validate_legacy_device(device)
+        except LegacySSHError as exc:
+            return device, {"error": str(exc)}
+        resolved_profile = self._resolve_device_profile(device)
+        if resolved_profile.model_requested and not resolved_profile.model_matched:
+            warning = (
+                f"[{device['ip']}] 모델 전용 프로파일이 없어 벤더/OS 프로파일을 "
+                f"사용합니다: {resolved_profile.vendor} / "
+                f"{resolved_profile.os_name} / {resolved_profile.model}"
+            )
+            self.logger.warning(warning)
+            self._emit_status_event("warning", message=warning)
         retry_count = 0
         self._print_cli_status(f"[{device['ip']}] 연결 테스트 시작 (TCP {device['port']})")
         
@@ -579,13 +685,27 @@ class NetworkInspector:
                     log.write(f"장비: {device['ip']} ({device['vendor']} {device['os']})\n")
                     log.write(f"{'='*50}\n\n")
 
-                custom_handler = get_custom_handler(device, self.timeout, session_log_file)
-                if not custom_handler and is_custom_rule_pair(device.get("vendor", ""), device.get("os", "")):
+                handler_type = str(
+                    resolved_profile.handler_overrides.get("handler_type", "")
+                ).strip().lower()
+                prefer_netmiko = handler_type == "netmiko" or (
+                    not handler_type and bool(resolved_profile.connection_overrides)
+                )
+                custom_handler = (
+                    None
+                    if prefer_netmiko
+                    else get_custom_handler(device, self.timeout, session_log_file)
+                )
+                use_generic_handler = (
+                    resolved_profile.model_handler_overridden
+                    or is_custom_rule_pair(
+                        device.get("vendor", ""), device.get("os", "")
+                    )
+                ) and not prefer_netmiko
+                if not custom_handler and use_generic_handler:
                     if device.get("connection_type", "").lower() == "ssh":
                         from vendors.base import GenericParamikoHandler
-                        vendor_key = device.get("vendor", "").strip().lower()
-                        os_key = device.get("os", "").strip().lower()
-                        handler_config = HANDLER_OVERRIDES.get(vendor_key, {}).get(os_key, {})
+                        handler_config = resolved_profile.handler_overrides
                         custom_handler = GenericParamikoHandler(
                             device, self.timeout, session_log_file,
                             handler_config=handler_config if handler_config else None
@@ -610,7 +730,9 @@ class NetworkInspector:
                         if inspection_mode:
                             commands = self._get_device_commands(
                                 device['vendor'],
-                                device['os']
+                                device['os'],
+                                device.get('model', ''),
+                                resolved_profile=resolved_profile,
                             )
                             self._print_cli_status(f"[{device['ip']}] 점검 명령 {len(commands)}개 실행 시작")
                             
@@ -625,7 +747,9 @@ class NetworkInspector:
                                         device['vendor'],
                                         device['os'],
                                         cmd,
-                                        output
+                                        output,
+                                        device.get('model', ''),
+                                        resolved_profile=resolved_profile,
                                     )
                                     inspection_results.update(parsed)
                                 except Exception as e:
@@ -659,7 +783,9 @@ class NetworkInspector:
                                 return device, {"error": "작업이 취소되었습니다."}
                             backup_cmd = self._get_backup_command(
                                 device['vendor'],
-                                device['os']
+                                device['os'],
+                                device.get('model', ''),
+                                resolved_profile=resolved_profile,
                             )
                             if backup_cmd:
                                 try:
@@ -692,6 +818,8 @@ class NetworkInspector:
                         return device, inspection_results
                     except Exception as e:
                         self.logger.error("커스텀 핸들러 실행 실패 (%s): %s", device['ip'], e)
+                        if isinstance(e, (LegacySSHError, IncompatiblePeer)):
+                            return device, {"error": f"SSH 호환성 오류 (자동 재시도 중단): {e}"}
                         retry_count += 1
                         
                         with open(session_log_file, 'a', encoding='utf-8') as log:
@@ -718,9 +846,9 @@ class NetworkInspector:
                                     disconnect_error,
                                 )
                 else:
-                    vendor_key = str(device['vendor']).lower()
-                    os_key = str(device['os']).lower()
-                    override_map = CONNECTION_OVERRIDES.get(vendor_key, {}).get(os_key, {})
+                    vendor_key = resolved_profile.vendor
+                    os_key = resolved_profile.os_name
+                    override_map = resolved_profile.connection_overrides
                     override_device_type = ""
                     if isinstance(override_map, dict):
                         conn_key = str(device['connection_type']).lower()
@@ -741,7 +869,7 @@ class NetworkInspector:
                     else:
                         device_type = f"{vendor_key}_{os_key}"
                     
-                    if device['vendor'].lower() == 'juniper':
+                    if not override_used and device['vendor'].lower() == 'juniper':
                         device_type = 'juniper_junos'
 
                     if override_used:
@@ -779,7 +907,7 @@ class NetworkInspector:
                         'fast_cli': False
                     }
                     try:
-                        with ConnectHandler(**connection_params) as conn:
+                        with ConnectHandler(compat_device=device, **connection_params) as conn:
                             self._print_cli_status(f"[{device['ip']}] Netmiko 연결 완료 ({device_type})")
                             conn.enable()
                             try:
@@ -805,14 +933,26 @@ class NetworkInspector:
                             
                             inspection_results = {}
                             if inspection_mode:
-                                commands = self._get_device_commands(device['vendor'], device['os'])
+                                commands = self._get_device_commands(
+                                    device['vendor'],
+                                    device['os'],
+                                    device.get('model', ''),
+                                    resolved_profile=resolved_profile,
+                                )
                                 self._print_cli_status(f"[{device['ip']}] 점검 명령 {len(commands)}개 실행 시작")
                                 for idx, cmd in enumerate(commands, start=1):
                                     if self._is_cancelled():
                                         return device, {"error": "작업이 취소되었습니다."}
                                     self._print_cli_status(f"[{device['ip']}] 점검 명령 실행 {idx}/{len(commands)}: {cmd}")
                                     output = conn.send_command(cmd, read_timeout=30)
-                                    parsed = self._parse_command_output(device['vendor'], device['os'], cmd, output)
+                                    parsed = self._parse_command_output(
+                                        device['vendor'],
+                                        device['os'],
+                                        cmd,
+                                        output,
+                                        device.get('model', ''),
+                                        resolved_profile=resolved_profile,
+                                    )
                                     inspection_results.update(parsed)
 
                             if on_phase_complete and inspection_mode:
@@ -836,7 +976,12 @@ class NetworkInspector:
                             if backup_mode:
                                 if self._is_cancelled():
                                     return device, {"error": "작업이 취소되었습니다."}
-                                backup_cmd = self._get_backup_command(device['vendor'], device['os'])
+                                backup_cmd = self._get_backup_command(
+                                    device['vendor'],
+                                    device['os'],
+                                    device.get('model', ''),
+                                    resolved_profile=resolved_profile,
+                                )
                                 if backup_cmd:
                                     self._print_cli_status(f"[{device['ip']}] 백업 명령 실행: {backup_cmd}")
                                     backup_output = conn.send_command(backup_cmd, read_timeout=60)
@@ -858,6 +1003,8 @@ class NetworkInspector:
                                 )
                             return device, inspection_results
                     except Exception as e:
+                        if isinstance(e, (LegacySSHError, IncompatiblePeer)):
+                            return device, {"error": f"SSH 호환성 오류 (자동 재시도 중단): {e}"}
                         retry_count += 1
                         self.logger.warning("Netmiko 연결 시도 %d 실패 (%s): %s", retry_count, device['ip'], e)
                         if retry_count >= self.max_retries:
@@ -893,14 +1040,32 @@ class NetworkInspector:
         for device in self.devices:
             vendor = str(device.get("vendor", "")).strip()
             os_name = str(device.get("os", "")).strip()
-            cmd_count = len(self._get_device_commands(vendor, os_name))
-            has_backup = bool(self._get_backup_command(vendor, os_name))
+            model = str(device.get("model", "")).strip()
+            profile = self._resolve_device_profile(device)
+            cmd_count = len(
+                self._get_device_commands(
+                    vendor,
+                    os_name,
+                    model,
+                    resolved_profile=profile,
+                )
+            )
+            has_backup = bool(
+                self._get_backup_command(
+                    vendor,
+                    os_name,
+                    model,
+                    resolved_profile=profile,
+                )
+            )
             profiles.append({
                 "ip": device["ip"],
                 "vendor": vendor,
                 "os": os_name,
+                "model": model,
                 "command_count": cmd_count,
                 "has_backup": has_backup,
+                "model_profile_matched": profile.model_matched,
             })
         return profiles
 

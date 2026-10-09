@@ -63,7 +63,7 @@ class ArtifactsTab(QWidget):
         self.table.itemSelectionChanged.connect(self._update_action_states)
         set_table_minimums(self.table, 220, (1, 3))
         self.empty_label = make_empty_state(
-            "아직 생성된 결과가 없습니다. 장비 점검 또는 CLI 설정 생성을 실행하면 여기에 표시됩니다."
+            "아직 생성된 결과가 없습니다. 장비 작업 자동화 또는 장비 설정 생성을 실행하면 여기에 표시됩니다."
         )
         layout.addWidget(self.empty_label)
         layout.addWidget(self.table, 1)
@@ -72,8 +72,6 @@ class ArtifactsTab(QWidget):
         roots = [
             self.state.paths.logs_dir,
             self.state.paths.exports_dir,
-            self.state.paths.data_root / "inspector" / "runs",
-            self.state.paths.data_root / "config_builder",
         ]
         files: list[Path] = []
         for root in roots:

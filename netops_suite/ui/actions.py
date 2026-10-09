@@ -6,6 +6,8 @@ from typing import Iterable
 from PySide6.QtCore import QSize
 from PySide6.QtWidgets import QApplication, QDialogButtonBox, QHBoxLayout, QPushButton, QSizePolicy, QStyle
 
+from netops_suite.ui.icons import icon as themed_icon
+
 
 class ActionKind(str, Enum):
     PRIMARY = "primary"
@@ -41,7 +43,7 @@ _ICON_MAP = {
 _NEUTRAL_PALETTE = ("#ffffff", "#182230", "#cbd5e1", "#f8fafc")
 
 _PALETTE = {
-    ActionKind.PRIMARY: _NEUTRAL_PALETTE,
+    ActionKind.PRIMARY: ("#2563eb", "#ffffff", "#2563eb", "#1d4ed8"),
     ActionKind.SECONDARY: _NEUTRAL_PALETTE,
     ActionKind.UTILITY: _NEUTRAL_PALETTE,
     ActionKind.BROWSE: _NEUTRAL_PALETTE,
@@ -52,7 +54,7 @@ _PALETTE = {
     ActionKind.COPY: _NEUTRAL_PALETTE,
     ActionKind.ADD: _NEUTRAL_PALETTE,
     ActionKind.EDIT: _NEUTRAL_PALETTE,
-    ActionKind.START: _NEUTRAL_PALETTE,
+    ActionKind.START: ("#2563eb", "#ffffff", "#2563eb", "#1d4ed8"),
     ActionKind.STOP: _NEUTRAL_PALETTE,
     ActionKind.CANCEL: _NEUTRAL_PALETTE,
     ActionKind.DELETE: _NEUTRAL_PALETTE,
@@ -72,9 +74,9 @@ def make_action_button(
     action_kind = ActionKind(kind)
     button = QPushButton(text)
     button.setProperty("actionKind", action_kind.value)
-    button.setMinimumHeight(28)
-    button.setMaximumHeight(32)
-    button.setIconSize(QSize(14, 14))
+    button.setMinimumHeight(32)
+    button.setMaximumHeight(36)
+    button.setIconSize(QSize(16, 16))
     button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
     if min_width is not None:
         button.setMinimumWidth(min_width)
@@ -124,9 +126,9 @@ def _polish_existing_button(button: QPushButton, text: str | None, kind: ActionK
     if text is not None:
         button.setText(text)
     button.setProperty("actionKind", kind.value)
-    button.setMinimumHeight(max(button.minimumHeight(), 28))
-    button.setMaximumHeight(32)
-    button.setIconSize(QSize(14, 14))
+    button.setMinimumHeight(max(button.minimumHeight(), 32))
+    button.setMaximumHeight(36)
+    button.setIconSize(QSize(16, 16))
     icon = _standard_icon(kind)
     if icon is not None:
         button.setIcon(icon)
@@ -135,6 +137,18 @@ def _polish_existing_button(button: QPushButton, text: str | None, kind: ActionK
 
 
 def _standard_icon(kind: ActionKind):
+    names = {
+        ActionKind.BROWSE: "folder-open", ActionKind.OPEN: "folder-open",
+        ActionKind.SAVE: "save", ActionKind.EXPORT: "download",
+        ActionKind.REFRESH: "refresh-cw", ActionKind.ADD: "plus",
+        ActionKind.DELETE: "trash", ActionKind.STOP: "square",
+        ActionKind.CANCEL: "x", ActionKind.COPY: "copy",
+        ActionKind.EDIT: "pencil", ActionKind.START: "play",
+    }
+    if QApplication.instance() is not None and kind in names:
+        result = themed_icon(names[kind], "#ffffff" if kind == ActionKind.START else "#52627a", 16)
+        if not result.isNull():
+            return result
     pixmap = _ICON_MAP.get(kind)
     if pixmap is None:
         return None
@@ -151,18 +165,22 @@ QPushButton {{
     background: {background};
     color: {color};
     border: 1px solid {border};
-    border-radius: 4px;
-    padding: 4px 9px;
-    min-height: 22px;
-    font-size: 11px;
-    font-weight: 500;
+    border-radius: 7px;
+    padding: 5px 11px;
+    min-height: 20px;
+    font-size: 12px;
+    font-weight: 600;
 }}
 QPushButton:hover:!disabled {{
     background: {hover};
     border-color: #98a2b3;
 }}
 QPushButton:pressed {{
-    background: #e4e7ec;
+    background: {hover};
+}}
+QPushButton:focus {{
+    border: 2px solid #60a5fa;
+    padding: 4px 10px;
 }}
 QPushButton:disabled {{
     background: #eef2f6;

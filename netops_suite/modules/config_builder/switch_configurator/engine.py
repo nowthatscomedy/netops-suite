@@ -4,7 +4,8 @@ import ipaddress
 import re
 from typing import Any, Iterable
 
-from jinja2 import Environment, StrictUndefined, TemplateSyntaxError, meta
+from jinja2 import StrictUndefined, TemplateSyntaxError, meta
+from jinja2.sandbox import SandboxedEnvironment
 
 from .models import DeviceRecord, Profile, RenderedConfig, ValidationIssue
 
@@ -21,7 +22,7 @@ class ConfigEngine:
             self._normalize_profile_id(profile.id): profile
             for profile in profiles.values()
         }
-        self.environment = Environment(
+        self.environment = SandboxedEnvironment(
             autoescape=False,
             finalize=_finalize_value,
             trim_blocks=True,
@@ -31,7 +32,25 @@ class ConfigEngine:
 
     def validate_profiles(self) -> list[ValidationIssue]:
         issues: list[ValidationIssue] = []
+        seen_profile_ids: dict[str, Profile] = {}
         for profile in self.profiles.values():
+            normalized_profile_id = self._normalize_profile_id(profile.id)
+            previous_profile = seen_profile_ids.get(normalized_profile_id)
+            if previous_profile is not None:
+                issues.append(
+                    ValidationIssue(
+                        level="error",
+                        scope="profile",
+                        message=(
+                            "대소문자를 구분하지 않을 때 중복된 profile id 입니다: "
+                            f"{previous_profile.id}, {profile.id}"
+                        ),
+                        source=profile.source,
+                        profile_id=profile.id,
+                    )
+                )
+            else:
+                seen_profile_ids[normalized_profile_id] = profile
             if not profile.blocks:
                 issues.append(
                     ValidationIssue(

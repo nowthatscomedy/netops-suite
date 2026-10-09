@@ -15,6 +15,12 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
 try:
+    from app.guides.catalog import extract_heading_section
+except ModuleNotFoundError:  # Direct execution puts scripts/ on sys.path.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from app.guides.catalog import extract_heading_section
+
+try:
     from scripts.validate_guides import (
         ANCHOR_RE,
         DEFAULT_MANIFEST,
@@ -50,7 +56,7 @@ TEXT_BUNDLE_SUFFIXES = {
     ".yaml",
     ".yml",
 }
-DEFAULT_CAPABILITY_SOURCE = "app/assistant/capabilities.py"
+DEFAULT_CAPABILITY_SOURCE = "app/guides/capabilities.py"
 DEFAULT_REQUIRED_SECTIONS = [
     "목적",
     "사전 준비 및 권한",
@@ -78,7 +84,7 @@ def _public_capability_records(repo_root: Path) -> list[dict[str, Any]]:
         factory = namespace.get("all_feature_capabilities")
         capabilities = tuple(factory()) if callable(factory) else ()
     except Exception as exc:  # pragma: no cover - defensive CLI boundary
-        raise GuideBuildError(f"cannot load assistant capability contract: {exc}") from exc
+        raise GuideBuildError(f"cannot load feature capability contract: {exc}") from exc
 
     records: list[dict[str, Any]] = []
     for index, capability in enumerate(capabilities):
@@ -106,7 +112,7 @@ def _public_capability_records(repo_root: Path) -> list[dict[str, Any]]:
             )
         except Exception as exc:
             raise GuideBuildError(
-                f"invalid assistant capability at index {index}: {exc}"
+                f"invalid feature capability at index {index}: {exc}"
             ) from exc
     return records
 
@@ -314,20 +320,28 @@ def _build_search_index(
     bundled_guides: list[dict[str, Any]],
 ) -> dict[str, Any]:
     documents: dict[str, str] = {}
-    metadata: dict[str, tuple[list[str], set[str]]] = {}
+    topic_counts: dict[str, int] = {}
     for guide in bundled_guides:
         canonical_path = guide["canonical_path"]
+        topic_counts[canonical_path] = topic_counts.get(canonical_path, 0) + 1
         if canonical_path not in documents:
             markdown = (repo_root / Path(*PurePosixPath(canonical_path).parts)).read_text(
                 encoding="utf-8"
             )
             documents[canonical_path] = markdown
-            metadata[canonical_path] = markdown_metadata(markdown)
 
     entries: list[dict[str, Any]] = []
     for guide in bundled_guides:
         markdown = documents[guide["canonical_path"]]
-        headings = metadata[guide["canonical_path"]][0]
+        topic = (
+            markdown
+            if topic_counts[guide["canonical_path"]] == 1
+            else extract_heading_section(markdown, guide.get("anchor", ""))
+        )
+        quick_anchor = guide.get("quick_help_anchor", "")
+        quick = extract_heading_section(markdown, quick_anchor) if quick_anchor else topic
+        searchable = "\n\n".join(dict.fromkeys((topic, quick)))
+        headings = markdown_metadata(searchable)[0]
         entries.append(
             {
                 "id": guide["id"],
@@ -336,13 +350,14 @@ def _build_search_index(
                 "locale": guide["locale"],
                 "path": guide["path"],
                 "anchor": guide.get("anchor", ""),
+                "quick_help_anchor": guide.get("quick_help_anchor", ""),
                 "route": guide["route"],
                 "capability_ids": guide.get("capability_ids", []),
                 "keywords": guide["keywords"],
                 "risk": guide["risk"],
                 "headings": headings,
-                "summary": _summary(markdown),
-                "text": _plain_markdown(markdown),
+                "summary": _summary(quick),
+                "text": _plain_markdown(searchable),
             }
         )
     return {

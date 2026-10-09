@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPlainTextEdit,
     QScrollArea,
     QSizePolicy,
@@ -21,7 +20,8 @@ from PySide6.QtWidgets import (
 )
 
 from app.models.result_models import PingResult
-from app.ui.common import make_empty_state, make_inline_status, set_inline_status
+from app.ui.common import fit_wrapped_label_height, make_empty_state, make_inline_status, set_inline_status
+from app.ui.common.disclosure import CollapsibleSection
 from app.utils.parser import parse_target_entries
 from app.utils.validators import ValidationError
 
@@ -43,18 +43,15 @@ class PingDiagnosticsMixin:
         page.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored
         )
-        page.setStyleSheet(
-            "QScrollArea#pingScrollArea { background:#ffffff; border:0; }"
-        )
-        page.viewport().setStyleSheet("background:#ffffff;")
         content = QWidget()
         content.setObjectName("pingPageContent")
-        content.setStyleSheet("QWidget#pingPageContent { background:#ffffff; }")
         layout = QVBoxLayout(content)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.ping_scroll_area = page
         self.ping_page_content = content
 
         group = QGroupBox("멀티 Ping")
+        group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         self.ping_input_group = group
         group_layout = QGridLayout(group)
         group_layout.setColumnStretch(1, 1)
@@ -73,12 +70,10 @@ class PingDiagnosticsMixin:
             "이름은 결과표의 이름 열에 표시되며 입력한 모든 대상을 실행합니다."
         )
         self.ping_targets_help_label = QLabel(
-            "한 줄에 하나씩 입력: 이름,IP 또는 IP "
-            "(이름을 생략하면 대상 주소가 이름으로 사용되며, 입력한 모든 대상을 실행합니다)"
+            "한 줄에 하나씩 이름,IP 또는 IP를 입력합니다. 이름을 생략하면 대상 주소가 이름이 됩니다."
         )
         self.ping_targets_help_label.setObjectName("pingTargetsHelpLabel")
-        self.ping_targets_help_label.setWordWrap(False)
-        self.ping_targets_help_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        fit_wrapped_label_height(self.ping_targets_help_label)
         self.ping_targets_help_label.setStyleSheet("color:#667085; padding:2px 2px 0 2px;")
         targets_layout = QVBoxLayout()
         targets_layout.setContentsMargins(0, 0, 0, 0)
@@ -107,7 +102,7 @@ class PingDiagnosticsMixin:
         button_row = QHBoxLayout()
         button_row.setContentsMargins(0, 0, 0, 0)
         button_row.setSpacing(8)
-        button_row.addWidget(self.ping_continuous_check)
+        options_row.addWidget(self.ping_continuous_check)
         self.ping_start_button = make_action_button("실행", ActionKind.START, tooltip="입력한 대상에 Ping을 실행합니다.")
         self.ping_cancel_button = make_action_button("중지", ActionKind.STOP)
         self.ping_cancel_button.setEnabled(False)
@@ -117,8 +112,14 @@ class PingDiagnosticsMixin:
 
         group_layout.addWidget(QLabel("대상 목록"), 0, 0, 2, 1, alignment=Qt.AlignmentFlag.AlignTop)
         group_layout.addLayout(targets_layout, 0, 1, 2, 1)
-        group_layout.addWidget(QLabel("실행 조건"), 2, 0)
-        group_layout.addLayout(options_row, 2, 1)
+        self.ping_options_section = CollapsibleSection("실행 옵션")
+        self.ping_options_section.content_layout.addLayout(options_row)
+        self.ping_options_section.watch(self.ping_count_edit, empty_value=str(DEFAULT_PING_COUNT))
+        self.ping_options_section.watch(self.ping_timeout_edit, empty_value=str(DEFAULT_PING_TIMEOUT_MS))
+        self.ping_options_section.watch(self.ping_continuous_check)
+        group_layout.addWidget(self.ping_options_section, 2, 1)
+        self.ping_input_error = make_inline_status("error", "")
+        group_layout.addWidget(self.ping_input_error, 5, 1)
         group_layout.addLayout(button_row, 3, 1)
         group_layout.addWidget(self.ping_continuous_hint, 4, 1)
         layout.addWidget(group)
@@ -138,6 +139,7 @@ class PingDiagnosticsMixin:
         self._set_stretch_columns(self.ping_table, 0, minimum_section_size=62)
         self.ping_table.setSortingEnabled(True)
         self.ping_empty_label = make_empty_state("대상을 입력하고 실행을 누르면 Ping 결과가 표시됩니다.")
+        self.ping_empty_label.setMaximumHeight(72)
 
         self.ping_log = self._output()
         self.ping_log_panel = self._build_log_panel("실시간 로그", self.ping_log)
@@ -153,6 +155,8 @@ class PingDiagnosticsMixin:
         self.ping_cancel_button.clicked.connect(self.cancel_ping)
         self.ping_continuous_check.toggled.connect(self._toggle_ping_continuous)
         page.setWidget(content)
+        content.setAutoFillBackground(False)
+        page.viewport().setAutoFillBackground(False)
         return page
 
     def _toggle_ping_continuous(self, checked: bool) -> None:
@@ -164,22 +168,31 @@ class PingDiagnosticsMixin:
         )
 
     def start_ping(self) -> None:
+        if not self.ping_start_button.isEnabled():
+            return
+        set_inline_status(self.ping_input_error, "error", "")
+        error_widget = self.ping_targets_edit
         try:
             targets = parse_target_entries(self.ping_targets_edit.toPlainText())
             if not targets:
                 raise ValidationError("최소 1개 이상의 Ping 대상을 입력해 주세요.")
+            error_widget = self.ping_count_edit
             count = self._positive_int_or_default(
                 self.ping_count_edit,
                 "Ping 횟수",
                 DEFAULT_PING_COUNT,
             )
+            error_widget = self.ping_timeout_edit
             timeout_ms = self._positive_int_or_default(
                 self.ping_timeout_edit,
                 "Ping Timeout",
                 DEFAULT_PING_TIMEOUT_MS,
             )
         except ValidationError as exc:
-            QMessageBox.warning(self, "입력 확인", str(exc))
+            if error_widget is not self.ping_targets_edit:
+                self.ping_options_section.setExpanded(True)
+            set_inline_status(self.ping_input_error, "error", str(exc))
+            error_widget.setFocus()
             return
 
         self.ping_results = []
@@ -187,6 +200,7 @@ class PingDiagnosticsMixin:
         self.ping_log_lines.clear()
         self.ping_table.setRowCount(0)
         self.ping_empty_label.setVisible(False)
+        self.ping_splitter.show()
         self.ping_log.clear()
         self.ping_empty_label.setText(
             "대상을 입력하고 실행을 누르면 Ping 결과가 표시됩니다."
@@ -282,6 +296,7 @@ class PingDiagnosticsMixin:
             self._update_ping_status("success", final_prefix="완료")
 
     def _set_ping_running(self, running: bool) -> None:
+        self._set_diagnostic_running("ping", running)
         self.ping_start_button.setEnabled(not running)
         self.ping_cancel_button.setEnabled(running)
         self.ping_targets_edit.setEnabled(not running)

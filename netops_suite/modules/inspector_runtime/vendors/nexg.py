@@ -8,8 +8,7 @@ NexG 장비의 명령어, 파싱 규칙, 핸들러 클래스를 제공합니다.
 from core import telnet_compat as telnetlib
 import time
 import logging
-import paramiko
-import socket
+from core.ssh_compat import CompatibleSSHClient
 from vendors.base import CustomDeviceHandler, register_handler
 
 logger = logging.getLogger(__name__)
@@ -70,6 +69,7 @@ class VForceSSHHandler(CustomDeviceHandler):
     def __init__(self, device, timeout=30, session_log_file=None):
         super().__init__(device, timeout, session_log_file)
         self.channel = None
+        self.ssh = None
     
     def connect(self):
         """SSH로 장비에 연결"""
@@ -83,21 +83,13 @@ class VForceSSHHandler(CustomDeviceHandler):
         
         try:
             # 소켓 및 Transport 설정 (사용자 이름 직접 처리)
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(self.timeout)
-            sock.connect((self.device['ip'], int(self.device['port'])))
-            
-            # Transport 설정
-            transport = paramiko.Transport(sock)
-            transport.start_client()
-            
-            # 사용자 이름 전달 (자동 처리)
-            transport.auth_none(str(self.device['username']))
-            
-            # 채널 생성
-            self.channel = transport.open_session()
-            self.channel.get_pty()
-            self.channel.invoke_shell()
+            self.ssh = CompatibleSSHClient(self.device, self.session_log_file)
+            self.ssh.connect(
+                hostname=self.device['ip'], port=int(self.device['port']),
+                username=str(self.device['username']), timeout=self.timeout,
+                allow_agent=False, look_for_keys=False, auth_mode="none",
+            )
+            self.channel = self.ssh.invoke_shell()
             self.channel.settimeout(self.timeout)
             
             # 초기 응답 확인 (비밀번호 프롬프트 대기)
@@ -139,6 +131,8 @@ class VForceSSHHandler(CustomDeviceHandler):
             
         except Exception as e:
             self.logger.error("VForce SSH 연결 실패: %s", e)
+            if self.ssh:
+                self.ssh.close()
             if self.session_log_file:
                 with open(self.session_log_file, 'a', encoding='utf-8') as log:
                     log.write(f"\nSSH 연결 실패: {str(e)}\n")
@@ -285,8 +279,8 @@ class VForceSSHHandler(CustomDeviceHandler):
                 self.channel.close()
                 
             # Transport 종료
-            if self.channel and self.channel.get_transport():
-                self.channel.get_transport().close()
+            if self.ssh:
+                self.ssh.close()
                 
             # 세션 로그 종료
             if self.session_log_file:

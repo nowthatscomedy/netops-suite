@@ -18,7 +18,9 @@ REQUIRED_INPUT_COLUMNS: tuple[str, ...] = (
     "port",
     "password",
 )
-OPTIONAL_INPUT_COLUMNS: tuple[str, ...] = ("username", "enable_password")
+OPTIONAL_INPUT_COLUMNS: tuple[str, ...] = (
+    "username", "enable_password", "model", "legacy_ssh", "ssh_host_key_sha256",
+)
 VALID_INPUT_COLUMNS: set[str] = set(REQUIRED_INPUT_COLUMNS + OPTIONAL_INPUT_COLUMNS)
 
 _DEFAULT_INPUT_COLUMN_ALIASES: Dict[str, str] = {
@@ -27,6 +29,8 @@ _DEFAULT_INPUT_COLUMN_ALIASES: Dict[str, str] = {
     "connection type": "connection_type",
     "enable password": "enable_password",
     "user name": "username",
+    "device model": "model",
+    "hardware model": "model",
 }
 
 

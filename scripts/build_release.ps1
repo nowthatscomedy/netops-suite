@@ -446,6 +446,13 @@ if ($smokeProcess.ExitCode -ne 0) {
 Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE") -Destination $sourceDir -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot "THIRD_PARTY_NOTICES.md") -Destination $sourceDir -Force
 
+# An unzipped copy stores its data in a "data" folder next to the executable.
+# The packaged payload must never ship one, or the installer would copy it too.
+$payloadDataDir = Join-Path $sourceDir "data"
+if (Test-Path -LiteralPath $payloadDataDir) {
+    throw "Packaged payload must not contain a data folder: $payloadDataDir"
+}
+
 Write-Host "Building installer..."
 & $isccPath `
     "/DAppVersion=$normalizedVersion" `
@@ -465,12 +472,29 @@ $installer = Get-Item -LiteralPath $expectedInstallerPath
 
 Invoke-CodeSignFile -Path $installer.FullName -Config $codeSigningConfig
 
+Write-Host "Building portable zip..."
+$portableZipPath = Join-Path $releaseDir "NetOpsSuite-portable-$normalizedVersion.zip"
+if (Test-Path -LiteralPath $portableZipPath) {
+    Remove-Item -LiteralPath $portableZipPath -Force
+}
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+[System.IO.Compression.ZipFile]::CreateFromDirectory(
+    $sourceDir,
+    $portableZipPath,
+    [System.IO.Compression.CompressionLevel]::Optimal,
+    $true
+)
+$portableZip = Get-Item -LiteralPath $portableZipPath
+
 $checksumPath = Join-Path $releaseDir "SHA256SUMS.txt"
-$installerHash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-$installerName = Split-Path -Path $installer.FullName -Leaf
-"$installerHash *$installerName" | Set-Content -LiteralPath $checksumPath -Encoding ASCII
+$checksumLines = foreach ($releaseAsset in @($installer, $portableZip)) {
+    $assetHash = (Get-FileHash -LiteralPath $releaseAsset.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    "$assetHash *$($releaseAsset.Name)"
+}
+$checksumLines | Set-Content -LiteralPath $checksumPath -Encoding ASCII
 Write-Host "Wrote checksum manifest: $checksumPath"
 
 $installer | Select-Object FullName, Length, LastWriteTime
+$portableZip | Select-Object FullName, Length, LastWriteTime
 Get-Item -LiteralPath $checksumPath |
     Select-Object FullName, Length, LastWriteTime

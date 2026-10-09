@@ -6,11 +6,9 @@ from typing import Callable
 
 from PySide6.QtCore import QObject, QThreadPool, Signal
 
-from app.models.ai_models import normalize_ai_chat_config
 from app.models.ftp_models import FtpProfile
 from app.models.profile_models import IPProfile
 from app.models.scp_models import ScpProfile
-from app.services.ai_model_catalog_service import AiModelCatalogService
 from app.services.arp_scan_service import ArpScanService
 from app.services.dns_service import DnsService
 from app.services.ftp_client_service import FtpClientService
@@ -47,6 +45,7 @@ from app.utils.file_utils import (
     load_json,
     migrate_config_directory,
     normalize_update_config,
+    prepare_data_root,
     resolve_app_paths_with_settings,
     save_json,
     validate_path_settings,
@@ -59,6 +58,8 @@ RETIRED_DIAGNOSTIC_DEFAULT_KEYS = frozenset(
         "default_tcp_timeout_ms",
     }
 )
+# Settings of removed AI features are dropped from saved configs on load.
+RETIRED_APP_CONFIG_KEYS = frozenset({"ai_chat", "profile_ai"})
 
 
 class AppState(QObject):
@@ -77,10 +78,14 @@ class AppState(QObject):
         report("데이터 저장 위치 확인", "설정, 로그, 내보내기 폴더 경로를 계산합니다.")
         self.paths: AppPaths = build_app_paths(root_dir)
         report("기본 파일 준비", "필수 설정 파일과 런타임 폴더를 확인합니다.")
+        data_root_messages = prepare_data_root(self.paths)
         ensure_runtime_files(self.paths)
 
         report("로깅 준비", "앱 로그 파일과 화면 로그 전달자를 연결합니다.")
         self.logger: logging.Logger = configure_logging(self.paths.app_log, self._emit_log_message)
+        self.logger.info("Data folder: %s", self.paths.data_root)
+        for message in data_root_messages:
+            self.logger.info("Data folder migration: %s", message)
         self.thread_pool = QThreadPool.globalInstance()
         self._is_admin = False
         self.settings_reset_pending_restart = False
@@ -109,7 +114,6 @@ class AppState(QObject):
         self.public_ip_service = PublicIpService(self.logger)
         self.trace_service = TraceService(self.logger)
         self.wireless_service = WirelessService(self.powershell_service, self.logger, self.oui_service)
-        self.ai_model_catalog_service = AiModelCatalogService(self.paths.ai_model_catalog_cache)
         report("파일 전송 서비스 준비", "FTP, SCP, TFTP, iperf 관련 런타임을 초기화합니다.")
         self.ftp_client_service = FtpClientService(self.paths, self.logger)
         self.ftp_server_service = FtpServerService(self.paths, self.logger)
@@ -148,23 +152,25 @@ class AppState(QObject):
                     if key
                     not in {
                         "update",
-                        "ai_chat",
+                        *RETIRED_APP_CONFIG_KEYS,
                         *RETIRED_DIAGNOSTIC_DEFAULT_KEYS,
                     }
                 }
             )
             normalized_update = normalize_update_config(loaded_config.get("update", {}))
             base_config["update"] = normalized_update
-            normalized_ai_chat = normalize_ai_chat_config(loaded_config.get("ai_chat", {}))
-            base_config["ai_chat"] = normalized_ai_chat
-            if RETIRED_DIAGNOSTIC_DEFAULT_KEYS.intersection(loaded_config):
+            retired_keys = RETIRED_DIAGNOSTIC_DEFAULT_KEYS | RETIRED_APP_CONFIG_KEYS
+            if retired_keys.intersection(loaded_config):
                 should_save_app_config = True
 
             loaded_update = loaded_config.get("update", {})
             if not isinstance(loaded_update, dict) or loaded_update != normalized_update:
                 should_save_app_config = True
-            loaded_ai_chat = loaded_config.get("ai_chat", {})
-            if not isinstance(loaded_ai_chat, dict) or loaded_ai_chat != normalized_ai_chat:
+            ui_state = base_config.get("ui_state")
+            if isinstance(ui_state, dict) and "ai_chat_tab" in ui_state:
+                base_config["ui_state"] = {
+                    key: value for key, value in ui_state.items() if key != "ai_chat_tab"
+                }
                 should_save_app_config = True
         else:
             should_save_app_config = True
@@ -204,10 +210,14 @@ class AppState(QObject):
         normalized = {
             key: value
             for key, value in config.items()
-            if key not in RETIRED_DIAGNOSTIC_DEFAULT_KEYS
+            if key not in RETIRED_DIAGNOSTIC_DEFAULT_KEYS | RETIRED_APP_CONFIG_KEYS
         }
         normalized["update"] = normalize_update_config(config.get("update", {}))
-        normalized["ai_chat"] = normalize_ai_chat_config(config.get("ai_chat", {}))
+        ui_state = normalized.get("ui_state")
+        if isinstance(ui_state, dict):
+            normalized["ui_state"] = {
+                key: value for key, value in ui_state.items() if key != "ai_chat_tab"
+            }
         self.app_config = normalized
         save_json(self.paths.app_config, self.app_config)
         self.logger.info("Saved app_config.json")
@@ -245,7 +255,6 @@ class AppState(QObject):
                 "tftp_runtime",
                 "vendor_presets",
                 "public_iperf_cache",
-                "ai_model_catalog_cache",
                 "oui_cache",
                 "ftp_keys_dir",
             ):
@@ -330,7 +339,6 @@ class AppState(QObject):
             "tftp_runtime",
             "vendor_presets",
             "public_iperf_cache",
-            "ai_model_catalog_cache",
             "oui_cache",
             "ftp_keys_dir",
         ):

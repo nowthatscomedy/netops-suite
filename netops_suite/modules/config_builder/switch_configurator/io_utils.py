@@ -97,6 +97,8 @@ def load_profiles_from_directory(directory: str | Path) -> tuple[dict[str, Profi
     base_path = Path(directory)
     profiles: dict[str, Profile] = {}
     issues: list[ValidationIssue] = []
+    seen_profile_ids: dict[str, Profile] = {}
+    seen_file_stems: dict[str, Path] = {}
 
     if not base_path.exists():
         issues.append(
@@ -112,6 +114,22 @@ def load_profiles_from_directory(directory: str | Path) -> tuple[dict[str, Profi
     for path in sorted(base_path.iterdir()):
         if path.suffix.lower() not in SUPPORTED_PROFILE_EXTENSIONS:
             continue
+        normalized_stem = path.stem.casefold()
+        previous_path = seen_file_stems.get(normalized_stem)
+        if previous_path is not None:
+            issues.append(
+                ValidationIssue(
+                    level="error",
+                    scope="profile",
+                    message=(
+                        "대소문자를 구분하지 않을 때 중복된 프로파일 파일명입니다: "
+                        f"{previous_path.name}, {path.name}"
+                    ),
+                    source=str(path),
+                )
+            )
+            continue
+        seen_file_stems[normalized_stem] = path
         try:
             profile = parse_profile_yaml(path.read_text(encoding="utf-8"), str(path))
         except Exception as exc:
@@ -125,17 +143,23 @@ def load_profiles_from_directory(directory: str | Path) -> tuple[dict[str, Profi
             )
             continue
 
-        if profile.id in profiles:
+        normalized_id = profile.id.casefold()
+        previous_profile = seen_profile_ids.get(normalized_id)
+        if previous_profile is not None:
             issues.append(
                 ValidationIssue(
                     level="error",
                     scope="profile",
-                    message="중복된 profile id 입니다.",
+                    message=(
+                        "대소문자를 구분하지 않을 때 중복된 profile id 입니다: "
+                        f"{previous_profile.id}, {profile.id}"
+                    ),
                     source=str(path),
                     profile_id=profile.id,
                 )
             )
             continue
+        seen_profile_ids[normalized_id] = profile
         profiles[profile.id] = profile
 
     return profiles, issues
@@ -144,6 +168,8 @@ def load_profiles_from_directory(directory: str | Path) -> tuple[dict[str, Profi
 def load_profiles_from_uploads(uploaded_files: Iterable[object]) -> tuple[dict[str, Profile], list[ValidationIssue]]:
     profiles: dict[str, Profile] = {}
     issues: list[ValidationIssue] = []
+    seen_profile_ids: dict[str, Profile] = {}
+    seen_file_stems: dict[str, str] = {}
 
     for uploaded_file in uploaded_files:
         name = getattr(uploaded_file, "name", "")
@@ -157,6 +183,23 @@ def load_profiles_from_uploads(uploaded_files: Iterable[object]) -> tuple[dict[s
                 )
             )
             continue
+
+        normalized_stem = Path(name).stem.casefold()
+        previous_name = seen_file_stems.get(normalized_stem)
+        if previous_name is not None:
+            issues.append(
+                ValidationIssue(
+                    level="error",
+                    scope="profile",
+                    message=(
+                        "대소문자를 구분하지 않을 때 중복된 프로파일 파일명입니다: "
+                        f"{previous_name}, {name}"
+                    ),
+                    source=name,
+                )
+            )
+            continue
+        seen_file_stems[normalized_stem] = name
 
         try:
             content = uploaded_file.getvalue().decode("utf-8-sig")
@@ -172,17 +215,23 @@ def load_profiles_from_uploads(uploaded_files: Iterable[object]) -> tuple[dict[s
             )
             continue
 
-        if profile.id in profiles:
+        normalized_id = profile.id.casefold()
+        previous_profile = seen_profile_ids.get(normalized_id)
+        if previous_profile is not None:
             issues.append(
                 ValidationIssue(
                     level="error",
                     scope="profile",
-                    message="중복된 profile id 입니다.",
+                    message=(
+                        "대소문자를 구분하지 않을 때 중복된 profile id 입니다: "
+                        f"{previous_profile.id}, {profile.id}"
+                    ),
                     source=name,
                     profile_id=profile.id,
                 )
             )
             continue
+        seen_profile_ids[normalized_id] = profile
         profiles[profile.id] = profile
 
     return profiles, issues

@@ -27,6 +27,7 @@ def test_release_workflow_gates_publish_and_binds_it_to_checked_out_commit():
     assert "python -m ruff check ." in workflow
     assert "python -m compileall -q main.py app netops_suite qa scripts tests" in workflow
     assert "python -m pytest -q" in workflow
+    assert "python scripts/setup_legacy_ssh.py" in workflow
     assert ".\\scripts\\test_installer_upgrade.ps1" in workflow
     assert "Gitleaks.Gitleaks" in workflow
     assert "gitleaks git --no-banner --redact --exit-code 1" in workflow
@@ -44,7 +45,8 @@ def test_release_workflow_gates_publish_and_binds_it_to_checked_out_commit():
     assert "python-dependencies.cdx.json" in workflow
     assert "--requirements requirements-lock.txt" in workflow
     assert "python scripts/validate_release_notes.py --tag $env:RELEASE_TAG" in workflow
-    assert "AdditionalAssetPath = @($dependencySbom)" in workflow
+    assert "AdditionalAssetPath = @($portableZip, $dependencySbom)" in workflow
+    assert "dist/release/NetOpsSuite-portable-*.zip" in workflow
     assert "JRSoftware.InnoSetup" in workflow
     assert "--version 6.7.3" in workflow
     assert "TargetCommitish = $env:TARGET_COMMITISH" in workflow
@@ -142,6 +144,9 @@ def test_release_scripts_enforce_version_and_immutable_publish_contract():
         not in build_script
     )
     assert "StringStruct('ProductVersion', '$normalizedVersion')" in build_script
+    assert '"NetOpsSuite-portable-$normalizedVersion.zip"' in build_script
+    assert "Packaged payload must not contain a data folder" in build_script
+    assert "@($installer, $portableZip)" in build_script
     assert '"NetOpsSuite-setup-$normalizedVersion.exe"' in build_script
     assert '$env:LOCALAPPDATA "Programs\\Inno Setup 6\\ISCC.exe"' in build_script
     assert "[string]$TargetCommitish" in publish_script

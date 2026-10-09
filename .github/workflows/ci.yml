@@ -76,4 +76,7 @@ jobs:
         run: python -m compileall -q main.py app netops_suite qa scripts tests
 
       - name: Run tests
-        run: python -m pytest -q
+        # Real DSA/RSA handshake tests run in a separate pinned environment.
+        run: |
+          python scripts/setup_legacy_ssh.py
+          python -m pytest -q

@@ -9,6 +9,7 @@ from core import telnet_compat as telnetlib
 import time
 import logging
 import paramiko
+from core.ssh_compat import CompatibleSSHClient
 import re
 from datetime import datetime
 from vendors.base import CustomDeviceHandler, register_handler
@@ -261,8 +262,7 @@ class AxgateSSHHandler(CustomDeviceHandler):
         self.logger.debug("Axgate 장비 SSH 접속 시작: %s", self.device['ip'])
         
         try:
-            self.ssh = paramiko.SSHClient()
-            self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            self.ssh = CompatibleSSHClient(self.device, self.session_log_file)
             
             # 일단 username/password를 connect에 전달 시도
             self.ssh.connect(

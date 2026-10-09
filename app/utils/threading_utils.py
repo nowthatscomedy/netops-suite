@@ -38,7 +38,15 @@ class FunctionWorker(QRunnable):
                 self.kwargs["progress_callback"] = self.signals.progress
             result = self.fn(*self.args, **self.kwargs)
         except Exception as exc:
-            LOGGER.exception("Background worker failed in %s", getattr(self.fn, "__qualname__", repr(self.fn)))
+            function_name = getattr(self.fn, "__qualname__", self.fn.__class__.__name__)
+            if getattr(exc, "suppress_traceback_logging", False):
+                LOGGER.warning(
+                    "Sensitive background operation failed in %s (%s)",
+                    function_name,
+                    exc.__class__.__name__,
+                )
+            else:
+                LOGGER.exception("Background worker failed in %s", function_name)
             try:
                 self.signals.error.emit(str(exc) or exc.__class__.__name__)
             except RuntimeError:

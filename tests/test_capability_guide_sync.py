@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.assistant.capabilities import all_feature_capabilities
+from app.guides.capabilities import all_feature_capabilities
 from app.guides import GuideCatalog
 from scripts.generate_guides import sync_capability_guides
 
@@ -29,7 +29,7 @@ def test_project_capability_contract_is_synced_with_guides():
 
 
 def test_new_capability_requires_sync_and_creates_non_overwriting_draft(tmp_path: Path):
-    capability_source = tmp_path / "app" / "assistant" / "capabilities.py"
+    capability_source = tmp_path / "app" / "guides" / "capabilities.py"
     capability_source.parent.mkdir(parents=True)
     capability_source.write_text(
         """

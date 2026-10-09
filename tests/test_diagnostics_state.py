@@ -405,21 +405,6 @@ def _assert_input_group_height_is_compact(group, tab: DiagnosticsTab) -> None:
     assert group.height() <= max_group_height
 
 
-def _assert_explicit_white_background_style(*widgets) -> None:
-    combined_style = "\n".join(widget.styleSheet() for widget in widgets).replace(" ", "").lower()
-    assert any(
-        token in combined_style
-        for token in (
-            "background:#ffffff",
-            "background-color:#ffffff",
-            "background:#fff",
-            "background-color:#fff",
-            "background:white",
-            "background-color:white",
-        )
-    )
-
-
 def _assert_splitter_ratio(
     splitter: QSplitter,
     min_first: int = 1,
@@ -591,6 +576,8 @@ def test_diagnostics_sidebar_labels_navigation_and_legacy_tools_migration(qapp, 
 
 def test_ping_tcp_target_inputs_are_readable_and_explain_multi_target_format(qapp, tmp_path):
     tab = DiagnosticsTab(build_fake_state(tmp_path))
+    tab.ping_options_section.setExpanded(True)
+    tab.tcp_options_section.setExpanded(True)
     tab.show()
     tab.resize(1280, 720)
     qapp.processEvents()
@@ -725,7 +712,7 @@ def test_ping_tcp_primary_controls_fit_without_overlap(qapp, tmp_path, width, he
     assert tab.tcp_empty_label.isVisibleTo(tab)
 
 
-def test_tcp_scroll_area_declares_explicit_white_background(qapp, tmp_path):
+def test_diagnostic_wrappers_allow_global_workspace_and_card_colors(qapp, tmp_path):
     tab = DiagnosticsTab(build_fake_state(tmp_path))
     tab.show()
     tab.resize(1280, 720)
@@ -733,11 +720,12 @@ def test_tcp_scroll_area_declares_explicit_white_background(qapp, tmp_path):
     qapp.processEvents()
 
     assert tab.tcp_scroll_area.widget() is tab.tcp_page_content
-    _assert_explicit_white_background_style(
-        tab.tcp_scroll_area,
-        tab.tcp_scroll_area.viewport(),
-        tab.tcp_page_content,
-    )
+    # Container-level declarations cascade to descendants and would erase
+    # the distinction between workspace, cards, and option headers.
+    for wrapper in (tab.ping_scroll_area, tab.ping_scroll_area.viewport(), tab.ping_page_content,
+                    tab.tcp_scroll_area, tab.tcp_scroll_area.viewport(), tab.tcp_page_content,
+                    tab.file_transfer_page_stack):
+        assert "background" not in wrapper.styleSheet()
 
 
 @pytest.mark.parametrize(
@@ -818,8 +806,8 @@ def test_file_transfer_client_pages_remain_readable_at_compact_size(
     _show_compact_file_transfer_tab(tab, qapp)
 
     assert [tab.file_transfer_role_combo.itemText(index) for index in range(tab.file_transfer_role_combo.count())] == [
-        "클라이언트",
-        "서버",
+        "파일 보내기·받기",
+        "내 PC에서 파일 제공",
     ]
     tab.file_transfer_role_combo.setCurrentIndex(0)
     tab.file_transfer_mode_combo.setCurrentIndex(mode_index)
@@ -827,6 +815,12 @@ def test_file_transfer_client_pages_remain_readable_at_compact_size(
         protocol_index = tab.ftp_client_protocol_combo.findData(protocol)
         assert protocol_index >= 0
         tab.ftp_client_protocol_combo.setCurrentIndex(protocol_index)
+    # Result tables appear once a result exists; raw logs are opt-in.
+    transfer_key = ("ftp", "scp", "tftp")[mode_index]
+    getattr(tab, f"{transfer_key}_transfer_table").setRowCount(1)
+    getattr(tab, f"{transfer_key}_client_log_section").setExpanded(True)
+    if mode_index == 0:
+        tab._set_ftp_client_connected(True)
     qapp.processEvents()
 
     assert tab.file_transfer_role_combo.currentData() == 0
@@ -1024,7 +1018,7 @@ def test_command_output_page_does_not_duplicate_quick_diagnostic_buttons(qapp, t
     tab.select_diagnostic_tab("commands")
     command_page = tab.diagnostic_stack.currentWidget()
 
-    assert command_page.findChildren(QPushButton) == []
+    assert command_page.findChildren(QPushButton) == [tab.command_run_button]
     assert tab.tools_output.parentWidget() is command_page
 
 
@@ -1156,32 +1150,35 @@ def test_file_transfer_tables_have_empty_states_and_table_first_splitters(qapp, 
     assert tab.ftp_remote_table.minimumHeight() >= 160
     assert tab.ftp_remote_table.maximumHeight() > 1000
     _assert_table_min_visible_rows(tab.ftp_transfer_table)
-    _assert_splitter_ratio(tab.ftp_client_main_splitter, first_larger=False)
-    _assert_splitter_ratio(tab.ftp_client_result_log_splitter)
+    assert tab.ftp_remote_group.isHidden()
+    assert tab.ftp_transfer_table.isHidden()
+    assert not tab.ftp_client_log_section.isExpanded()
     assert not tab.ftp_transfer_empty_label.isHidden()
 
     tab.file_transfer_mode_combo.setCurrentIndex(1)
     qapp.processEvents()
     _assert_table_min_visible_rows(tab.scp_transfer_table)
-    _assert_splitter_ratio(tab.scp_client_result_log_splitter)
+    assert tab.scp_transfer_table.isHidden()
+    assert not tab.scp_client_log_section.isExpanded()
     assert not tab.scp_transfer_empty_label.isHidden()
 
     tab.file_transfer_mode_combo.setCurrentIndex(2)
     qapp.processEvents()
     _assert_table_min_visible_rows(tab.tftp_transfer_table)
-    _assert_splitter_ratio(tab.tftp_client_result_log_splitter)
+    assert tab.tftp_transfer_table.isHidden()
+    assert not tab.tftp_client_log_section.isExpanded()
     assert not tab.tftp_transfer_empty_label.isHidden()
 
     tab.file_transfer_role_combo.setCurrentIndex(1)
     qapp.processEvents()
     assert "서버" in tab.file_transfer_hint_label.text()
-    _assert_splitter_ratio(tab.ftp_server_splitter, first_larger=False)
+    assert not tab.ftp_server_log_section.isExpanded()
     tab.file_transfer_mode_combo.setCurrentIndex(1)
     qapp.processEvents()
-    _assert_splitter_ratio(tab.scp_server_splitter, first_larger=False)
+    assert not tab.scp_server_log_section.isExpanded()
     tab.file_transfer_mode_combo.setCurrentIndex(2)
     qapp.processEvents()
-    _assert_splitter_ratio(tab.tftp_server_splitter, first_larger=False)
+    assert not tab.tftp_server_log_section.isExpanded()
 
 
 def test_file_transfer_checkboxes_keep_visible_indicator_when_checked(qapp, tmp_path):

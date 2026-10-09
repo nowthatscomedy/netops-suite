@@ -105,6 +105,9 @@ class TftpDiagnosticsMixin:
         local_layout.addWidget(self.tftp_client_local_browse_button)
         form.addWidget(local_row, 4, 1, 1, 3)
         connection_layout.addLayout(form)
+        self._fold_transfer_options(form, connection_layout, "tftp", [
+            self.tftp_client_port_edit, self.tftp_client_timeout_edit, self.tftp_client_retries_edit,
+        ])
 
         button_row = QHBoxLayout()
         self.tftp_client_upload_button = make_action_button("업로드", ActionKind.START)
@@ -168,7 +171,8 @@ class TftpDiagnosticsMixin:
         self.tftp_client_log_output.setMinimumHeight(110)
         self.tftp_client_log_output.setMaximumHeight(16777215)
         tftp_log_layout.addWidget(self.tftp_client_log_output)
-        self.tftp_client_result_log_splitter.addWidget(tftp_log_panel)
+        self.tftp_client_result_log_splitter.addWidget(self._transfer_log_section("tftp_client", tftp_log_panel))
+        self._progressive_transfer_table(self.tftp_transfer_table)
         self.tftp_client_result_log_splitter.setSizes([420, 160])
         activity_layout.addWidget(self.tftp_client_result_log_splitter, 1)
         activity_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -209,7 +213,7 @@ class TftpDiagnosticsMixin:
 
         form.addWidget(QLabel("바인드 IP"), 0, 0)
         form.addWidget(self.tftp_server_bind_host_edit, 0, 1)
-        form.addWidget(self.tftp_server_bind_warning_label, 0, 4)
+        form.addWidget(self.tftp_server_bind_warning_label, 3, 0, 1, 4)
         form.addWidget(QLabel("포트"), 0, 2)
         form.addWidget(self.tftp_server_port_edit, 0, 3)
         form.addWidget(QLabel("공유 루트"), 1, 0)
@@ -267,7 +271,7 @@ class TftpDiagnosticsMixin:
         self.tftp_server_splitter = QSplitter(Qt.Vertical)
         self.tftp_server_splitter.setChildrenCollapsible(False)
         self.tftp_server_splitter.addWidget(self.tftp_server_top_group)
-        self.tftp_server_splitter.addWidget(self.tftp_server_log_group)
+        self.tftp_server_splitter.addWidget(self._transfer_log_section("tftp_server", self.tftp_server_log_group))
         self.tftp_server_splitter.setSizes([240, 360])
         layout.addWidget(self.tftp_server_splitter, 1)
 
@@ -318,6 +322,8 @@ class TftpDiagnosticsMixin:
             self.tftp_client_local_folder_edit.setText(folder)
 
     def _start_tftp_upload(self) -> None:
+        if self._tftp_client_busy or not self._validate_transfer_host("tftp"):
+            return
         support = self.state.tftp_service.runtime_support_status()
         self._apply_tftp_support_label(self.tftp_client_support_label, support)
         if not support.success:
@@ -327,10 +333,10 @@ class TftpDiagnosticsMixin:
         upload_path = self.tftp_client_upload_path_edit.text().strip()
         remote_path = self.tftp_client_remote_path_edit.text().strip()
         if not upload_path:
-            QMessageBox.warning(self, "입력 필요", "업로드할 로컬 파일을 선택해 주세요.")
+            self._transfer_input_error("tftp", "업로드할 로컬 파일을 선택해 주세요.", self.tftp_client_upload_path_edit)
             return
         if not remote_path:
-            QMessageBox.warning(self, "입력 필요", "업로드 대상 원격 경로를 입력해 주세요.")
+            self._transfer_input_error("tftp", "업로드 대상 원격 경로를 입력해 주세요.", self.tftp_client_remote_path_edit)
             return
         if not self._confirm_transfer_preflight(
             protocol="TFTP",
@@ -363,6 +369,8 @@ class TftpDiagnosticsMixin:
         )
 
     def _start_tftp_download(self) -> None:
+        if self._tftp_client_busy or not self._validate_transfer_host("tftp"):
+            return
         support = self.state.tftp_service.runtime_support_status()
         self._apply_tftp_support_label(self.tftp_client_support_label, support)
         if not support.success:
@@ -377,7 +385,7 @@ class TftpDiagnosticsMixin:
             return
         remote_path = self.tftp_client_remote_path_edit.text().strip()
         if not remote_path:
-            QMessageBox.warning(self, "입력 필요", "다운로드할 원격 경로를 입력해 주세요.")
+            self._transfer_input_error("tftp", "다운로드할 원격 경로를 입력해 주세요.", self.tftp_client_remote_path_edit)
             return
         if not self._confirm_transfer_preflight(
             protocol="TFTP",

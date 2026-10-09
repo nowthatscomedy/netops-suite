@@ -24,12 +24,14 @@ from PySide6.QtWidgets import (
 
 from app.ui.common import make_dialog_intro, polish_dialog
 from .authoring import (
-    build_profile_yaml_from_state,
+    ProfileSaveConflictError,
+    inspect_profile_save_target,
     make_empty_block_row,
     make_empty_profile_builder_state,
     make_empty_variable_row,
     profile_to_builder_state,
     save_profile_yaml_to_directory,
+    validate_profile_builder_state,
 )
 from .app_icon import build_app_icon
 from .models import (
@@ -44,6 +46,7 @@ from netops_suite.ui.actions import ActionKind, make_action_button
 from netops_suite.ui.selection_inputs import NoWheelComboBox
 
 ERROR_BG = QColor("#fff1ed")
+WARNING_BG = QColor("#fff8df")
 OK_BG = QColor("#eef8eb")
 AUTO_INCREMENT_ITEMS = (
     ("증가 안 함", AUTO_INCREMENT_NONE),
@@ -67,10 +70,12 @@ class ProfileBuilderDialog(QDialog):
             self.setWindowIcon(build_app_icon())
         self.profiles_dir = Path(profiles_dir)
         self.state = profile_to_builder_state(profile) if profile else make_empty_profile_builder_state()
+        self.original_source_path = Path(profile.source) if profile and profile.source else None
         self.saved_profile_id = ""
         self.saved_path: Path | None = None
         self.latest_yaml_text = ""
         self.latest_issues: list[str] = []
+        self.latest_warnings: list[str] = []
         self._loading_variable_editor = False
         self._loading_block_editor = False
         self._selected_variable_row = -1
@@ -497,21 +502,37 @@ class ProfileBuilderDialog(QDialog):
 
     def refresh_preview(self) -> None:
         state = self._collect_state()
-        yaml_text, issues = build_profile_yaml_from_state(state)
-        self.latest_yaml_text = yaml_text
-        self.latest_issues = list(issues)
+        validation = validate_profile_builder_state(state)
+        self.latest_yaml_text = validation.yaml_text
+        self.latest_issues = list(validation.issues)
+        self.latest_warnings = list(validation.warnings)
+        profile_id = str(state.get("id", "")).strip()
+        if not self.latest_issues and profile_id:
+            try:
+                inspect_profile_save_target(
+                    profile_id,
+                    self.profiles_dir,
+                    source_path=self.original_source_path,
+                )
+            except ProfileSaveConflictError as exc:
+                self.latest_issues.append(str(exc))
         self.issue_list.clear()
-        if issues:
-            for issue in issues:
+        if self.latest_issues:
+            for issue in self.latest_issues:
                 item = QListWidgetItem(issue)
                 item.setBackground(ERROR_BG)
+                self.issue_list.addItem(item)
+        elif self.latest_warnings:
+            for warning in self.latest_warnings:
+                item = QListWidgetItem(f"경고: {warning}")
+                item.setBackground(WARNING_BG)
                 self.issue_list.addItem(item)
         else:
             item = QListWidgetItem("저장 가능한 상태입니다.")
             item.setBackground(OK_BG)
             self.issue_list.addItem(item)
-        self.yaml_preview.setPlainText(yaml_text)
-        self.save_button.setEnabled(not issues and bool(str(state.get("id", "")).strip()))
+        self.yaml_preview.setPlainText(validation.yaml_text)
+        self.save_button.setEnabled(not self.latest_issues and bool(profile_id))
 
     def save_profile(self) -> None:
         self.refresh_preview()
@@ -520,7 +541,44 @@ class ProfileBuilderDialog(QDialog):
             self.tabs.setCurrentIndex(3)
             return
         profile_id = str(self._collect_state().get("id", "")).strip()
-        target_path, _ = save_profile_yaml_to_directory(profile_id, self.latest_yaml_text, self.profiles_dir)
+        if self.latest_warnings:
+            warning_text = "\n".join(f"• {warning}" for warning in self.latest_warnings)
+            if QMessageBox.question(
+                self,
+                "위험 가능 명령 확인",
+                f"다음 명령은 장비 상태 또는 관리 접속에 영향을 줄 수 있습니다.\n\n{warning_text}\n\n그래도 저장하시겠습니까?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            ) != QMessageBox.Yes:
+                return
+        try:
+            target = inspect_profile_save_target(
+                profile_id,
+                self.profiles_dir,
+                source_path=self.original_source_path,
+            )
+        except ProfileSaveConflictError as exc:
+            QMessageBox.warning(self, "저장할 수 없음", str(exc))
+            return
+        if target.exists and QMessageBox.question(
+            self,
+            "프로파일 덮어쓰기",
+            f"{target.path.name} 파일이 이미 있습니다. 백업을 만든 뒤 덮어쓰시겠습니까?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        ) != QMessageBox.Yes:
+            return
+        try:
+            target_path, _ = save_profile_yaml_to_directory(
+                profile_id,
+                self.latest_yaml_text,
+                self.profiles_dir,
+                source_path=self.original_source_path,
+                allow_overwrite=target.exists,
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "프로파일 저장 실패", str(exc))
+            return
         self.saved_profile_id = profile_id
         self.saved_path = target_path
         QMessageBox.information(self, "프로파일 저장 완료", f"{target_path.name} 파일로 저장했습니다.")

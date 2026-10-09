@@ -9,6 +9,8 @@ import pandas as pd
 
 from core.custom_exceptions import ValidationError
 from core.i18n import t
+from core.legacy_ssh import LegacySSHError, validate_legacy_device, legacy_python
+from core.profile_resolver import normalize_profile_part, resolve_device_profile
 from core.settings import REQUIRED_INPUT_COLUMNS, canonicalize_input_column_name
 from vendors import INSPECTION_COMMANDS
 
@@ -61,6 +63,11 @@ def normalize_device_dataframe(
 
 
 def validate_device_info(device: dict[str, Any]) -> tuple[bool, str]:
+    try:
+        if validate_legacy_device(device):
+            legacy_python()
+    except LegacySSHError as exc:
+        return False, str(exc)
     for field in REQUIRED_INPUT_COLUMNS:
         if field not in device or pd.isna(device[field]):
             message = t(
@@ -87,17 +94,28 @@ def validate_device_info(device: dict[str, Any]) -> tuple[bool, str]:
     if not _validate_port(port):
         return False, t("validator.invalid_port", port=port, ip=ip)
 
-    vendor = str(device["vendor"]).strip().lower()
-    os_model = str(device["os"]).strip().lower()
+    vendor = normalize_profile_part(device["vendor"])
+    os_model = normalize_profile_part(device["os"])
+    profile = resolve_device_profile(vendor, os_model, device.get("model", ""))
 
-    if vendor not in INSPECTION_COMMANDS:
+    if vendor not in INSPECTION_COMMANDS and not profile.model_matched:
         return False, t("validator.unsupported_vendor", vendor=vendor, ip=ip)
-    if os_model not in INSPECTION_COMMANDS.get(vendor, {}):
+    if os_model not in INSPECTION_COMMANDS.get(vendor, {}) and not profile.model_matched:
         return False, t(
             "validator.unsupported_os",
             os_model=os_model,
             vendor=vendor,
             ip=ip,
+        )
+
+    if profile.model_requested and not profile.model_matched:
+        logger.warning(
+            "모델 전용 프로파일을 찾지 못해 벤더/OS 프로파일을 사용합니다: "
+            "%s / %s / %s (IP: %s)",
+            profile.vendor,
+            profile.os_name,
+            profile.model,
+            ip,
         )
 
     return True, ""
@@ -111,6 +129,11 @@ def validate_dataframe(
         raise ValidationError(t("validator.empty_excel"))
 
     normalized_df = normalize_device_dataframe(df, input_column_aliases)
+
+    if "model" in normalized_df.columns:
+        normalized_df["model"] = normalized_df["model"].fillna("").map(
+            lambda value: str(value).strip()
+        )
 
     missing_columns = [col for col in REQUIRED_INPUT_COLUMNS if col not in normalized_df.columns]
     if missing_columns:

@@ -6,14 +6,14 @@ from pathlib import Path
 from threading import Event
 import time
 
+import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QThreadPool, Qt
 from PySide6.QtGui import QImage
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QLabel, QListWidget, QMessageBox, QPushButton, QScrollArea, QTableWidget, QWidget
 
 from app.app_state import AppState
 from app.main_window import MainWindow
-from app.ui.tabs.ai_chat_tab import AiChatTab
 from qa.offscreen import OffscreenQaHarness
 from qa.offscreen.fakes import (
     DeterministicPingService,
@@ -31,15 +31,120 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 QA_CONFIG = PROJECT_ROOT / "qa" / "offscreen" / "scenarios.json"
 
 
-def test_codex_guide_captures_track_the_provider_contract_sources() -> None:
-    required_assistant_sources = {
+def _geometry_harness(qapp, tmp_path) -> OffscreenQaHarness:
+    harness = OffscreenQaHarness(project_root=PROJECT_ROOT, config_path=QA_CONFIG, output_dir=tmp_path)
+    harness.app = qapp
+    return harness
+
+
+def test_qa_rejects_a_visible_but_clipped_control(qapp, tmp_path):
+    harness = _geometry_harness(qapp, tmp_path)
+    parent = QWidget()
+    parent.resize(160, 80)
+    button = QPushButton("스크롤 밖 버튼", parent)
+    button.setGeometry(10, 68, 140, 36)
+    parent.show()
+    qapp.processEvents()
+    assert button.isVisible()
+    assert not button.visibleRegion().isEmpty()
+    with pytest.raises(AssertionError, match="보이지 않는 컨트롤"):
+        harness._assert_control_accessible(button)
+    parent.close()
+
+
+def test_qa_rejects_a_control_with_a_visible_center_but_clipped_edges(qapp, tmp_path):
+    harness = _geometry_harness(qapp, tmp_path)
+    parent = QWidget()
+    parent.resize(160, 80)
+    button = QPushButton("양쪽이 잘린 버튼", parent)
+    button.setGeometry(-80, 10, 300, 36)
+    parent.show()
+    qapp.processEvents()
+    assert button.visibleRegion().contains(button.rect().center())
+    with pytest.raises(AssertionError, match="전체 높이 및 클릭 영역"):
+        harness._assert_control_accessible(button)
+    parent.close()
+
+
+@pytest.mark.parametrize("view_class, minimum", [(QListWidget, 120), (QTableWidget, 180)])
+def test_qa_rejects_a_one_line_log_or_table_viewport(qapp, tmp_path, view_class, minimum):
+    harness = _geometry_harness(qapp, tmp_path)
+    view = view_class()
+    view.resize(320, 50)
+    view.show()
+    qapp.processEvents()
+    assert view.isVisible()
+    with pytest.raises(AssertionError, match="viewport 최소"):
+        harness._assert_viewport_height(view, minimum, "한 줄 결과")
+    view.close()
+
+
+def test_qa_scrolls_to_a_fully_accessible_control(qapp, tmp_path):
+    harness = _geometry_harness(qapp, tmp_path)
+    scroll = QScrollArea()
+    scroll.resize(300, 180)
+    content = QWidget()
+    content.resize(260, 600)
+    button = QPushButton("맨 아래 작업", content)
+    button.setGeometry(10, 540, 220, 40)
+    scroll.setWidget(content)
+    scroll.show()
+    qapp.processEvents()
+    assert button.visibleRegion().isEmpty()
+    harness._assert_control_accessible(button)
+    assert scroll.verticalScrollBar().value() > 0
+    assert button.visibleRegion().boundingRect().height() == button.height()
+    scroll.close()
+
+
+def test_qa_rejects_overlapping_card_labels(qapp, tmp_path):
+    harness = _geometry_harness(qapp, tmp_path)
+    card = QWidget()
+    card.resize(240, 100)
+    title = QLabel("어댑터", card)
+    title.setGeometry(10, 10, 200, 30)
+    value = QLabel("Wireless Adapter", card)
+    value.setGeometry(10, 30, 200, 30)
+    card.show()
+    qapp.processEvents()
+    with pytest.raises(AssertionError, match="비중첩"):
+        harness._assert_non_overlapping((title, value), card, "Wi-Fi 카드")
+    card.close()
+
+
+def test_qa_rejects_a_card_label_shorter_than_its_text(qapp, tmp_path):
+    harness = _geometry_harness(qapp, tmp_path)
+    card = QWidget()
+    card.resize(240, 100)
+    value = QLabel("Wireless Adapter", card)
+    value.setGeometry(10, 10, 200, 8)
+    card.show()
+    qapp.processEvents()
+    with pytest.raises(AssertionError, match="텍스트 높이"):
+        harness._assert_readable_card(card, "Wi-Fi 카드")
+    card.close()
+
+
+def test_wireless_expanded_qa_covers_all_supported_viewports():
+    config = json.loads(QA_CONFIG.read_text(encoding="utf-8"))
+    expanded = [item for item in config["scenarios"] if item.get("capture_handler") == "wireless_expanded"]
+    assert {tuple(item["viewport"]) for item in expanded} == {(1024, 680), (1280, 800), (1600, 900)}
+    guide_config = json.loads((PROJECT_ROOT / "qa/offscreen/guide_scenarios.json").read_text(encoding="utf-8"))
+    full_guide = next(item for item in expanded if item.get("guide_asset"))
+    assert full_guide == next(item for item in guide_config["scenarios"] if item["id"] == full_guide["id"])
+
+
+def test_inspector_expanded_qa_covers_all_supported_viewports():
+    config = json.loads(QA_CONFIG.read_text(encoding="utf-8"))
+    assert {tuple(item["viewport"]) for item in config["scenarios"] if item.get("capture_handler") == "inspector_expanded"} == {(1024, 680), (1280, 800), (1600, 900)}
+
+
+def test_guide_capture_configs_exclude_removed_assistant_sources() -> None:
+    removed_sources = {
+        "app/ui/tabs/ai_chat_tab.py",
         "app/models/ai_models.py",
         "app/services/ai_agent_service.py",
         "app/services/ai_model_catalog_service.py",
-    }
-    required_settings_sources = {
-        "app/models/ai_models.py",
-        "app/services/ai_agent_service.py",
     }
     for config_path in (
         QA_CONFIG,
@@ -47,10 +152,8 @@ def test_codex_guide_captures_track_the_provider_contract_sources() -> None:
     ):
         config = json.loads(config_path.read_text(encoding="utf-8"))
         scenarios = {item["id"]: item for item in config["scenarios"]}
-        assert required_assistant_sources <= set(
-            scenarios["guide_assistant_overview"]["source_paths"]
-        )
-        assert required_settings_sources <= set(
+        assert "guide_assistant_overview" not in scenarios
+        assert removed_sources.isdisjoint(
             scenarios["guide_settings_overview"]["source_paths"]
         )
 
@@ -98,10 +201,16 @@ def test_offscreen_user_flow_configuration_runs_all_scenarios(qapp, tmp_path):
     }
     assert failures == {}
     assert len(report.results) == len(config["scenarios"])
-    assert len(report.layout_checks) == 21
+    assert len(report.layout_checks) == len(config["layout_sweep_viewports"]) * len(MainWindow._MAIN_PAGE_SPECS)
     assert report.json_path.is_file()
     assert report.markdown_path.is_file()
     assert len(list(output_dir.glob("*.png"))) == len(config["scenarios"])
+    # Captures must use the real app palette, not Fusion's grey scroll viewports.
+    home_capture = next(
+        result.screenshot for result in report.results if result.scenario_id == "guide_home_overview"
+    )
+    home_image = QImage(str(output_dir / Path(home_capture).name))
+    assert home_image.pixelColor(700, 600).name() == "#f3f6fb"
 
     guide_assets_dir = tmp_path / "guide-assets"
     capture_manifest_path = export_guide_assets(
@@ -136,11 +245,21 @@ def test_offscreen_user_flow_configuration_runs_all_scenarios(qapp, tmp_path):
         )
         assert len(item["png_sha256"]) == 64
         assert any("objectName 표시" in check for check in item["checks"])
+    page_assets = {
+        scenario["guide_asset"]
+        for scenario in scenarios_by_id.values()
+        if scenario.get("capture_target") == "page"
+    }
     for asset_name in expected_assets:
         image = QImage(str(guide_assets_dir / asset_name))
         assert not image.isNull()
-        assert image.width() == 1280
-        assert image.height() == 800
+        if asset_name in page_assets:
+            # Work-area captures leave out the menu and status bar for readability.
+            assert 900 <= image.width() < 1280
+            assert 600 <= image.height() < 800
+        else:
+            assert image.width() == 1280
+            assert image.height() == 800
     assert capture_manifest_errors(
         PROJECT_ROOT,
         QA_CONFIG,
@@ -154,7 +273,8 @@ def test_offscreen_user_flow_configuration_runs_all_scenarios(qapp, tmp_path):
         for item in stale_config["scenarios"]
         if item["id"] == "guide_interface_overview"
     )
-    stale_scenario["viewport"] = [1279, 800]
+    # Smaller than the work-area capture, so even a page capture no longer fits.
+    stale_scenario["viewport"] = [1000, 700]
     stale_scenario["expected_object_names"].append("newInterfaceContract")
     stale_config_path = tmp_path / "stale-guide-scenarios.json"
     stale_config_path.write_text(
@@ -170,7 +290,10 @@ def test_offscreen_user_flow_configuration_runs_all_scenarios(qapp, tmp_path):
     assert any("recorded viewport is stale" in error for error in stale_errors)
     assert any("objectName expectations are stale" in error for error in stale_errors)
     assert any("fingerprint is stale" in error for error in stale_errors)
-    assert any("do not match viewport" in error for error in stale_errors)
+    assert any(
+        "do not match viewport" in error or "exceed viewport" in error
+        for error in stale_errors
+    )
 
 
 def test_guide_capture_fingerprint_tracks_handler_and_mapped_sources(tmp_path):
@@ -202,6 +325,9 @@ class OffscreenQaHarness:
     source_path = tmp_path / "app" / "page.py"
     source_path.parent.mkdir(parents=True)
     source_path.write_bytes(b"PAGE_TITLE = 'first'\n")
+    icon_path = tmp_path / "assets" / "page.svg"
+    icon_path.parent.mkdir(parents=True)
+    icon_path.write_bytes(b'<svg xmlns="http://www.w3.org/2000/svg">\n</svg>\n')
     config = {
         "schema_version": 1,
         "application": "NetOps Suite",
@@ -214,11 +340,12 @@ class OffscreenQaHarness:
         "guide_asset": "page-overview.png",
         "capture_handler": "guide_overview",
         "expected_object_names": ["appShell", "pageContent"],
-        "source_paths": ["app/page.py"],
+        "source_paths": ["app/page.py", "assets/page.svg"],
     }
 
     initial = build_capture_fingerprint(tmp_path, config, scenario)
     source_path.write_bytes(b"PAGE_TITLE = 'first'\r\n")
+    icon_path.write_bytes(b'<svg xmlns="http://www.w3.org/2000/svg">\r\n</svg>\r\n')
     windows_newlines = build_capture_fingerprint(tmp_path, config, scenario)
     assert windows_newlines == initial
 
@@ -315,12 +442,6 @@ def test_real_qthreadpool_ping_busy_completion_and_cancel(
         "app.app_state.shutdown_logging",
         lambda *_args, **_kwargs: None,
     )
-    monkeypatch.setattr(AiChatTab, "refresh_provider_status", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(
-        AiChatTab,
-        "_ensure_model_catalog_fresh",
-        lambda *_args, **_kwargs: None,
-    )
     monkeypatch.setattr(
         MainWindow,
         "_maybe_check_updates_on_startup",
@@ -351,7 +472,8 @@ def test_real_qthreadpool_ping_busy_completion_and_cancel(
     tab = window.diagnostics_tab
 
     try:
-        _click_list_row(window.nav_list, 1)
+        diagnostic_row = next(index for index in range(window.nav_list.count()) if window.nav_list.item(index).data(Qt.ItemDataRole.UserRole) == "diagnostics")
+        _click_list_row(window.nav_list, diagnostic_row)
         tab.select_diagnostic_tab("ping")
         _paste(qapp, tab.ping_targets_edit, "A,192.0.2.1\nB,192.0.2.2")
         QTest.mouseClick(tab.ping_start_button, Qt.MouseButton.LeftButton)

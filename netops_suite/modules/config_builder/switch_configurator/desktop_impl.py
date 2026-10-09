@@ -48,20 +48,28 @@ from PySide6.QtWidgets import (
 )
 
 from app.ui.common import make_dialog_intro, polish_dialog
+from app.ui.common.disclosure import CollapsibleSection
 from app.utils.file_utils import build_app_paths, save_json
-from netops_suite.ui.actions import ActionKind, make_action_button, polish_dialog_button_box, polish_existing_button
+from netops_suite.ui.actions import ActionKind, make_action_button, polish_dialog_button_box
+from netops_suite.ui.icons import icon
 from netops_suite.ui.numeric_inputs import NoWheelSpinBox
 from netops_suite.ui.selection_inputs import NoWheelComboBox
 from .engine import ConfigEngine, build_bundle_text
 from .io_utils import load_profiles_from_directory
-from .models import BlockSpec, DeviceRecord, Profile, RenderedConfig, ValidationIssue, VariableSpec
+from .models import DeviceRecord, Profile, RenderedConfig, ValidationIssue
 from .models import (
     AUTO_INCREMENT_IPV4,
     AUTO_INCREMENT_NONE,
     AUTO_INCREMENT_SUFFIX_NUMBER,
 )
 from .profile_builder_dialog import ProfileBuilderDialog
-from .table_data import DeviceTable, load_device_table_from_path, make_blank_table_row, save_device_table_to_path
+from .table_data import (
+    DeviceTable,
+    load_device_table_from_path,
+    make_blank_table_row,
+    make_sample_table_row,
+    save_device_table_to_path,
+)
 from .app_icon import build_app_icon, set_windows_app_id
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -73,19 +81,10 @@ def _default_config_builder_data_dir() -> Path:
 
 CONFIG_BUILDER_DATA_DIR = _default_config_builder_data_dir()
 PROFILE_DIR = ROOT_DIR / "profiles"
-OUTPUT_DIR = CONFIG_BUILDER_DATA_DIR / "outputs"
-BACKUP_DIR = OUTPUT_DIR / "backups"
-ACTIVITY_LOG_PATH = OUTPUT_DIR / "desktop_activity.log"
+ACTIVITY_LOG_PATH = build_app_paths().logs_dir / "config_builder_activity.log"
 DEFAULT_APP_STATE_PATH = CONFIG_BUILDER_DATA_DIR / ".desktop_state.json"
 LEGACY_APP_STATE_PATH = ROOT_DIR / ".desktop_state.json"
 APP_STATE_PATH = DEFAULT_APP_STATE_PATH
-TUTORIAL_WORKSPACE_DIR = OUTPUT_DIR / "tutorial"
-TUTORIAL_WORKSPACE_PATH = TUTORIAL_WORKSPACE_DIR / "tutorial_hands_on_devices.csv"
-TUTORIAL_PROFILE_ID = "TUTORIAL_HANDS_ON_SWITCH"
-TUTORIAL_DEVICE_ID = "SW-TUTORIAL-01"
-TUTORIAL_HOSTNAME = "SW-TUTORIAL-01"
-TUTORIAL_MGMT_IP = "192.168.10.11"
-TUTORIAL_MGMT_MASK = "255.255.255.0"
 MAX_WIDGET_WIDTH = 16777215
 
 
@@ -154,12 +153,12 @@ QTableView {
     border: 1px solid #d9e2ec;
     border-radius: 5px;
     gridline-color: #e4e7ec;
-    selection-background-color: #e5e7eb;
+    selection-background-color: #dbeafe;
     selection-color: #182230;
 }
 QTableView::item { padding: 4px 6px; }
 QTableView::item:hover { background: #f3f4f6; color: #182230; }
-QTableView::item:selected { background: #e5e7eb; color: #182230; }
+QTableView::item:selected { background: #dbeafe; color: #182230; }
 QHeaderView::section {
     background: #eef2f6;
     color: #344054;
@@ -177,12 +176,12 @@ QTableView {
     alternate-background-color: #f8fafc;
     border: 0;
     gridline-color: #e4e7ec;
-    selection-background-color: #e5e7eb;
+    selection-background-color: #dbeafe;
     selection-color: #182230;
 }
 QTableView::item { padding: 4px 6px; }
 QTableView::item:hover { background: #f3f4f6; color: #182230; }
-QTableView::item:selected { background: #e5e7eb; color: #182230; }
+QTableView::item:selected { background: #dbeafe; color: #182230; }
 QHeaderView::section {
     background: #eef2f6;
     color: #344054;
@@ -195,39 +194,60 @@ QHeaderView::section {
 """
 
 COMPACT_UI_STYLE = """
+QLabel#configBuilderStepLabel {
+    color: #15243c;
+    font-weight: 700;
+}
 QWidget#configBuilderFullEditorCentral,
 QWidget#configBuilderEmbeddedCentral,
-QWidget#configBuilderAdvancedPanel,
-QWidget#configBuilderFullEditorCentral QWidget,
-QWidget#configBuilderEmbeddedCentral QWidget,
-QWidget#configBuilderAdvancedPanel QWidget {
+QWidget#configBuilderAdvancedPanel {
+    background: #f3f6fb;
+}
+QWidget#configBuilderCompactCommandBar,
+QWidget#configBuilderLeftPanel {
     background: #ffffff;
+    border: 1px solid #dce4f0;
+    border-radius: 10px;
+}
+QWidget#configBuilderRightPanel {
+    background: #f3f6fb;
 }
 QGroupBox {
     font-weight: 600;
-    margin-top: 22px;
-    padding: 12px 0 0 0;
-    background: transparent;
-    border: 0;
+    margin-top: 0;
+    padding: 30px 8px 8px 8px;
+    background: #ffffff;
+    border: 1px solid #dce4f0;
+    border-radius: 10px;
 }
 QGroupBox::title {
-    subcontrol-origin: margin;
+    subcontrol-origin: padding;
     subcontrol-position: top left;
-    left: 0;
-    padding: 0 0 0 7px;
+    left: 12px;
+    top: 9px;
+    padding: 0;
+    color: #22324c;
     background: transparent;
-    border-left: 3px solid #d0d5dd;
+}
+QGroupBox[compactCard="true"] {
+    margin-top: 0;
+    padding: 8px;
 }
 QPushButton {
-    padding: 2px 7px;
-    min-height: 20px;
+    font-size: 12px;
+    padding: 4px 9px;
+    min-height: 24px;
 }
 QComboBox, QLineEdit {
-    min-height: 20px;
-    padding: 2px 6px;
+    font-size: 12px;
+    min-height: 24px;
+    padding: 4px 7px;
 }
 QLabel {
-    color: #182230;
+    font-size: 13px;
+    color: #22324c;
+    background: transparent;
+    border: 0;
 }
 QStatusBar {
     font-size: 11px;
@@ -251,11 +271,11 @@ QTabBar::tab {
 }
 QTabBar::tab:selected {
     background: transparent;
-    color: #111827;
-    border-bottom-color: #111827;
+    color: #2563eb;
+    border-bottom-color: #2563eb;
 }
 QLabel#GuideTitle {
-    font-size: 11px;
+    font-size: 14px;
     font-weight: 700;
     color: #182230;
 }
@@ -271,7 +291,7 @@ QLabel#GuideHint {
     background: transparent;
     color: #475467;
     border: 0;
-    border-left: 3px solid #d0d5dd;
+    border-left: 3px solid #bfdbfe;
     padding: 4px 0 4px 9px;
 }
 QLabel#SelectionName {
@@ -666,225 +686,6 @@ class IncrementCopyDialog(QDialog):
 
     def values(self) -> int:
         return self.copy_count_spin.value()
-
-
-class InAppTutorialDialog(QDialog):
-    def __init__(self, host: "DesktopWindow") -> None:
-        super().__init__(host)
-        self.host = host
-        self._current_step = 0
-        self._current_action: Callable[[], None] | None = None
-        self._steps: list[Callable[[], dict[str, Any]]] = [
-            self._step_intro,
-            self._step_profile_authoring,
-            self._step_prepare_device_file,
-            self._step_fill_first_device,
-            self._step_review_cli,
-            self._step_copy_cli,
-            self._step_finish,
-        ]
-
-        self.setWindowTitle("튜토리얼")
-        self.setModal(False)
-        self.resize(470, 360)
-
-        layout = QVBoxLayout(self)
-        polish_dialog(self, layout)
-
-        self.progress_label = QLabel("")
-        self.progress_label.setObjectName("GuideMeta")
-        layout.addWidget(self.progress_label)
-
-        self.title_label = QLabel("")
-        self.title_label.setWordWrap(True)
-        self.title_label.setObjectName("GuideTitle")
-        layout.addWidget(self.title_label)
-
-        self.body_label = QLabel("")
-        self.body_label.setWordWrap(True)
-        self.body_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.body_label.setObjectName("GuideBody")
-        layout.addWidget(self.body_label, 1)
-
-        self.status_label = QLabel("")
-        self.status_label.setWordWrap(True)
-        self.status_label.setObjectName("GuideMeta")
-        layout.addWidget(self.status_label)
-
-        hint_label = QLabel("이 창은 켜 둔 채로, 메인 화면과 프로파일 편집기를 직접 만지면서 단계별로 따라오면 됩니다.")
-        hint_label.setWordWrap(True)
-        hint_label.setObjectName("GuideHint")
-        layout.addWidget(hint_label)
-
-        buttons = QDialogButtonBox(self)
-        self.previous_button = buttons.addButton("이전", QDialogButtonBox.ActionRole)
-        self.action_button = buttons.addButton("실습 열기", QDialogButtonBox.ActionRole)
-        self.next_button = buttons.addButton("다음", QDialogButtonBox.ActionRole)
-        self.close_button = buttons.addButton("닫기", QDialogButtonBox.RejectRole)
-        polish_existing_button(self.previous_button, ActionKind.UTILITY)
-        polish_existing_button(self.action_button, ActionKind.PRIMARY)
-        polish_existing_button(self.next_button, ActionKind.UTILITY)
-        polish_existing_button(self.close_button, ActionKind.CANCEL)
-        self.previous_button.clicked.connect(self.go_previous)
-        self.action_button.clicked.connect(self.run_step_action)
-        self.next_button.clicked.connect(self.go_next)
-        self.close_button.clicked.connect(self.close)
-        layout.addWidget(buttons)
-
-        self._apply_step(0)
-
-    def _apply_step(self, index: int) -> None:
-        self._current_step = index
-        step = self._steps[index]()
-        title = str(step.get("title", "")).strip()
-        body = str(step.get("body", "")).strip()
-        complete = bool(step.get("complete", True))
-        action = step.get("action")
-        self._current_action = action if callable(action) else None
-        action_text = str(step.get("action_text", "")).strip()
-        status_text = str(step.get("status_text", "")).strip()
-        self.progress_label.setText(f"{index + 1} / {len(self._steps)}")
-        self.title_label.setText(title)
-        self.body_label.setText(body)
-        self.status_label.setText(status_text)
-        self.previous_button.setEnabled(index > 0)
-        self.action_button.setVisible(bool(action_text and self._current_action))
-        if self.action_button.isVisible():
-            self.action_button.setText(action_text)
-        self.next_button.setText("완료" if index == len(self._steps) - 1 else "다음")
-        self.next_button.setEnabled(index == len(self._steps) - 1 or complete)
-        QApplication.processEvents()
-
-    def refresh_current_step(self) -> None:
-        self._apply_step(self._current_step)
-
-    def go_previous(self) -> None:
-        if self._current_step <= 0:
-            return
-        self._apply_step(self._current_step - 1)
-
-    def go_next(self) -> None:
-        if self._current_step < len(self._steps) - 1 and not self.next_button.isEnabled():
-            return
-        if self._current_step >= len(self._steps) - 1:
-            self.close()
-            return
-        self._apply_step(self._current_step + 1)
-
-    def run_step_action(self) -> None:
-        if self._current_action is None:
-            return
-        self._current_action()
-        self.refresh_current_step()
-
-    def closeEvent(self, event: QCloseEvent) -> None:
-        self.host.on_tutorial_dialog_closed(self)
-        super().closeEvent(event)
-
-    def _step_intro(self) -> dict[str, Any]:
-        profile = self.host.tutorial_profile()
-        status = f"현재 튜토리얼 프로파일: {profile.id}" if profile is not None else "현재 튜토리얼 프로파일: 아직 저장되지 않음"
-        return {
-            "title": "실습 흐름 소개",
-            "body": (
-                "이번 튜토리얼은 화면만 보는 방식이 아니라, 처음부터 직접 만들어 보는 실습입니다.\n\n"
-                "순서는 1) 프로파일 저장 2) 실습용 장비 파일 만들기 3) 첫 장비 값 입력 4) CLI 확인 5) CLI 복사입니다.\n"
-                "중간에 막히면 다시 이 창으로 돌아와 다음 안내를 확인하면 됩니다."
-            ),
-            "complete": True,
-            "status_text": status,
-        }
-
-    def _step_profile_authoring(self) -> dict[str, Any]:
-        profile = self.host.tutorial_profile()
-        complete = self.host.tutorial_profile_ready()
-        if profile is None:
-            status = "아직 저장된 튜토리얼 프로파일이 없습니다."
-        else:
-            status = f"저장됨: {profile.id} / 변수 {len(profile.variables)}개 / 블록 {len(profile.blocks)}개"
-        return {
-            "title": "1. 프로파일 작성",
-            "body": (
-                "버튼을 누르면 튜토리얼용 프로파일 편집기가 열립니다. 기본 예제가 채워진 상태로 열리니, "
-                "변수와 명령 블록이 어떻게 연결되는지 확인한 뒤 그대로 저장하거나 직접 조금 수정해 보세요.\n\n"
-                "권장 구성은 `hostname`, `mgmt_ip`, `mgmt_mask` 변수와 `base` 명령 블록 1개입니다."
-            ),
-            "action_text": "프로파일 작성 열기" if profile is None else "프로파일 다시 열기",
-            "action": self.host.open_tutorial_profile_dialog,
-            "complete": complete,
-            "status_text": status,
-        }
-
-    def _step_prepare_device_file(self) -> dict[str, Any]:
-        loaded = self.host.tutorial_workspace_loaded()
-        current_name = self.host.current_file_path.name if self.host.current_file_path else "-"
-        status = f"현재 파일: {current_name}" if loaded else f"생성될 파일: {TUTORIAL_WORKSPACE_PATH.name}"
-        return {
-            "title": "2. 장비 파일 만들기",
-            "body": (
-                "이 단계에서는 방금 저장한 프로파일로 실습용 장비 파일을 엽니다.\n\n"
-                "버튼을 누르면 튜토리얼 작업 폴더에 CSV가 준비되고, 첫 번째 빈 행이 자동으로 선택됩니다. "
-                "이미 파일이 있다면 이어서 다시 열어 줍니다."
-            ),
-            "action_text": "장비 파일 만들기" if not loaded else "장비 파일 다시 열기",
-            "action": self.host.prepare_tutorial_device_file,
-            "complete": loaded,
-            "status_text": status,
-        }
-
-    def _step_fill_first_device(self) -> dict[str, Any]:
-        return {
-            "title": "3. 첫 장비 값 입력",
-            "body": (
-                "메인 표의 첫 행에 아래 값을 직접 입력해 보세요.\n\n"
-                f"`device_id`: {TUTORIAL_DEVICE_ID}\n"
-                f"`hostname`: {TUTORIAL_HOSTNAME}\n"
-                f"`mgmt_ip`: {TUTORIAL_MGMT_IP}\n\n"
-                f"프로파일 ID(profile_id)는 자동으로 채워지고, `mgmt_mask`는 비워 두면 기본값 `{TUTORIAL_MGMT_MASK}`가 사용됩니다."
-            ),
-            "action_text": "첫 행으로 이동",
-            "action": lambda: self.host.focus_tutorial_workspace_row(detail_tab=0, column_name="device_id"),
-            "complete": self.host.tutorial_first_row_complete(),
-            "status_text": self.host.tutorial_first_row_status_text(),
-        }
-
-    def _step_review_cli(self) -> dict[str, Any]:
-        return {
-            "title": "4. CLI 확인",
-            "body": (
-                "입력을 마쳤다면 오른쪽 `CLI` 탭으로 가서 실제 생성 결과를 확인해 보세요.\n\n"
-                "CLI가 보이지 않으면 `이슈` 탭에서 부족한 값이나 오류를 먼저 확인하면 됩니다."
-            ),
-            "action_text": "CLI 탭으로 이동",
-            "action": lambda: self.host.focus_tutorial_workspace_row(detail_tab=3, column_name="hostname"),
-            "complete": self.host.tutorial_cli_ready(),
-            "status_text": self.host.tutorial_cli_status_text(),
-        }
-
-    def _step_copy_cli(self) -> dict[str, Any]:
-        return {
-            "title": "5. CLI 복사",
-            "body": (
-                "이제 메인 화면 오른쪽 위 `CLI` 영역의 `복사` 버튼을 직접 눌러 보세요.\n\n"
-                "복사가 성공하면 선택 행의 작업 상태가 `복사 완료`로 바뀌고, 이 단계가 자동으로 완료됩니다."
-            ),
-            "action_text": "CLI 행 다시 보기",
-            "action": lambda: self.host.focus_tutorial_workspace_row(detail_tab=3, column_name="hostname"),
-            "complete": self.host.tutorial_cli_copied(),
-            "status_text": self.host.tutorial_copy_status_text(),
-        }
-
-    def _step_finish(self) -> dict[str, Any]:
-        return {
-            "title": "튜토리얼 완료",
-            "body": (
-                "여기까지 하면 프로파일 작성부터 첫 장비 CLI 복사까지 한 번 끝낸 것입니다.\n\n"
-                "이제 같은 파일에서 `행 추가`, `선택 행 복사`, `연속 값 복사`를 눌러 장비를 늘려 보고, "
-                "`이슈` 탭으로 오류를 확인하는 연습까지 이어서 해보면 됩니다."
-            ),
-            "complete": True,
-            "status_text": "현재 상태 그대로 계속 실습할 수 있습니다.",
-        }
 
 
 def is_secret_header(header_name: str) -> bool:
@@ -1515,7 +1316,7 @@ class SwitchConfigBuilderWidget(QWidget):
         self._embedded = embedded
         app = QApplication.instance()
         self.setWindowIcon(app.windowIcon() if app and not app.windowIcon().isNull() else build_app_icon())
-        self.setWindowTitle("CLI 설정 생성")
+        self.setWindowTitle("장비 설정 생성")
         self.resize(1520, 840)
         font = self.font()
         font.setPointSize(8)
@@ -1557,10 +1358,9 @@ class SwitchConfigBuilderWidget(QWidget):
         self._restored_filter_field = "전체"
         self._restored_filter_value = ""
         self._restored_profile_id = ""
-        self._restored_detail_tab_index = 0
+        self._restored_detail_tab_index = 3
         self._restored_selected_row: int | None = None
         self._restored_auto_save = True
-        self.tutorial_dialog: InAppTutorialDialog | None = None
         self._load_app_state()
 
         self.refresh_timer = QTimer(self)
@@ -1629,7 +1429,6 @@ class SwitchConfigBuilderWidget(QWidget):
             self._set_row_work_state(row_index, state)
         self.table_model.set_issue_map(self.current_row_issues)
         self.apply_filter()
-        self._refresh_tutorial_dialog()
 
     def _clear_missing_row_work_state(self) -> None:
         valid_uids = {uid for uid in self.table_model.row_uids() if uid}
@@ -1643,46 +1442,7 @@ class SwitchConfigBuilderWidget(QWidget):
         }
 
     def _build_ui(self) -> None:
-        self._build_toolbar()
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-        root.addWidget(self.main_toolbar)
-        central = QWidget(self)
-        central.setObjectName("configBuilderFullEditorCentral")
-        main = QVBoxLayout(central)
-        main.setContentsMargins(10, 10, 10, 10)
-        main.setSpacing(8)
-
-        self.summary_label = QLabel("프로파일과 장비 파일을 열면 바로 CLI를 확인할 수 있습니다.")
-        self.summary_label.setWordWrap(True)
-
-        controls = QHBoxLayout()
-        controls.setSpacing(8)
-        controls.addWidget(self._build_profile_group(), 2)
-        controls.addWidget(self._build_block_toggle_group(), 5)
-        controls.addWidget(self._build_filter_group(), 4)
-        controls.addWidget(self._build_row_group(), 2)
-        controls.addWidget(self._build_pin_group(), 2)
-        controls.addWidget(self._build_file_group(), 1)
-        main.addLayout(controls)
-
-        splitter = QSplitter(Qt.Horizontal, self)
-        splitter.setChildrenCollapsible(False)
-        splitter.addWidget(self._build_left_panel())
-        self.right_panel = self._build_right_panel()
-        splitter.addWidget(self.right_panel)
-        splitter.setSizes([1180, 340])
-        self.main_splitter = splitter
-        main.addWidget(splitter, 1)
-
-        self.filter_field_combo.currentTextChanged.connect(self.apply_filter)
-        self.filter_value_edit.textChanged.connect(self.apply_filter)
-        self.add_profile_combo.currentTextChanged.connect(self.refresh_selected_preview)
-        self.add_profile_combo.currentTextChanged.connect(self.refresh_block_toggle_panel)
-        self._status_bar = QStatusBar(self)
-        root.addWidget(central, 1)
-        root.addWidget(self._status_bar)
+        self._build_embedded_ui()
 
     def statusBar(self) -> QStatusBar:
         return self._status_bar
@@ -1691,20 +1451,26 @@ class SwitchConfigBuilderWidget(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+        self._build_toolbar()
+        root.addWidget(self.main_toolbar)
         central = QWidget(self)
         central.setObjectName("configBuilderEmbeddedCentral")
         main = QVBoxLayout(central)
         main.setContentsMargins(8, 6, 8, 6)
         main.setSpacing(6)
 
-        self.summary_label = QLabel("장비 변수 파일을 열거나 샘플로 시작하면 CLI를 바로 확인할 수 있습니다.")
+        self.summary_label = QLabel("장비 변수 파일을 열거나 샘플로 시작하면 CLI를 바로 확인할 수 있습니다.", self)
         self.summary_label.setWordWrap(True)
         self.summary_label.setStyleSheet("color:#334155;")
-        main.addWidget(self.summary_label)
+        self.summary_label.hide()
         main.addWidget(self._build_embedded_command_bar())
         main.addWidget(self._build_embedded_summary_chips())
 
-        self.advanced_panel = self._build_embedded_advanced_panel()
+        self.advanced_panel = QScrollArea()
+        self.advanced_panel.setWidgetResizable(True)
+        self.advanced_panel.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.advanced_panel.setMaximumHeight(240)
+        self.advanced_panel.setWidget(self._build_embedded_advanced_panel())
         self.advanced_panel.setObjectName("configBuilderAdvancedPanel")
         self.advanced_panel.setVisible(False)
         main.addWidget(self.advanced_panel)
@@ -1713,7 +1479,13 @@ class SwitchConfigBuilderWidget(QWidget):
         splitter.setChildrenCollapsible(False)
         splitter.addWidget(self._build_left_panel())
         self.right_panel = self._build_right_panel()
-        splitter.addWidget(self.right_panel)
+        self.right_scroll = QScrollArea()
+        self.right_scroll.setObjectName("configBuilderCommandScroll")
+        self.right_scroll.setWidgetResizable(True)
+        self.right_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.right_scroll.setMinimumWidth(320)
+        self.right_scroll.setWidget(self.right_panel)
+        splitter.addWidget(self.right_scroll)
         splitter.setSizes([820, 420])
         self.main_splitter = splitter
         main.addWidget(splitter, 1)
@@ -1729,10 +1501,11 @@ class SwitchConfigBuilderWidget(QWidget):
     def _build_embedded_command_bar(self) -> QWidget:
         bar = QWidget()
         bar.setObjectName("configBuilderCompactCommandBar")
-        layout = QHBoxLayout(bar)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
-        profile_label = QLabel("기준 프로파일")
+        layout = QVBoxLayout(bar)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(8)
+        profile_label = QLabel("1. 기준 프로파일")
+        profile_label.setObjectName("configBuilderStepLabel")
         self.add_profile_combo = NoWheelComboBox()
         self.add_profile_combo.setMinimumWidth(260)
         self.sample_start_button = make_action_button("샘플로 시작", ActionKind.PRIMARY)
@@ -1750,12 +1523,17 @@ class SwitchConfigBuilderWidget(QWidget):
         self.advanced_toggle_button.setCheckable(True)
         self.advanced_toggle_button.toggled.connect(self._toggle_embedded_advanced_panel)
 
-        layout.addWidget(profile_label)
-        layout.addWidget(self.add_profile_combo, 1)
-        layout.addWidget(self.sample_start_button)
-        layout.addWidget(self.open_file_button)
-        layout.addWidget(self.add_row_button)
-        layout.addWidget(self.advanced_toggle_button)
+        profile_row = QHBoxLayout()
+        profile_row.addWidget(profile_label)
+        profile_row.addWidget(self.add_profile_combo, 1)
+        profile_row.addWidget(self.sample_start_button)
+        layout.addLayout(profile_row)
+        file_row = QHBoxLayout()
+        file_row.addWidget(self.open_file_button)
+        file_row.addWidget(self.add_row_button)
+        file_row.addStretch(1)
+        file_row.addWidget(self.advanced_toggle_button)
+        layout.addLayout(file_row)
         return bar
 
     def _build_embedded_summary_chips(self) -> QWidget:
@@ -1778,6 +1556,7 @@ class SwitchConfigBuilderWidget(QWidget):
         ):
             layout.addWidget(chip)
         layout.addStretch(1)
+        self.profile_count_chip.hide()
         return chips
 
     def _make_summary_chip(self, text: str) -> QLabel:
@@ -1787,35 +1566,76 @@ class SwitchConfigBuilderWidget(QWidget):
 
     def _build_embedded_advanced_panel(self) -> QWidget:
         panel = QWidget()
-        layout = QHBoxLayout(panel)
+        layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
-        layout.addWidget(self._build_profile_actions_group(), 2)
-        layout.addWidget(self._build_block_toggle_group(), 3)
-        layout.addWidget(self._build_filter_group(), 3)
-        layout.addWidget(self._build_embedded_row_actions_group(), 2)
-        layout.addWidget(self._build_pin_group(), 3)
-        layout.addWidget(self._build_embedded_file_status_group(), 2)
+        self.advanced_sections = {}
+        for key, title, factory in (
+            ("blocks", "명령 블록 선택", self._build_block_toggle_group),
+            ("filter", "행 필터", self._build_filter_group),
+            ("rows", "행 복사 및 삭제", self._build_embedded_row_actions_group),
+            ("columns", "표시 컬럼", self._build_pin_group),
+            ("file", "파일 및 저장 옵션", self._build_embedded_file_status_group),
+        ):
+            section = CollapsibleSection(title)
+            group = factory()
+            group.setTitle("")
+            group.setProperty("compactCard", True)
+            section.content_layout.addWidget(group)
+            self.advanced_sections[key] = section
+            layout.addWidget(section)
+        self.advanced_sections["filter"].watch(self.filter_field_combo)
+        self.advanced_sections["filter"].watch(self.filter_value_edit)
+        self.advanced_sections["file"].watch(self.auto_save_check)
+        self.advanced_sections["file"].watch(self.allow_error_autosave_check)
+        self.filter_field_combo.currentIndexChanged.connect(self._update_advanced_option_summary)
+        self.filter_value_edit.textChanged.connect(self._update_advanced_option_summary)
+        self.auto_save_check.toggled.connect(self._update_advanced_option_summary)
+        self.allow_error_autosave_check.toggled.connect(self._update_advanced_option_summary)
         return panel
 
-    def _build_profile_actions_group(self) -> QGroupBox:
-        group = QGroupBox("프로파일 관리")
-        layout = QVBoxLayout(group)
-        reload_button = make_action_button("새로고침", ActionKind.REFRESH)
-        reload_button.clicked.connect(self.reload_profiles)
-        new_button = make_action_button("새 프로파일", ActionKind.ADD)
-        new_button.clicked.connect(self.open_new_profile_dialog)
-        clone_button = make_action_button("프로파일 복사", ActionKind.COPY)
-        clone_button.clicked.connect(self.clone_current_profile_dialog)
-        edit_button = make_action_button("프로파일 편집", ActionKind.EDIT)
-        edit_button.clicked.connect(self.edit_current_profile_dialog)
-        delete_button = make_action_button("프로파일 삭제", ActionKind.DELETE)
-        delete_button.clicked.connect(self.delete_current_profile_dialog)
-        for button in (reload_button, new_button, clone_button, edit_button, delete_button):
-            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            layout.addWidget(button)
-        layout.addStretch(1)
-        return group
+    def create_profile_management_button(self, parent: QWidget):
+        button = make_action_button(
+            "프로파일 만들기·관리",
+            ActionKind.PRIMARY,
+            tooltip="새 프로파일을 만들거나 현재 기준 프로파일을 편집·복사·삭제합니다.",
+            object_name="configBuilderProfileManagementButton",
+        )
+        button.setParent(parent)
+        button.setIcon(icon("server-cog", "#ffffff"))
+        menu = QMenu(button)
+        selected_profile_label = menu.addSection("")
+        profile_actions = []
+        for key, text, icon_name, method_name in (
+            ("new", "새 프로파일", "plus", "open_new_profile_dialog"),
+            ("edit", "프로파일 편집", "pencil", "edit_current_profile_dialog"),
+            ("copy", "프로파일 복사", "copy", "clone_current_profile_dialog"),
+            ("delete", "프로파일 삭제", "trash", "delete_current_profile_dialog"),
+            ("reload", "새로고침", "refresh-cw", "reload_profiles"),
+        ):
+            if key in {"delete", "reload"}:
+                menu.addSeparator()
+            action = menu.addAction(icon(icon_name), text)
+            action.setObjectName(f"configBuilderProfileAction_{key}")
+            action.triggered.connect(lambda _checked=False, name=method_name: self._invoke_profile_action(name))
+            if key in {"edit", "copy", "delete"}:
+                profile_actions.append(action)
+
+        def update_profile_menu() -> None:
+            profile = self._selected_profile()
+            selected_profile_label.setText(f"기준 프로파일: {profile.id}" if profile else "기준 프로파일을 먼저 선택하세요.")
+            for action in profile_actions:
+                action.setEnabled(profile is not None)
+
+        menu.aboutToShow.connect(update_profile_menu)
+        update_profile_menu()
+        button.setMenu(menu)
+        return button
+
+    def _invoke_profile_action(self, method_name: str) -> None:
+        self.window().raise_()
+        self.window().activateWindow()
+        getattr(self, method_name)()
 
     def _build_embedded_row_actions_group(self) -> QGroupBox:
         group = QGroupBox("행 작업")
@@ -1845,7 +1665,7 @@ class SwitchConfigBuilderWidget(QWidget):
         self.auto_save_check.setChecked(True)
         self.auto_save_check.toggled.connect(self.on_auto_save_toggled)
         self.allow_error_autosave_check = QCheckBox("오류 있어도 실시간 저장")
-        self.allow_error_autosave_check.setChecked(self.allow_error_autosave)
+        self.allow_error_autosave_check.setChecked(False)
         self.allow_error_autosave_check.toggled.connect(self.on_allow_error_autosave_toggled)
         self.allow_error_autosave_check.setEnabled(self.auto_save_check.isChecked())
         self.save_status_label = QLabel("-")
@@ -1861,8 +1681,19 @@ class SwitchConfigBuilderWidget(QWidget):
     def _toggle_embedded_advanced_panel(self, checked: bool) -> None:
         if hasattr(self, "advanced_panel"):
             self.advanced_panel.setVisible(checked)
+        self._update_advanced_option_summary()
+
+    def _update_advanced_option_summary(self, *_args) -> None:
         if hasattr(self, "advanced_toggle_button"):
-            self.advanced_toggle_button.setText("고급 닫기" if checked else "고급 작업")
+            changed = sum((
+                self.filter_field_combo.currentText() not in ("", "전체"),
+                bool(self.filter_value_edit.text()),
+                not self.auto_save_check.isChecked(),
+                self.allow_error_autosave_check.isChecked(),
+            ))
+            title = "고급 닫기" if self.advanced_toggle_button.isChecked() else "고급 작업"
+            suffix = f" · 변경된 옵션 {changed}개" if changed else ""
+            self.advanced_toggle_button.setText(title + suffix)
 
     def _build_profile_group(self) -> QGroupBox:
         group = QGroupBox("프로파일 작업")
@@ -1930,6 +1761,7 @@ class SwitchConfigBuilderWidget(QWidget):
         group = QGroupBox("필터")
         layout = QFormLayout(group)
         self.filter_field_combo = NoWheelComboBox()
+        self.filter_field_combo.addItem("전체")
         self.filter_value_edit = QLineEdit()
         self.filter_value_edit.setPlaceholderText("예: A구역, DSW, 192.168.10")
         clear_button = make_action_button("필터 초기화", ActionKind.CANCEL)
@@ -2040,7 +1872,7 @@ class SwitchConfigBuilderWidget(QWidget):
     def _build_toolbar(self) -> None:
         toolbar = QToolBar("Main Toolbar", self)
         toolbar.setMovable(False)
-        toolbar.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        toolbar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self.main_toolbar = toolbar
         for text, handler in (
             ("장비 파일 저장", self.save_current_file),
@@ -2048,33 +1880,27 @@ class SwitchConfigBuilderWidget(QWidget):
             ("다시 실행", self.redo_last_change),
         ):
             action = QAction(text, self)
+            if text == "장비 파일 저장":
+                action.setIcon(icon("save"))
             action.triggered.connect(handler)
             toolbar.addAction(action)
+            if text == "장비 파일 저장":
+                toolbar.addSeparator()
             if text == "실행 취소":
                 self.undo_action = action
             elif text == "다시 실행":
                 self.redo_action = action
 
-        spacer = QWidget(toolbar)
-        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        toolbar.addWidget(spacer)
-
-        self.tutorial_button = make_action_button("튜토리얼", ActionKind.UTILITY)
-        self.tutorial_button.setToolTip("프로파일 작성부터 장비 값 입력, CLI 복사까지 직접 실습하는 튜토리얼을 시작합니다.")
-        self.tutorial_button.clicked.connect(self.prompt_start_tutorial)
-        self.tutorial_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        toolbar.addWidget(self.tutorial_button)
-
     def _build_left_panel(self) -> QWidget:
         panel = QWidget()
         panel.setObjectName("configBuilderLeftPanel")
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(8)
-        title = QLabel("장비 설정 정보")
+        title = QLabel("2. 장비 값 입력 · 한 행이 장비 한 대입니다")
+        title.setObjectName("configBuilderStepLabel")
         layout.addWidget(title)
-        if self._embedded:
-            layout.addWidget(self._build_embedded_empty_state())
+        layout.addWidget(self._build_embedded_empty_state())
 
         self.pinned_table_view = SpreadsheetTableView()
         self.table_view = SpreadsheetTableView()
@@ -2160,20 +1986,8 @@ class SwitchConfigBuilderWidget(QWidget):
         message = QLabel("샘플로 시작하거나 장비 변수 파일(CSV/XLSX)을 여세요.")
         message.setWordWrap(True)
         message.setStyleSheet("color: #475569;")
-        action_row = QHBoxLayout()
-        sample_button = make_action_button("샘플로 시작", ActionKind.PRIMARY)
-        sample_button.clicked.connect(self._start_sample_for_current_profile)
-        open_button = make_action_button("장비 변수 파일 열기", ActionKind.BROWSE)
-        open_button.clicked.connect(self.open_device_file_dialog)
-        add_button = make_action_button("빈 행 추가", ActionKind.ADD)
-        add_button.clicked.connect(self.add_row)
-        action_row.addWidget(sample_button)
-        action_row.addWidget(open_button)
-        action_row.addWidget(add_button)
-        action_row.addStretch(1)
         layout.addWidget(title)
         layout.addWidget(message)
-        layout.addLayout(action_row)
         return empty
 
     def _build_right_panel(self) -> QWidget:
@@ -2183,7 +1997,7 @@ class SwitchConfigBuilderWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(3)
 
-        action_group = QGroupBox("CLI")
+        action_group = QGroupBox("3. 만들어진 CLI 확인·복사")
         action_layout = QVBoxLayout(action_group)
         action_layout.setContentsMargins(5, 5, 5, 5)
         action_layout.setSpacing(3)
@@ -2204,19 +2018,36 @@ class SwitchConfigBuilderWidget(QWidget):
         self.select_cli_button.setToolTip("CLI 미리보기 전체를 선택합니다.")
         navigation_row.addWidget(self.previous_device_button)
         navigation_row.addWidget(self.next_device_button)
-        navigation_row.addWidget(self.copy_cli_button)
-        navigation_row.addWidget(self.copy_next_cli_button)
-        navigation_row.addWidget(self.select_cli_button)
+        navigation_row.addStretch(1)
         action_layout.addLayout(navigation_row)
+        export_row = QHBoxLayout()
+        export_row.addWidget(self.copy_cli_button)
+        export_row.addWidget(self.copy_next_cli_button)
+        self.save_cli_button = make_action_button("CLI 저장", ActionKind.SAVE)
+        self.save_cli_button.setObjectName("configBuilderSaveCliButton")
+        self.save_cli_menu = QMenu(self.save_cli_button)
+        self.save_selected_cli_action = self.save_cli_menu.addAction("선택 장비 CLI 저장")
+        self.save_all_cli_action = self.save_cli_menu.addAction("전체 CLI 묶음 저장")
+        self.save_each_cli_action = self.save_cli_menu.addAction("장비별 CLI ZIP 저장")
+        self.save_selected_cli_action.triggered.connect(self.save_selected_cli)
+        self.save_all_cli_action.triggered.connect(self.save_all_cli)
+        self.save_each_cli_action.triggered.connect(self.save_each_cli)
+        self.save_cli_button.setMenu(self.save_cli_menu)
+        export_row.addWidget(self.save_cli_button)
+        action_layout.addLayout(export_row)
 
         work_actions = QHBoxLayout()
-        self.mark_done_button = make_action_button("적용 완료", ActionKind.PRIMARY)
+        self.mark_done_button = make_action_button("적용 완료로 표시", ActionKind.UTILITY)
+        self.mark_done_button.setToolTip("선택한 장비의 작업 상태만 기록합니다. 장비에 명령을 전송하지 않습니다.")
         self.mark_done_button.clicked.connect(self.mark_selected_rows_done)
         self.reset_work_state_button = make_action_button("상태 초기화", ActionKind.DANGER)
         self.reset_work_state_button.clicked.connect(self.reset_selected_rows_work_state)
         work_actions.addWidget(self.mark_done_button)
         work_actions.addWidget(self.reset_work_state_button)
-        action_layout.addLayout(work_actions)
+        self.work_state_section = CollapsibleSection("작업 상태 관리")
+        self.work_state_section.content_layout.addLayout(work_actions)
+        self.work_state_section.content_layout.addWidget(self.select_cli_button)
+        action_layout.addWidget(self.work_state_section)
         layout.addWidget(action_group)
 
         summary_group = QGroupBox("선택")
@@ -2300,11 +2131,7 @@ class SwitchConfigBuilderWidget(QWidget):
         self.cli_preview.setMinimumHeight(200)
         cli_layout.addWidget(self.cli_preview)
         self.detail_tabs.addTab(cli_tab, "CLI")
-        if self._embedded:
-            self.select_cli_button.hide()
-            self.mark_done_button.hide()
-            self.reset_work_state_button.hide()
-            self.detail_tabs.setCurrentWidget(cli_tab)
+        self.detail_tabs.setCurrentWidget(cli_tab)
 
         layout.addWidget(self.detail_tabs, 1)
         return panel
@@ -2347,7 +2174,7 @@ class SwitchConfigBuilderWidget(QWidget):
         self._restored_filter_field = "전체"
         self._restored_filter_value = ""
         self._restored_profile_id = ""
-        self._restored_detail_tab_index = 0
+        self._restored_detail_tab_index = 3
         self._restored_selected_row = None
         self._restored_auto_save = True
         state_path = next((path for path in _app_state_read_paths() if path.exists()), None)
@@ -2379,7 +2206,7 @@ class SwitchConfigBuilderWidget(QWidget):
         self._restored_filter_field = str(state.get("filter_field", "전체") or "전체").strip()
         self._restored_filter_value = str(state.get("filter_value", "") or "")
         self._restored_profile_id = str(state.get("selected_profile_id", "") or "").strip()
-        self._restored_detail_tab_index = max(0, int(state.get("detail_tab_index", 0) or 0))
+        self._restored_detail_tab_index = max(0, int(state.get("detail_tab_index", 3) or 0))
         selected_row = state.get("selected_row")
         self._restored_selected_row = int(selected_row) if isinstance(selected_row, int) and selected_row >= 0 else None
         self._restored_splitter_sizes = [int(value) for value in state.get("main_splitter_sizes", []) if isinstance(value, int) and value > 0]
@@ -2637,7 +2464,7 @@ class SwitchConfigBuilderWidget(QWidget):
             self.redo_action.setEnabled(bool(self._redo_stack))
 
     def _append_activity_log(self, message: str) -> None:
-        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        ACTIVITY_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_line = f"[{timestamp}] {message}"
         with ACTIVITY_LOG_PATH.open("a", encoding="utf-8") as handle:
@@ -2646,8 +2473,9 @@ class SwitchConfigBuilderWidget(QWidget):
     def _create_backup(self, path: Path) -> Path | None:
         if not path.exists():
             return None
-        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-        backup_path = BACKUP_DIR / f"{path.stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}{path.suffix}"
+        backup_dir = Path(self.exports_dir) / "backup"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        backup_path = backup_dir / f"{path.stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}{path.suffix}"
         shutil.copy2(path, backup_path)
         return backup_path
 
@@ -2712,7 +2540,6 @@ class SwitchConfigBuilderWidget(QWidget):
         self.refresh_block_toggle_panel()
         self.refresh_render_state()
         self.refresh_selected_preview()
-        self._refresh_tutorial_dialog()
 
     def _set_empty_table(self) -> None:
         self._history_blocked = True
@@ -2732,7 +2559,6 @@ class SwitchConfigBuilderWidget(QWidget):
         self.apply_pinned_columns()
         self.refresh_render_state()
         self._update_empty_state_visibility()
-        self._refresh_tutorial_dialog()
 
     def open_device_file_dialog(self) -> None:
         if not self._confirm_discard_changes():
@@ -2757,11 +2583,17 @@ class SwitchConfigBuilderWidget(QWidget):
         if sample_path and sample_path.exists():
             self._load_sample_device_table(sample_path, profile)
             return
-        self._set_empty_table()
-        self.add_row()
-        self.statusBar().showMessage(
-            f"{profile.id} 기준 빈 행을 추가했습니다. 저장하려면 장비 파일 저장을 사용하세요.",
-            5000,
+        self._load_generated_sample_table(profile)
+
+    def _load_generated_sample_table(self, profile: Profile) -> None:
+        """Build example rows from the profile's own variables and types."""
+        headers = ["device_id", "profile_id", *profile.variables]
+        rows = [make_sample_table_row(headers, profile, index) for index in range(2)]
+        self._apply_sample_table(
+            DeviceTable(path=None, headers=headers, rows=rows),
+            label="샘플: 프로파일 변수로 자동 생성",
+            tooltip="",
+            profile=profile,
         )
 
     def _load_sample_device_table(self, path: Path, profile: Profile) -> None:
@@ -2770,6 +2602,13 @@ class SwitchConfigBuilderWidget(QWidget):
         except Exception as exc:
             QMessageBox.warning(self, "샘플 시작", str(exc))
             return
+        self._apply_sample_table(
+            table, label=f"샘플: {path.name}", tooltip=str(path), profile=profile
+        )
+
+    def _apply_sample_table(
+        self, table: DeviceTable, *, label: str, tooltip: str, profile: Profile
+    ) -> None:
         expanded = expand_headers_for_referenced_profiles(table.headers, table.rows, self.profiles)
         self._history_blocked = True
         self._loading_table = True
@@ -2780,8 +2619,8 @@ class SwitchConfigBuilderWidget(QWidget):
             self._history_blocked = False
         self.row_work_state = {}
         self.current_file_path = None
-        self.file_path_label.setText(f"샘플: {path.name}")
-        self.file_path_label.setToolTip(str(path))
+        self.file_path_label.setText(label)
+        self.file_path_label.setToolTip(tooltip)
         self.is_dirty = True
         self._reset_history()
         self._ensure_headers_visible_by_default(expanded, reset=True)
@@ -2798,48 +2637,6 @@ class SwitchConfigBuilderWidget(QWidget):
             5000,
         )
 
-    def prompt_start_tutorial(self) -> None:
-        if self.tutorial_dialog is not None and self.tutorial_dialog.isVisible():
-            self.tutorial_dialog.raise_()
-            self.tutorial_dialog.activateWindow()
-            return
-        answer = QMessageBox.question(
-            self,
-            "튜토리얼",
-            "튜토리얼을 시작하시겠습니까?\n\n프로파일 작성부터 장비 값 입력, CLI 복사까지 직접 실습하는 흐름으로 안내합니다.",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.Yes,
-        )
-        if answer != QMessageBox.Yes:
-            return
-        self.start_in_app_tutorial()
-
-    def start_in_app_tutorial(self) -> bool:
-        if not self._confirm_discard_changes():
-            return False
-        self.reload_profiles()
-        self._set_empty_table()
-        self.clear_filter()
-        self.show_all_columns()
-        if TUTORIAL_PROFILE_ID in self.profiles:
-            self.add_profile_combo.setCurrentText(TUTORIAL_PROFILE_ID)
-        self.detail_tabs.setCurrentIndex(0)
-        self.tutorial_dialog = InAppTutorialDialog(self)
-        self.tutorial_dialog.show()
-        self.tutorial_dialog.raise_()
-        self.tutorial_dialog.activateWindow()
-        self._append_activity_log(f"튜토리얼 시작: {TUTORIAL_PROFILE_ID}")
-        self.statusBar().showMessage("튜토리얼을 시작했습니다.", 3000)
-        return True
-
-    def on_tutorial_dialog_closed(self, dialog: InAppTutorialDialog) -> None:
-        if self.tutorial_dialog is dialog:
-            self.tutorial_dialog = None
-            self.statusBar().showMessage("튜토리얼을 닫았습니다. 현재 상태에서 계속 실습할 수 있습니다.", 5000)
-
-    def _refresh_tutorial_dialog(self) -> None:
-        if self.tutorial_dialog is not None and self.tutorial_dialog.isVisible():
-            self.tutorial_dialog.refresh_current_step()
 
     def _update_file_path_label(self, path: Path | None) -> None:
         if path is None:
@@ -2867,103 +2664,6 @@ class SwitchConfigBuilderWidget(QWidget):
         if source_index.isValid():
             self._select_source_row(source_index.row())
 
-    def tutorial_profile(self) -> Profile | None:
-        return self.profiles.get(TUTORIAL_PROFILE_ID)
-
-    def tutorial_profile_ready(self) -> bool:
-        profile = self.tutorial_profile()
-        if profile is None or not profile.blocks:
-            return False
-        required_variables = {"hostname", "mgmt_ip", "mgmt_mask"}
-        return required_variables.issubset(profile.variables)
-
-    def _build_tutorial_starter_profile(self) -> Profile:
-        return Profile(
-            id=TUTORIAL_PROFILE_ID,
-            vendor="CISCO",
-            model="TUTORIAL_SWITCH",
-            firmware="IOS-XE",
-            description="프로그램 사용법을 익히기 위한 튜토리얼 실습용 프로파일입니다.",
-            variables={
-                "hostname": VariableSpec(
-                    name="hostname",
-                    required=True,
-                    description="장비 hostname",
-                    auto_increment=AUTO_INCREMENT_SUFFIX_NUMBER,
-                ),
-                "mgmt_ip": VariableSpec(
-                    name="mgmt_ip",
-                    required=True,
-                    type="ipv4",
-                    description="관리 IP 주소",
-                    auto_increment=AUTO_INCREMENT_IPV4,
-                ),
-                "mgmt_mask": VariableSpec(
-                    name="mgmt_mask",
-                    default=TUTORIAL_MGMT_MASK,
-                    description="관리 IP 마스크",
-                ),
-            },
-            blocks=[
-                BlockSpec(
-                    name="base",
-                    lines=[
-                        "hostname {{ hostname }}",
-                        "interface vlan 10",
-                        " ip address {{ mgmt_ip }} {{ mgmt_mask }}",
-                        " no shutdown",
-                    ],
-                )
-            ],
-        )
-
-    def open_tutorial_profile_dialog(self) -> bool:
-        profile = self.tutorial_profile() or self._build_tutorial_starter_profile()
-        dialog = ProfileBuilderDialog(self.profile_dir, profile, self)
-        dialog.setWindowTitle("튜토리얼 프로파일 작성")
-        if not dialog.exec():
-            self._refresh_tutorial_dialog()
-            return False
-        self._reload_after_profile_save(dialog.saved_profile_id or TUTORIAL_PROFILE_ID)
-        self._refresh_tutorial_dialog()
-        return self.tutorial_profile_ready()
-
-    def tutorial_workspace_loaded(self) -> bool:
-        return self.current_file_path == TUTORIAL_WORKSPACE_PATH and self.table_model.rowCount() > 0
-
-    def prepare_tutorial_device_file(self) -> bool:
-        profile = self.tutorial_profile()
-        if profile is None or not self.tutorial_profile_ready():
-            QMessageBox.information(self, "튜토리얼", "먼저 튜토리얼 프로파일을 저장해 주세요.")
-            return False
-        TUTORIAL_WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
-        if not TUTORIAL_WORKSPACE_PATH.exists():
-            headers = ["device_id", "profile_id", *profile.variables.keys()]
-            rows = [make_blank_table_row(headers, profile)]
-            save_device_table_to_path(TUTORIAL_WORKSPACE_PATH, headers, rows)
-        self.load_device_file(TUTORIAL_WORKSPACE_PATH)
-        self.clear_filter()
-        self.show_all_columns()
-        if TUTORIAL_PROFILE_ID in self.profiles:
-            self.add_profile_combo.setCurrentText(TUTORIAL_PROFILE_ID)
-        selected = self.focus_tutorial_workspace_row(detail_tab=0, column_name="device_id")
-        self._append_activity_log(f"튜토리얼 장비 파일 열기: {TUTORIAL_WORKSPACE_PATH}")
-        self._refresh_tutorial_dialog()
-        return selected
-
-    def _tutorial_source_row_index(self) -> int | None:
-        if not self.table_model.rows:
-            return None
-        row_index = self._find_source_row_by_header_value("profile_id", TUTORIAL_PROFILE_ID)
-        if row_index is not None:
-            return row_index
-        return 0
-
-    def _tutorial_row(self) -> tuple[int, dict[str, str]] | None:
-        row_index = self._tutorial_source_row_index()
-        if row_index is None or row_index >= len(self.table_model.rows):
-            return None
-        return row_index, self.table_model.rows[row_index]
 
     def _select_source_cell(self, row_index: int, column_name: str) -> bool:
         if row_index < 0 or row_index >= len(self.table_model.rows):
@@ -2985,67 +2685,6 @@ class SwitchConfigBuilderWidget(QWidget):
         self.refresh_selected_preview()
         return True
 
-    def focus_tutorial_workspace_row(self, *, detail_tab: int, column_name: str) -> bool:
-        row_index = self._tutorial_source_row_index()
-        if row_index is None:
-            return False
-        selected = self._select_source_cell(row_index, column_name)
-        self.detail_tabs.setCurrentIndex(max(0, min(detail_tab, self.detail_tabs.count() - 1)))
-        return selected
-
-    def tutorial_first_row_complete(self) -> bool:
-        row_info = self._tutorial_row()
-        if row_info is None:
-            return False
-        _row_index, row = row_info
-        required_fields = ("device_id", "hostname", "mgmt_ip")
-        return self.tutorial_workspace_loaded() and all(str(row.get(field, "")).strip() for field in required_fields)
-
-    def tutorial_first_row_status_text(self) -> str:
-        row_info = self._tutorial_row()
-        if row_info is None:
-            return "아직 입력할 튜토리얼 행이 없습니다."
-        _row_index, row = row_info
-        missing = [field for field in ("device_id", "hostname", "mgmt_ip") if not str(row.get(field, "")).strip()]
-        if not missing:
-            return "첫 번째 장비 입력이 완료되었습니다."
-        return f"입력 필요: {', '.join(missing)}"
-
-    def tutorial_cli_ready(self) -> bool:
-        row_info = self._tutorial_row()
-        if row_info is None:
-            return False
-        row_index, _row = row_info
-        return row_index in self.current_rendered
-
-    def tutorial_cli_status_text(self) -> str:
-        row_info = self._tutorial_row()
-        if row_info is None:
-            return "먼저 튜토리얼 장비 파일을 준비해 주세요."
-        row_index, _row = row_info
-        rendered = self.current_rendered.get(row_index)
-        if rendered is not None:
-            line_count = len([line for line in rendered.text.splitlines() if line.strip()])
-            return f"CLI 생성 완료: {line_count}줄"
-        issues = self.current_row_issues.get(row_index, [])
-        first_error = next((issue.message for issue in issues if issue.level == "error"), "")
-        if first_error:
-            return f"CLI 생성 전 확인 필요: {first_error}"
-        return "아직 CLI가 생성되지 않았습니다."
-
-    def tutorial_cli_copied(self) -> bool:
-        row_info = self._tutorial_row()
-        if row_info is None:
-            return False
-        row_index, _row = row_info
-        return self._row_state_for_model(row_index) in {ROW_STATE_COPIED, ROW_STATE_DONE}
-
-    def tutorial_copy_status_text(self) -> str:
-        if self.tutorial_cli_copied():
-            return "CLI 복사가 완료되었습니다."
-        if not self.tutorial_cli_ready():
-            return "먼저 CLI가 생성되어야 복사할 수 있습니다."
-        return "메인 화면의 `복사` 버튼을 눌러 보세요."
 
     def load_device_file(self, path: Path) -> None:
         try:
@@ -3077,7 +2716,6 @@ class SwitchConfigBuilderWidget(QWidget):
         self._select_first_visible_row()
         self._update_empty_state_visibility()
         self._append_activity_log(f"장비 파일 열기: {path}")
-        self._refresh_tutorial_dialog()
 
     def _prompt_user_save_path(
         self,
@@ -3747,7 +3385,6 @@ class SwitchConfigBuilderWidget(QWidget):
         if self.auto_save_check.isChecked() and self.current_file_path is not None:
             self.auto_save_timer.start()
         self._update_summary()
-        self._refresh_tutorial_dialog()
 
     def _sync_headers_for_current_rows(self) -> bool:
         expanded = expand_headers_for_referenced_profiles(self.table_model.headers, self.table_model.rows, self.profiles)
@@ -3830,7 +3467,6 @@ class SwitchConfigBuilderWidget(QWidget):
             self.table_model.set_issue_map({})
             self._update_summary()
             self.refresh_selected_preview()
-            self._refresh_tutorial_dialog()
             return
         engine = ConfigEngine(self.profiles)
         profile_issues = engine.validate_profiles()
@@ -3872,7 +3508,6 @@ class SwitchConfigBuilderWidget(QWidget):
         self.table_model.set_issue_map(self.current_row_issues)
         self._update_summary()
         self.refresh_selected_preview()
-        self._refresh_tutorial_dialog()
 
     def _collect_save_blockers(self) -> list[str]:
         seen: set[tuple[str, int | None]] = set()
@@ -4335,6 +3970,10 @@ class SwitchConfigBuilderWidget(QWidget):
         if not hasattr(self, "previous_device_button"):
             return
         current_source_row = self._current_source_row()
+        self.save_cli_button.setEnabled(bool(self.current_rendered))
+        self.save_selected_cli_action.setEnabled(bool(self.current_rendered.get(current_source_row)))
+        self.save_all_cli_action.setEnabled(bool(self.current_rendered))
+        self.save_each_cli_action.setEnabled(bool(self.current_rendered))
         if current_source_row is None or self.proxy_model.rowCount() == 0:
             self.previous_device_button.setEnabled(False)
             self.next_device_button.setEnabled(self.proxy_model.rowCount() > 0)
@@ -4367,7 +4006,6 @@ class SwitchConfigBuilderWidget(QWidget):
         self.apply_filter()
         device_label = row_display_name(self.table_model.rows[row_index], row_index + 2)
         self.statusBar().showMessage(f"{device_label} CLI를 클립보드에 복사했습니다.", 3000)
-        self._refresh_tutorial_dialog()
         return True
 
     def mark_selected_rows_done(self) -> None:
@@ -4524,7 +4162,11 @@ class SwitchConfigBuilderWidget(QWidget):
         return f"{profile_part}_row_{row_number}.txt"
 
     def open_new_profile_dialog(self) -> None:
-        dialog = ProfileBuilderDialog(self.profile_dir, None, self)
+        dialog = ProfileBuilderDialog(
+            self.profile_dir,
+            None,
+            self,
+        )
         if dialog.exec():
             self._reload_after_profile_save(dialog.saved_profile_id)
 
@@ -4544,7 +4186,11 @@ class SwitchConfigBuilderWidget(QWidget):
             blocks=list(profile.blocks),
             source="",
         )
-        dialog = ProfileBuilderDialog(self.profile_dir, cloned, self)
+        dialog = ProfileBuilderDialog(
+            self.profile_dir,
+            cloned,
+            self,
+        )
         dialog.setWindowTitle("프로파일 복사")
         if dialog.exec():
             self._reload_after_profile_save(dialog.saved_profile_id)
@@ -4554,7 +4200,11 @@ class SwitchConfigBuilderWidget(QWidget):
         if not profile:
             QMessageBox.information(self, "프로파일 편집", "편집할 프로파일을 먼저 선택하세요.")
             return
-        dialog = ProfileBuilderDialog(self.profile_dir, profile, self)
+        dialog = ProfileBuilderDialog(
+            self.profile_dir,
+            profile,
+            self,
+        )
         if dialog.exec():
             self._reload_after_profile_save(dialog.saved_profile_id or profile.id)
 
@@ -4602,7 +4252,6 @@ class SwitchConfigBuilderWidget(QWidget):
             self.add_profile_combo.setCurrentText(profile_id)
         self.refresh_render_state()
         self.refresh_selected_preview()
-        self._refresh_tutorial_dialog()
         if profile_id:
             self._append_activity_log(f"프로파일 저장/갱신: {profile_id}")
 
@@ -4947,24 +4596,40 @@ class SwitchConfigBuilderWidget(QWidget):
 
 
 class DesktopWindow(QMainWindow):
+    builder_released = Signal(object)
+
     def __init__(
         self,
         profiles_dir: str | Path | None = None,
         *,
         exports_dir: str | Path | None = None,
+        existing_builder: SwitchConfigBuilderWidget | None = None,
     ) -> None:
         super().__init__()
         app = QApplication.instance()
         self.setWindowIcon(app.windowIcon() if app and not app.windowIcon().isNull() else build_app_icon())
-        self.setWindowTitle("CLI 설정 생성 - 전체 편집기")
+        self.setWindowTitle("장비 설정 생성 - 전체 편집기")
         self.resize(1520, 840)
-        self.builder = SwitchConfigBuilderWidget(
+        self._owns_builder = existing_builder is None
+        self.builder = existing_builder if existing_builder is not None else SwitchConfigBuilderWidget(
             profiles_dir=profiles_dir,
             parent=self,
             embedded=False,
             exports_dir=exports_dir,
         )
         self.setCentralWidget(self.builder)
+        self.profile_toolbar = QToolBar("프로파일 작업", self)
+        self.profile_toolbar.setObjectName("configBuilderProfileToolbar")
+        self.profile_toolbar.setMovable(False)
+        title = QLabel("설정 명령 만들기")
+        title.setObjectName("pageTitle")
+        self.profile_toolbar.addWidget(title)
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.profile_toolbar.addWidget(spacer)
+        self.profile_management_button = self.builder.create_profile_management_button(self.profile_toolbar)
+        self.profile_toolbar.addWidget(self.profile_management_button)
+        self.addToolBar(self.profile_toolbar)
 
     def __getattr__(self, name: str):
         try:
@@ -4974,7 +4639,13 @@ class DesktopWindow(QMainWindow):
         return getattr(builder, name)
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        self.builder.closeEvent(event)
+        if self._owns_builder:
+            self.builder.closeEvent(event)
+            return
+        builder = self.takeCentralWidget()
+        if builder is not None:
+            self.builder_released.emit(builder)
+        event.accept()
 
 
 def main() -> None:

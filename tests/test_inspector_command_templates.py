@@ -363,6 +363,7 @@ def test_inspector_ui_validates_commands_and_invalidates_changed_file(
         assert not tab.command_variable_hint.isHidden()
 
         tab.inventory_path_edit.setText(str(inventory_path))
+        tab.command_file_radio.setChecked(True)
         tab.command_path_edit.setText(str(command_path))
         tab._validate_inventory()
 
@@ -377,3 +378,124 @@ def test_inspector_ui_validates_commands_and_invalidates_changed_file(
         assert "다시 검증" in tab.validation_status_label.text()
     finally:
         tab.close()
+
+
+def test_service_inspects_patterns_without_inventory_and_previews_first_device(
+    tmp_path: Path,
+):
+    service = InspectorService(user_data_dir=tmp_path / "inspector")
+
+    summary = service.inspect_command_patterns(
+        ["show version", "show interface {{ interface }}"]
+    )
+    assert summary.command_count == 2
+    assert summary.variable_names == ("interface",)
+    assert summary.preview_device is None
+    assert summary.preview_commands == ()
+
+    with pytest.raises(Exception, match="닫는"):
+        service.inspect_command_patterns(["show interface {{ interface"])
+
+    validated = service.validate_custom_commands(
+        ["show interface {{ interface }}"],
+        [_device(interface="Gi1/0/1"), _device("192.0.2.20", interface="Eth1/1")],
+    )
+    assert validated.preview_device == "192.0.2.10"
+    assert validated.preview_commands == ("show interface Gi1/0/1",)
+
+
+def test_inspector_ui_runs_inline_commands_with_live_check_and_preview(
+    qapp,
+    tmp_path: Path,
+    monkeypatch,
+):
+    inventory_path = tmp_path / "inventory.xlsx"
+    _write_inventory(
+        inventory_path,
+        [_device(interface="Gi1/0/1"), _device("192.0.2.20", interface="Eth1/1")],
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        lambda *_args, **_kwargs: QMessageBox.Ok,
+    )
+    state = SimpleNamespace(
+        thread_pool=QThreadPool.globalInstance(),
+        paths=SimpleNamespace(
+            data_root=tmp_path / "data",
+            exports_dir=tmp_path / "exports",
+        ),
+    )
+    tab = InspectorTab(state)
+    try:
+        tab.mode_combo.setCurrentIndex(tab.mode_combo.findData("custom_commands"))
+        assert tab.command_inline_radio.isChecked()
+        assert not tab.command_text_edit.isHidden()
+        assert tab.command_file_row.isHidden()
+        tab.inventory_path_edit.setText(str(inventory_path))
+        assert not tab.run_button.isEnabled()
+        assert "명령을 먼저 입력" in tab.run_button.toolTip()
+
+        tab.command_text_edit.setPlainText("show interface {{ interface")
+        tab._refresh_command_check()
+        assert "닫는" in tab.command_check_label.text()
+
+        tab.command_text_edit.setPlainText(
+            "show version\n\n  show interface {{ interface }}  \n"
+        )
+        tab._refresh_command_check()
+        assert "명령 2개 · 사용 변수 interface" in tab.command_check_label.text()
+        assert tab.run_button.isEnabled()
+
+        tab._validate_inventory()
+        assert tab._inventory_validated
+        assert not tab.command_preview.isHidden()
+        assert "192.0.2.10" in tab.command_preview_title.text()
+        assert tab.command_preview_view.toPlainText() == (
+            "show version\nshow interface Gi1/0/1"
+        )
+
+        confirmations, requests = [], []
+        monkeypatch.setattr(
+            "app.ui.tabs.inspector_tab.confirm_risky_action",
+            lambda *_a, **kwargs: confirmations.append(kwargs) or True,
+        )
+        monkeypatch.setattr(
+            tab.runner,
+            "start",
+            lambda _fn, request, **_kwargs: requests.append(request),
+        )
+        tab._run_inspector()
+        assert "show interface Gi1/0/1" in confirmations[0]["impact"]
+        assert requests[0].command_path is None
+        assert requests[0].commands == ["show version", "show interface {{ interface }}"]
+        assert tab.command_text_edit.isReadOnly()
+        assert not tab.command_file_radio.isEnabled()
+        tab._finish_inspector_run()
+        assert not tab.command_text_edit.isReadOnly()
+
+        tab.command_file_radio.setChecked(True)
+        assert not tab._inventory_validated
+        assert tab.command_preview.isHidden()
+        assert tab.command_text_edit.isHidden()
+        assert not tab.command_file_row.isHidden()
+        assert not tab.run_button.isEnabled()
+        tab.command_inline_radio.setChecked(True)
+        assert tab.command_text_edit.toPlainText().startswith("show version")
+        assert tab.run_button.isEnabled()
+    finally:
+        tab.close()
+
+
+def test_inspector_confirmation_preview_truncates_long_command_lists():
+    summary = SimpleNamespace(
+        preview_device="192.0.2.10",
+        preview_commands=tuple(f"show item {index}" for index in range(10)),
+    )
+    preview = InspectorTab._confirmation_command_preview(summary)
+    assert "show item 7" in preview
+    assert "show item 8" not in preview
+    assert "외 2개" in preview
+    assert InspectorTab._confirmation_command_preview(
+        SimpleNamespace(command_count=1, variable_names=())
+    ) == ""

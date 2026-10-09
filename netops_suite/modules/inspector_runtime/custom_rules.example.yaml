@@ -65,3 +65,27 @@ handler_overrides:
       shell_width: 200
       shell_height: 1000
       skip_enable: false
+
+# 특정 장비 모델 전용 완전 대체 프로파일
+# 장비 목록 Excel의 model 값이 대소문자/연속 공백 정규화 후 정확히 일치할 때만 적용됩니다.
+# 점검 명령, 백업 명령, 파싱 규칙은 공통 프로파일을 추가하지 않고 아래 값으로 교체됩니다.
+# connection_overrides와 handler_overrides만 누락된 키를 벤더/OS 공통 설정에서 상속합니다.
+model_profiles:
+  user-custom:
+    custom-os:
+      Example Model-24T:
+        os_version: "1.0"
+        inspection_commands:
+          - "show version"
+          - "show inventory"
+        backup_command: ""  # 빈 문자열은 이 모델의 백업 비활성화
+        parsing_rules:
+          "show version":
+            pattern: 'Version\s*[:=]\s*(\S+)'
+            output_column: Version
+            first_match_only: true
+        connection_overrides:
+          ssh: cisco_ios
+        handler_overrides: {}
+        output_columns:
+          - Version

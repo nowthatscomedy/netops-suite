@@ -11,7 +11,7 @@ import logging
 import re
 from typing import Optional
 
-from netmiko import ConnectHandler
+from core.ssh_compat import compatible_connect_handler as ConnectHandler
 from netmiko.base_connection import BaseConnection
 
 from vendors.base import CustomDeviceHandler, register_handler
@@ -155,7 +155,7 @@ class ArubaOsSSHHandler(CustomDeviceHandler):
         if self.device["connection_type"].lower() != "ssh":
             raise ValueError("ArubaOsSSHHandler는 SSH 연결만 지원합니다")
         try:
-            self.conn = ConnectHandler(**self._build_params())
+            self.conn = ConnectHandler(compat_device=self.device, **self._build_params())
             self.logger.debug("Aruba OS 접속 성공: %s", self.device.get("ip"))
             return True
         except Exception as exc:

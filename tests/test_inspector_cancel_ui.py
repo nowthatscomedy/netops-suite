@@ -22,7 +22,15 @@ class ControlledThreadPool:
         self.pending.pop(0).run()
 
 
-class CancelAwareInspectorService:
+class ValidatingInspectorService:
+    def load_inventory(self, _path, _password=None):
+        return [{"ip": "192.0.2.1"}]
+
+    def inventory_profile_warnings(self, _devices):
+        return []
+
+
+class CancelAwareInspectorService(ValidatingInspectorService):
     def __init__(self) -> None:
         self.cancel_events: list[object] = []
 
@@ -40,7 +48,7 @@ class CancelAwareInspectorService:
         raise AssertionError("테스트에서는 중지 요청 후에만 작업을 완료해야 합니다.")
 
 
-class FinishingInspectorService:
+class FinishingInspectorService(ValidatingInspectorService):
     def __init__(self, outcome: str) -> None:
         self.outcome = outcome
 

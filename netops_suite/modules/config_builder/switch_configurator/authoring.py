@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import csv
 import ipaddress
+import os
 import re
+import shutil
+import tempfile
+from dataclasses import dataclass
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
@@ -11,6 +15,8 @@ from uuid import uuid4
 
 import yaml
 
+from .engine import ConfigEngine
+from .io_utils import SUPPORTED_PROFILE_EXTENSIONS, parse_profile_yaml
 from .models import (
     AUTO_INCREMENT_MODES,
     AUTO_INCREMENT_NONE,
@@ -22,6 +28,98 @@ from .presenters import format_display_value
 
 VARIABLE_TYPE_OPTIONS = ("string", "ipv4", "bool", "int")
 IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+HARDCODED_SECRET_PATTERNS = (
+    re.compile(
+        r"^\s*enable\s+(?:algorithm-type\s+\S+\s+)?secret\s+(?:\d+\s+)?"
+        r"(\{\{\s*[A-Za-z_][A-Za-z0-9_]*\s*\}\}(?!\S)|\S+)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*username\s+\S+.*?\s(?:password|secret)\s+(?:\d+\s+)?"
+        r"(\{\{\s*[A-Za-z_][A-Za-z0-9_]*\s*\}\}(?!\S)|\S+)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*snmp-server\s+community\s+"
+        r"(\{\{\s*[A-Za-z_][A-Za-z0-9_]*\s*\}\}(?!\S)|\S+)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*(?:password|community)\s+"
+        r"(\{\{\s*[A-Za-z_][A-Za-z0-9_]*\s*\}\}(?!\S)|\S+)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:radius-server|tacacs-server)\b[^\r\n]*?\b(?:shared-)?key\b\s+"
+        r"(?:(?:\d+|clear|cipher|encrypted|simple)\s+)*"
+        r"(\{\{\s*[A-Za-z_][A-Za-z0-9_]*\s*\}\}(?!\S)|\S+)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bkey-string\b\s+(?:(?:\d+|clear|cipher|encrypted|simple)\s+)*"
+        r"(\{\{\s*[A-Za-z_][A-Za-z0-9_]*\s*\}\}(?!\S)|\S+)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:pre-shared-key|wpa-psk)\b\s+"
+        r"(?:(?:\d+|ascii|hex|clear|cipher|encrypted|simple|plain(?:text)?|pass-phrase|local|remote)\s+)*"
+        r"(\{\{\s*[A-Za-z_][A-Za-z0-9_]*\s*\}\}(?!\S)|\S+)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bauth\s+(?:md5|sha(?:-?(?:224|256|384|512))?)\s+"
+        r"(\{\{\s*[A-Za-z_][A-Za-z0-9_]*\s*\}\}(?!\S)|\S+)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bpriv\s+(?:des|3des|aes(?:-?(?:128|192|256))?)\s+"
+        r"(?:\d+\s+)?(\{\{\s*[A-Za-z_][A-Za-z0-9_]*\s*\}\}(?!\S)|\S+)",
+        re.IGNORECASE,
+    ),
+)
+SECRET_JINJA_VALUE_PATTERN = re.compile(
+    r"\{\{\s*[A-Za-z_][A-Za-z0-9_]*\s*\}\}"
+)
+RISKY_COMMAND_PATTERNS = (
+    re.compile(
+        r"^\s*(?:erase|format|factory[- ]?reset|reload|reboot|restart|commit|save)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"^\s*write\s+(?:erase|memory)\b", re.IGNORECASE),
+    re.compile(
+        r"^\s*copy\s+(?:run|running-config)\s+(?:start|startup-config)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^\s*no\s+(?:aaa|username|ip\s+ssh|ssh|line\s+vty|management|netconf|restconf)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"^\s*transport\s+input\s+none\b", re.IGNORECASE),
+    re.compile(r"^\s*(?:shutdown|access-class|ip\s+access-group)\b", re.IGNORECASE),
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileBuilderValidation:
+    yaml_text: str
+    profile: Profile | None
+    issues: tuple[str, ...]
+    warnings: tuple[str, ...] = ()
+    rendered_preview: str = ""
+
+    @property
+    def is_valid(self) -> bool:
+        return not self.issues and self.profile is not None
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileSaveTarget:
+    path: Path
+    exists: bool
+
+
+class ProfileSaveConflictError(ValueError):
+    """Raised when saving would overwrite a different profile or file."""
 
 
 def make_empty_profile_builder_state() -> dict[str, Any]:
@@ -133,6 +231,9 @@ def build_profile_yaml_from_state(state: dict[str, Any]) -> tuple[str, list[str]
                 f"변수 {name}: 변수명은 공백 없이 영문/숫자/언더바(_)만 사용할 수 있습니다. 예: {example_name}"
             )
             continue
+        if variable_type not in VARIABLE_TYPE_OPTIONS:
+            issues.append(f"변수 {name}: 지원하지 않는 변수 타입입니다: {variable_type}")
+            continue
         if auto_increment not in AUTO_INCREMENT_MODES:
             issues.append(f"변수 {name}: 연속 값 규칙은 none, suffix_number, ipv4 중 하나여야 합니다.")
             continue
@@ -194,6 +295,91 @@ def build_profile_yaml_from_state(state: dict[str, Any]) -> tuple[str, list[str]
         document["description"] = description
 
     return yaml.safe_dump(document, sort_keys=False, allow_unicode=True), issues
+
+
+def validate_profile_builder_state(state: dict[str, Any]) -> ProfileBuilderValidation:
+    yaml_text, builder_issues = build_profile_yaml_from_state(state)
+    if builder_issues:
+        return ProfileBuilderValidation(
+            yaml_text=yaml_text,
+            profile=None,
+            issues=tuple(builder_issues),
+        )
+    return validate_profile_yaml_for_save(yaml_text, source="<profile-builder>")
+
+
+def validate_profile_yaml_for_save(
+    yaml_text: str,
+    *,
+    source: str = "<profile-builder>",
+) -> ProfileBuilderValidation:
+    """Parse, validate and synthetically render a profile before persistence."""
+
+    try:
+        profile = parse_profile_yaml(yaml_text, source)
+    except Exception as exc:
+        return ProfileBuilderValidation(
+            yaml_text=yaml_text,
+            profile=None,
+            issues=(f"프로파일 YAML을 읽을 수 없습니다: {exc}",),
+        )
+
+    issues: list[str] = []
+    warnings: list[str] = []
+    for label, value in (
+        ("프로파일 ID", profile.id),
+        ("벤더", profile.vendor),
+        ("모델", profile.model),
+        ("펌웨어", profile.firmware),
+    ):
+        if not value:
+            issues.append(f"{label} 값이 비어 있습니다.")
+    engine = ConfigEngine({profile.id: profile})
+    issues.extend(
+        issue.message
+        for issue in engine.validate_profiles()
+        if issue.level == "error"
+    )
+
+    for variable_name, variable in profile.variables.items():
+        if (
+            _looks_like_secret_variable_name(variable_name)
+            and _has_nonempty_default(variable.default)
+        ):
+            issues.append(
+                f"비밀 변수 {variable_name}에는 기본값을 직접 입력할 수 없습니다."
+            )
+
+    command_issues, command_warnings = _inspect_profile_commands(profile)
+    issues.extend(command_issues)
+    warnings.extend(command_warnings)
+
+    rendered_preview = ""
+    if not issues:
+        sample_values = {
+            "device_id": "profile-validation-preview",
+            "profile_id": profile.id,
+        }
+        for variable_name, variable in profile.variables.items():
+            sample_values[variable_name] = _synthetic_value_for_variable(variable.type, variable.default)
+        sample_record = DeviceRecord(row_number=2, values=sample_values)
+        device_issues = engine.validate_device_records([sample_record])
+        issues.extend(
+            issue.message for issue in device_issues if issue.level == "error"
+        )
+        if not issues:
+            try:
+                rendered_preview = engine.render_device(sample_record).text
+            except Exception as exc:
+                issues.append(f"합성 샘플 CLI를 생성할 수 없습니다: {exc}")
+
+    return ProfileBuilderValidation(
+        yaml_text=yaml_text,
+        profile=profile,
+        issues=tuple(_deduplicate_messages(issues)),
+        warnings=tuple(_deduplicate_messages(warnings)),
+        rendered_preview=rendered_preview,
+    )
 
 
 def make_empty_device_row(
@@ -397,19 +583,168 @@ def is_valid_identifier(value: str) -> bool:
     return bool(IDENTIFIER_PATTERN.fullmatch(str(value).strip()))
 
 
+def inspect_profile_save_target(
+    profile_id: str,
+    directory: str | Path,
+    *,
+    source_path: str | Path | None = None,
+) -> ProfileSaveTarget:
+    """Resolve a safe target and detect case-insensitive ID/file collisions."""
+
+    normalized_id = str(profile_id).strip().casefold()
+    if not normalized_id:
+        raise ProfileSaveConflictError("프로파일 ID가 비어 있어 저장 경로를 만들 수 없습니다.")
+
+    target_directory = Path(directory).resolve()
+    if target_directory.exists() and not target_directory.is_dir():
+        raise ProfileSaveConflictError("프로파일 저장 위치가 폴더가 아닙니다.")
+    source = _safe_profile_source_path(source_path, target_directory)
+    if source is not None:
+        target_path = source
+    else:
+        file_stem = normalize_identifier(profile_id) or "profile"
+        target_path = target_directory / f"{file_stem}.yaml"
+
+    candidates = (
+        [
+            path
+            for path in target_directory.iterdir()
+            if path.is_file() and path.suffix.lower() in SUPPORTED_PROFILE_EXTENSIONS
+        ]
+        if target_directory.exists()
+        else []
+    )
+
+    if source is None:
+        target_name_match = next(
+            (
+                path
+                for path in candidates
+                if path.stem.casefold() == target_path.stem.casefold()
+            ),
+            None,
+        )
+        if target_name_match is not None:
+            try:
+                existing_profile = parse_profile_yaml(
+                    target_name_match.read_text(encoding="utf-8"),
+                    str(target_name_match),
+                )
+            except Exception as exc:
+                raise ProfileSaveConflictError(
+                    f"같은 파일명의 기존 프로파일을 확인할 수 없습니다: "
+                    f"{target_name_match.name} ({exc})"
+                ) from exc
+            if existing_profile.id.casefold() != normalized_id:
+                raise ProfileSaveConflictError(
+                    f"대소문자를 구분하지 않을 때 같은 파일명이 이미 사용 중입니다: "
+                    f"{target_name_match.name}"
+                )
+            target_path = target_name_match
+
+    for path in candidates:
+        if _same_resolved_path(path, target_path):
+            continue
+        if path.stem.casefold() == target_path.stem.casefold():
+            raise ProfileSaveConflictError(
+                f"대소문자를 구분하지 않을 때 같은 파일명이 이미 사용 중입니다: {path.name}"
+            )
+        try:
+            existing_profile = parse_profile_yaml(path.read_text(encoding="utf-8"), str(path))
+        except Exception:
+            continue
+        if existing_profile.id.casefold() == normalized_id:
+            raise ProfileSaveConflictError(
+                f"대소문자를 구분하지 않을 때 같은 프로파일 ID가 이미 사용 중입니다: "
+                f"{existing_profile.id} ({path.name})"
+            )
+
+    return ProfileSaveTarget(path=target_path, exists=target_path.exists())
+
+
 def save_profile_yaml_to_directory(
     profile_id: str,
     yaml_text: str,
     directory: str | Path,
+    *,
+    source_path: str | Path | None = None,
+    allow_overwrite: bool = False,
 ) -> tuple[Path, bool]:
-    target_directory = Path(directory)
-    target_directory.mkdir(parents=True, exist_ok=True)
+    """Validate and atomically save a profile, retaining one recovery backup."""
 
-    file_stem = normalize_identifier(profile_id) or "profile"
-    target_path = target_directory / f"{file_stem}.yaml"
-    existed = target_path.exists()
-    target_path.write_text(yaml_text, encoding="utf-8")
-    return target_path, existed
+    validation = validate_profile_yaml_for_save(yaml_text, source="<profile-save>")
+    if validation.issues:
+        raise ValueError("; ".join(validation.issues))
+    if validation.profile is None or validation.profile.id.casefold() != str(profile_id).strip().casefold():
+        raise ValueError("저장 요청의 프로파일 ID와 YAML의 프로파일 ID가 일치하지 않습니다.")
+
+    target = inspect_profile_save_target(profile_id, directory, source_path=source_path)
+    if target.exists and not allow_overwrite:
+        raise FileExistsError(f"기존 프로파일을 덮어쓰려면 확인이 필요합니다: {target.path.name}")
+
+    target.path.parent.mkdir(parents=True, exist_ok=True)
+    existed = target.exists
+    backup_path = target.path.with_suffix(f"{target.path.suffix}.bak")
+    temporary_path: Path | None = None
+    backup_temporary_path: Path | None = None
+    backup_created = False
+    target_replaced = False
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="",
+            dir=target.path.parent,
+            prefix=f".{target.path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary:
+            temporary.write(yaml_text)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+            temporary_path = Path(temporary.name)
+
+        if existed:
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                dir=target.path.parent,
+                prefix=f".{backup_path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as backup_temporary:
+                backup_temporary_path = Path(backup_temporary.name)
+            shutil.copy2(target.path, backup_temporary_path)
+            os.replace(backup_temporary_path, backup_path)
+            backup_temporary_path = None
+            backup_created = True
+
+        os.replace(temporary_path, target.path)
+        temporary_path = None
+        target_replaced = True
+
+        saved_text = target.path.read_text(encoding="utf-8")
+        if saved_text != yaml_text:
+            raise OSError("저장 후 다시 읽은 프로파일 내용이 요청한 내용과 다릅니다.")
+        saved_validation = validate_profile_yaml_for_save(saved_text, source=str(target.path))
+        if saved_validation.issues or saved_validation.profile is None:
+            raise OSError(
+                "저장 후 프로파일 검증에 실패했습니다: "
+                + "; ".join(saved_validation.issues or ("프로파일을 다시 읽을 수 없습니다.",))
+            )
+        if saved_validation.profile.id.casefold() != str(profile_id).strip().casefold():
+            raise OSError("저장 후 다시 읽은 프로파일 ID가 요청한 ID와 다릅니다.")
+    except Exception:
+        if target_replaced and existed and backup_created and backup_path.exists():
+            os.replace(backup_path, target.path)
+        elif target_replaced and not existed and target.path.exists():
+            target.path.unlink()
+        raise
+    finally:
+        for temporary in (temporary_path, backup_temporary_path):
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+
+    return target.path, existed
 
 
 def save_device_csv_to_directory(
@@ -438,6 +773,114 @@ def save_device_csv_to_directory(
     existed = False
     target_path.write_text(csv_text, encoding="utf-8")
     return target_path, existed
+
+
+def _safe_profile_source_path(
+    source_path: str | Path | None,
+    target_directory: Path,
+) -> Path | None:
+    if source_path is None or not str(source_path).strip():
+        return None
+    source = Path(source_path).resolve()
+    if source.parent != target_directory:
+        raise ProfileSaveConflictError("프로파일 폴더 밖의 원본 파일에는 저장할 수 없습니다.")
+    if source.suffix.lower() not in SUPPORTED_PROFILE_EXTENSIONS:
+        raise ProfileSaveConflictError("원본 프로파일 파일 확장자가 YAML 형식이 아닙니다.")
+    return source
+
+
+def _same_resolved_path(left: Path, right: Path) -> bool:
+    return str(left.resolve()).casefold() == str(right.resolve()).casefold()
+
+
+def _synthetic_value_for_variable(variable_type: str, default: Any) -> Any:
+    if default is not None:
+        return default
+    return {
+        "string": "sample-value",
+        "ipv4": "192.0.2.10",
+        "bool": True,
+        "int": 1,
+    }.get(variable_type, "sample-value")
+
+
+def _inspect_profile_commands(profile: Profile) -> tuple[list[str], list[str]]:
+    issues: list[str] = []
+    warnings: list[str] = []
+    for block in profile.blocks:
+        for line_number, line in enumerate(block.lines, start=1):
+            command_text = re.sub(r"{%.*?%}", " ", line).strip()
+            for pattern in HARDCODED_SECRET_PATTERNS:
+                match = pattern.search(command_text)
+                if match and not _is_jinja_secret_value(match.group(1)):
+                    issues.append(
+                        f"비밀값을 명령어에 직접 입력할 수 없습니다 "
+                        f"({block.name} {line_number}행). 변수를 사용하세요."
+                    )
+                    break
+            if any(pattern.search(command_text) for pattern in RISKY_COMMAND_PATTERNS):
+                warnings.append(
+                    f"장비 상태 또는 관리 접속에 영향을 줄 수 있는 명령이 있습니다 "
+                    f"({block.name} {line_number}행): {line.strip()}"
+                )
+    return _deduplicate_messages(issues), _deduplicate_messages(warnings)
+
+
+def _is_jinja_secret_value(value: str) -> bool:
+    return bool(SECRET_JINJA_VALUE_PATTERN.fullmatch(str(value).strip()))
+
+
+def _has_nonempty_default(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    return True
+
+
+def _looks_like_secret_variable_name(name: str) -> bool:
+    split_acronyms = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
+    split_camel = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", split_acronyms)
+    tokens = set(re.findall(r"[a-z0-9]+", split_camel.casefold()))
+    if tokens & {
+        "community",
+        "credential",
+        "pass",
+        "passcode",
+        "passphrase",
+        "passwd",
+        "password",
+        "psk",
+        "pwd",
+        "secret",
+        "token",
+    }:
+        return True
+    return "key" in tokens and bool(
+        tokens
+        & {
+            "access",
+            "api",
+            "auth",
+            "private",
+            "priv",
+            "radius",
+            "shared",
+            "tacacs",
+            "wpa",
+        }
+    )
+
+
+def _deduplicate_messages(messages: list[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for message in messages:
+        normalized = str(message).strip()
+        if normalized and normalized not in seen:
+            result.append(normalized)
+            seen.add(normalized)
+    return result
 
 
 def _coerce_builder_default(value: str, variable_type: str) -> tuple[Any, str | None]:

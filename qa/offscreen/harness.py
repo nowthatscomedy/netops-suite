@@ -7,17 +7,16 @@ import shutil
 import tempfile
 import time
 import traceback
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Callable
 from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QT_SCALE_FACTOR", "1")
 
-from PySide6.QtCore import QCoreApplication, QEvent, Qt
-from PySide6.QtGui import QColor, QFont, QFontDatabase, QImage
+from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QRect, Qt
+from PySide6.QtGui import QFont, QFontDatabase, QImage, QPalette
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
@@ -28,20 +27,23 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
-    QToolButton,
+    QScrollArea,
+    QStyle,
+    QStyleOptionGroupBox,
     QWidget,
 )
 
-import app.ui.tabs.ai_chat_tab as ai_chat_module
 from app.app_state import AppState
+from app.guides import GuideCatalog
 from app.main_window import MainWindow
-from app.models.ai_models import KNOWN_AI_PROVIDERS
-from app.services.ai_agent_service import PROVIDER_SPECS
-from app.ui.common.theme import APP_STYLE_SHEET
+from app.ui.common.theme import apply_app_theme
 from app.ui.dialogs.inspector_profile_dialog import InspectorProfileDialog
-from app.ui.tabs.ai_chat_tab import AiChatTab
+from netops_suite.modules.config_builder.switch_configurator.profile_builder_dialog import (
+    ProfileBuilderDialog,
+)
 from qa.offscreen.fakes import (
     ControlledThreadPool,
+    DeterministicWirelessService,
     install_deterministic_services,
 )
 
@@ -115,6 +117,8 @@ class OffscreenQaHarness:
         self._capture_index = 0
         self._original_app_font: QFont | None = None
         self._original_style_sheet = ""
+        self._original_palette: QPalette | None = None
+        self._original_style_name = ""
         self._original_malgun_substitutions: list[str] = []
         self._application_font_ids: list[int] = []
         self._qa_logger = logging.Logger("netops_suite.offscreen_qa")
@@ -158,13 +162,24 @@ class OffscreenQaHarness:
         self.app = QApplication.instance() or QApplication([])
         self._original_app_font = QFont(self.app.font())
         self._original_style_sheet = self.app.styleSheet()
+        self._original_palette = QPalette(self.app.palette())
+        self._original_style_name = self.app.style().name()
         self._original_malgun_substitutions = list(
             QFont.substitutes("Malgun Gothic")
         )
         self._install_offscreen_fonts()
-        self.app.setStyleSheet(APP_STYLE_SHEET)
+        # Same style, palette and sheet as main.py so captures match the real app.
+        apply_app_theme(self.app)
 
         self._patchers = [
+            patch.object(
+                GuideCatalog,
+                "load",
+                classmethod(lambda cls, *_args, **_kwargs: cls._load_manifest(
+                    self.project_root / "docs" / "guide_manifest.json",
+                    project_root=self.project_root,
+                )),
+            ),
             patch(
                 "netops_suite.modules.config_builder.switch_configurator."
                 "desktop_impl.APP_STATE_PATH",
@@ -176,18 +191,6 @@ class OffscreenQaHarness:
             ),
             patch(
                 "app.app_state.shutdown_logging",
-                lambda *_args, **_kwargs: None,
-            ),
-            patch.object(
-                AiChatTab,
-                "refresh_provider_status",
-                lambda tab, allow_repair=False: tab._set_status(
-                    "QA 대역", "외부 AI CLI를 실행하지 않습니다."
-                ),
-            ),
-            patch.object(
-                AiChatTab,
-                "_ensure_model_catalog_fresh",
                 lambda *_args, **_kwargs: None,
             ),
             patch.object(
@@ -243,6 +246,10 @@ class OffscreenQaHarness:
                 QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
                 self.app.processEvents()
                 self.app.setStyleSheet(self._original_style_sheet)
+                if self._original_style_name:
+                    self.app.setStyle(self._original_style_name)
+                if self._original_palette is not None:
+                    self.app.setPalette(self._original_palette)
                 if self._original_app_font is not None:
                     self.app.setFont(self._original_app_font)
                 QFont.removeSubstitutions("Malgun Gothic")
@@ -421,6 +428,12 @@ class OffscreenQaHarness:
                 method = getattr(self, f"_scenario_{scenario_id}")
                 method()
             self._flush()
+            if (
+                scenario.get("capture_target") == "page"
+                and self._active_capture_widget is self.window
+            ):
+                # Guide pictures show only the work area so text stays readable.
+                self._active_capture_widget = self.window.tab_widget
             screenshot_path = self._capture(title, self._active_capture_widget)
         except Exception:
             status = "failed"
@@ -457,22 +470,81 @@ class OffscreenQaHarness:
             width, height = int(viewport[0]), int(viewport[1])
             self.window.resize(width, height)
             self._flush()
-            for row in range(self.window.nav_list.count()):
-                self._click_list_row(self.window.nav_list, row)
+            for row in range(len(self.window._MAIN_PAGE_KEYS)):
+                self._navigate_main(row)
                 current = self.window.tab_widget.currentWidget()
                 if current is None or not current.isVisibleTo(self.window):
                     raise AssertionError(
                         f"{width}x{height}의 메인 화면 {row}가 보이지 않습니다."
                     )
-                hint = current.findChild(QWidget, "stepHint")
+                hint = current.findChild(QWidget, "pageHeader") or current.findChild(QWidget, "stepHint")
                 if hint is None or not hint.isVisibleTo(current):
                     raise AssertionError(
                         f"{width}x{height}의 메인 화면 {row} 작업 흐름 안내가 보이지 않습니다."
                     )
+                for control in self._primary_controls(self.window._MAIN_PAGE_KEYS[row]):
+                    self._assert_control_accessible(control)
                 checks.append(
-                    f"{width}×{height} / {self.window.tab_widget.tabText(row)} 표시"
+                    f"{width}×{height} / {self.window.tab_widget.tabText(self.window.tab_widget.currentIndex())} 주요 조작부 접근 및 표시 영역"
                 )
         return checks
+
+    def _primary_controls(self, page_key: str) -> tuple[QWidget, ...]:
+        window = self._require_window()
+        controls = {
+            "interface": (window.interface_tab.refresh_button, window.interface_tab.apply_button),
+            "diagnostics": (window.diagnostics_tab.diagnostic_tool_combo,),
+            "wireless": (window.wireless_tab.refresh_button, window.wireless_tab.nearby_refresh_button),
+            "inspector": (window.inspector_tab.inventory_button, window.inspector_tab.profile_editor_button, window.inspector_tab.run_button),
+            "config_builder": (window.config_builder_tab.profile_management_button, window.config_builder_tab.full_editor_button, window.config_builder_tab.builder_widget.sample_start_button, window.config_builder_tab.builder_widget.save_cli_button),
+            "settings": (window.settings_button,),
+            "home": tuple(window.home_page.task_buttons.values()),
+            "transfer": (window.diagnostics_tab.file_transfer_role_combo, window.diagnostics_tab.file_transfer_mode_combo),
+        }
+        return controls[page_key]
+
+    def _capture_handler_card_borders(self, scenario: dict) -> None:
+        window = self._require_window()
+        count = 0
+        for row in range(len(window._MAIN_PAGE_KEYS)):
+            self._navigate_main(row)
+            current = window.tab_widget.currentWidget()
+            for group in current.findChildren(QGroupBox):
+                if not group.title() or not group.isVisibleTo(current):
+                    continue
+                option = QStyleOptionGroupBox()
+                group.initStyleOption(option)
+                title = group.style().subControlRect(
+                    QStyle.ComplexControl.CC_GroupBox, option,
+                    QStyle.SubControl.SC_GroupBoxLabel, group,
+                )
+                self._check(title.top() >= 8 and group.rect().contains(title), f"카드 제목이 테두리 안쪽에 표시: {group.title()}")
+                count += 1
+        self._check(count >= 10, "주요 작업 화면의 카드 제목 검사")
+        window.navigate_to("inspector")
+        self._flush()
+
+    def _capture_handler_wireless_signal(self, scenario: dict) -> None:
+        window = self._require_window()
+        window.navigate_to("wireless")
+        tab = window.wireless_tab
+        service = DeterministicWirelessService()
+        info = replace(
+            service.get_wireless_info(), signal_percent=int(scenario["signal_percent"]),
+            rssi=str(scenario["rssi"]),
+        )
+        tab._update_wireless_view(info)
+        tab._update_nearby_access_points(service.scan_nearby_access_points())
+        tab.status_details_section.setExpanded(False)
+        tab.change_log_section.setExpanded(False)
+        tab.nearby_options_section.setExpanded(False)
+        tab.wireless_scroll_area.verticalScrollBar().setValue(0)
+        self._flush()
+        label = tab.info_labels["signal"]
+        self._check(label.palette().color(QPalette.ColorRole.WindowText).name() == scenario["expected_color"], "현재 신호의 실제 표시 색상")
+        self._check(scenario["expected_strength"] in label.text(), "색상과 함께 신호 상태 문구 표시")
+        self._assert_readable_card(tab.status_cards["signal"], "현재 Wi-Fi 신호")
+        self._post_capture = lambda: tab._update_wireless_view(service.get_wireless_info())
 
     def _scenario_main_navigation(self) -> None:
         window = self._require_window()
@@ -483,35 +555,32 @@ class OffscreenQaHarness:
             self._flush()
             self._check(
                 nav.currentRow() == expected_row,
-                f"키보드 아래 이동: {window.tab_widget.tabText(expected_row)}",
+                f"키보드 아래 이동: {nav.item(expected_row).text()}",
             )
             self._check(
-                window.tab_widget.currentIndex() == expected_row,
+                window.tab_widget.currentWidget().property("mainPageKey") == nav.item(expected_row).data(Qt.ItemDataRole.UserRole),
                 "내비게이션 선택과 현재 화면 동기화",
             )
         self._check(nav.focusPolicy() == Qt.FocusPolicy.StrongFocus, "키보드 포커스")
         self._check(nav.accessibleName() == "주요 화면", "내비게이션 접근성 이름")
 
     def _scenario_guide_interface_overview(self) -> None:
-        self._show_guide_overview_page(0, "네트워크 설정")
+        self._show_guide_overview_page(0, "내 PC 네트워크")
 
     def _scenario_guide_diagnostics_overview(self) -> None:
         self._show_guide_overview_page(1, "연결 진단")
 
     def _scenario_guide_wireless_overview(self) -> None:
-        self._show_guide_overview_page(2, "Wi-Fi 분석")
+        self._show_guide_overview_page(2, "Wi-Fi 확인")
 
     def _scenario_guide_inspector_overview(self) -> None:
-        self._show_guide_overview_page(3, "장비 점검/백업")
+        self._show_guide_overview_page(3, "장비 점검·백업")
 
     def _scenario_guide_config_builder_overview(self) -> None:
-        self._show_guide_overview_page(4, "CLI 설정 생성")
-
-    def _scenario_guide_assistant_overview(self) -> None:
-        self._show_guide_overview_page(5, "NetOps 어시스턴트")
+        self._show_guide_overview_page(4, "설정 명령 만들기")
 
     def _scenario_guide_settings_overview(self) -> None:
-        self._show_guide_overview_page(6, "설정")
+        self._show_guide_overview_page(5, "설정")
 
     def _capture_handler_guide_overview(self, scenario: dict) -> None:
         """Show and verify a top-level page declared by a guide scenario."""
@@ -533,27 +602,6 @@ class OffscreenQaHarness:
 
         self._navigate_main(page_index)
         current = window.tab_widget.currentWidget()
-        if scenario_id == "guide_assistant_overview" and isinstance(
-            current, AiChatTab
-        ):
-            current.ai_chat_tabs.setCurrentWidget(current.connection_page)
-            self._check(KNOWN_AI_PROVIDERS == ("codex",), "Codex 단일 제공자 계약")
-            self._check(current.provider_combo.count() == 1, "AI 서비스 항목 한 개")
-            self._check(
-                current.provider_combo.currentData() == "codex",
-                "Codex 제공자 선택",
-            )
-            self._check(
-                current.provider_combo.currentText()
-                == PROVIDER_SPECS["codex"].display_name,
-                "ChatGPT Codex 표시",
-            )
-            self._check(
-                not current.provider_combo.isEnabled(),
-                "Codex 단일 제공자 선택 잠금",
-            )
-            current._set_status("사용 가능", "Codex CLI 연결을 확인했습니다.")
-            self._flush()
         self._check(
             window.tab_widget.tabText(page_index) == expected_title,
             f"가이드 화면 제목: {expected_title}",
@@ -578,6 +626,262 @@ class OffscreenQaHarness:
                 f"가이드 캡처 objectName 표시: {object_name}",
             )
 
+    def _capture_handler_inspector_results(self, scenario: dict) -> None:
+        from datetime import datetime
+
+        self._capture_handler_guide_overview(scenario)
+        tab = self._require_window().inspector_tab
+        self._check(tab.open_artifacts_button.isEnabled(), "실행 전 폴더 열기 활성")
+        with patch("app.ui.tabs.inspector_tab.os.startfile") as opened:
+            self._click(tab.open_artifacts_button)
+            self._check(opened.call_count == 1, "실행 전 작업 폴더 열기")
+        with patch("app.ui.tabs.inspector_tab.datetime") as clock:
+            clock.now.return_value = datetime(2026, 9, 22, 14, 5, 9)
+            tab._handle_progress({"type": "info", "message": "결과 폴더를 확인했습니다."})
+        tab._set_result_log_visible(True)
+        self._check("[14:05:09] [info]" in tab.log_view.toPlainText(), "결과 로그 시각 표시")
+
+    def _capture_handler_inspector_expanded(self, scenario: dict) -> None:
+        self._navigate_main(3)
+        tab = self._require_window().inspector_tab
+        sections = (tab.inventory_format_section, tab.profile_section)
+        for section in sections:
+            section.setExpanded(False)
+
+        def reset_sections() -> None:
+            for section in sections:
+                section.setExpanded(False)
+            tab.top_scroll.verticalScrollBar().setValue(0)
+
+        self._post_capture = reset_sections
+        self._check(tab.profile_editor_button.text() == "프로파일 만들기·관리", "프로파일 관리 진입점 명칭")
+        self._assert_control_accessible(tab.profile_editor_button)
+        self._check(tab.supported_toggle_button is tab.profile_section.toggle_button, "지원 장비 목록 펼치기 한 단계")
+        for cycle in range(3):
+            for section in sections:
+                self._click(section.toggle_button)
+                self._check(section.isExpanded(), f"장비 작업 안내 {cycle + 1}회 펼치기")
+            cards = tuple(tab.inventory_guide_steps.findChildren(QWidget, "inspectorInventoryGuideCard"))
+            self._check(len(cards) == 3, "장비 목록 작성 안내 세 단계")
+            for index, card in enumerate(cards):
+                self._assert_readable_card(card, f"장비 목록 안내 {index + 1}")
+            self._assert_non_overlapping(cards, tab.inventory_guide_steps, "장비 목록 안내 카드")
+            example = tab.inventory_example_table
+            self._assert_viewport_height(example, 120, "장비 목록 입력 예시표")
+            self._check(example.rowCount() == 6 and example.columnCount() == 2, "필수 열과 입력 예시 6행 2열")
+            self._check(example.viewport().rect().contains(example.visualItemRect(example.item(5, 1))), "입력 예시표 마지막 행 전체 표시")
+            self._assert_viewport_height(tab.supported_table, 100, "지원 장비 목록")
+            for control in (tab.inventory_button, tab.sample_button, tab.validate_button, tab.run_button):
+                self._assert_control_accessible(control)
+            if cycle < 2:
+                for section in reversed(sections):
+                    self._click(section.toggle_button)
+        self._check(tab.top_scroll.horizontalScrollBar().maximum() == 0, "장비 작업 안내 가로 잘림 없음")
+        viewport = scenario["viewport"]
+        self._check(self.window.width() == viewport[0] and self.window.height() == viewport[1], "장비 작업 안내 펼침 후 창 크기 유지")
+        tab.top_scroll.verticalScrollBar().setValue(0)
+
+    def _capture_handler_inspector_custom_commands(self, scenario: dict) -> None:
+        import pandas as pd
+
+        self._navigate_main(3)
+        tab = self._require_window().inspector_tab
+        if self.runtime_root is None:
+            raise RuntimeError("오프스크린 런타임 폴더가 준비되지 않았습니다.")
+        inventory_path = self.runtime_root / "qa_custom_command_inventory.xlsx"
+        pd.DataFrame(
+            [
+                {"ip": "192.0.2.10", "vendor": "cisco", "os": "ios", "connection_type": "ssh",
+                 "port": 22, "password": "CHANGE_ME_PASSWORD", "interface": "Gi1/0/1"},
+                {"ip": "192.0.2.11", "vendor": "cisco", "os": "ios", "connection_type": "ssh",
+                 "port": 22, "password": "CHANGE_ME_PASSWORD", "interface": "Gi1/0/2"},
+            ]
+        ).to_excel(inventory_path, index=False)
+
+        def reset_custom_commands() -> None:
+            tab.command_text_edit.clear()
+            tab.command_inline_radio.setChecked(True)
+            tab.inventory_path_edit.clear()
+            tab.mode_combo.setCurrentIndex(tab.mode_combo.findData("inspection"))
+            tab.top_scroll.verticalScrollBar().setValue(0)
+
+        self._post_capture = reset_custom_commands
+        tab.mode_combo.setCurrentIndex(tab.mode_combo.findData("custom_commands"))
+        self._flush()
+        self._check(tab.command_inline_radio.isChecked(), "사용자 명령 기본 입력 방식은 직접 입력")
+        self._check(tab.command_file_row.isHidden(), "직접 입력에서는 명령 파일 선택 숨김")
+        self._click(tab.command_file_radio)
+        self._check(not tab.command_file_row.isHidden() and tab.command_text_edit.isHidden(), "명령 파일 방식 전환")
+        self._click(tab.command_inline_radio)
+        self._check(not tab.command_text_edit.isHidden(), "직접 입력 방식 복귀")
+        self._paste(tab.command_text_edit, "show interface {{ interface")
+        QTest.qWait(400)
+        self._check("닫는" in tab.command_check_label.text(), "입력 즉시 변수 문법 오류 표시")
+        self._paste(tab.command_text_edit, "show version\nshow interface {{ interface }}")
+        QTest.qWait(400)
+        self._check(
+            "명령 2개 · 사용 변수 interface" in tab.command_check_label.text(),
+            "입력 즉시 명령 수와 변수 표시",
+        )
+        self._paste(tab.inventory_path_edit, str(inventory_path))
+        self._click(tab.validate_button)
+        self._check(tab._inventory_validated, "직접 입력 명령과 장비 목록 검증")
+        self._check(not tab.command_preview.isHidden(), "검증 후 실행 미리보기 표시")
+        self._check(
+            tab.command_preview_view.toPlainText() == "show version\nshow interface Gi1/0/1",
+            "첫 장비 기준 변수 치환 미리보기",
+        )
+        self._check("192.0.2.10" in tab.command_preview_title.text(), "미리보기 대상 장비 표시")
+        for control in (
+            tab.command_inline_radio,
+            tab.command_file_radio,
+            tab.command_text_edit,
+            tab.command_preview_view,
+            tab.validate_button,
+            tab.run_button,
+        ):
+            self._assert_control_accessible(control)
+        self._check(tab.top_scroll.horizontalScrollBar().maximum() == 0, "사용자 명령 영역 가로 잘림 없음")
+        viewport = scenario["viewport"]
+        self._check(
+            self.window.width() == viewport[0] and self.window.height() == viewport[1],
+            "사용자 명령 검증 후 창 크기 유지",
+        )
+        for object_name in scenario.get("expected_object_names", []):
+            candidates = self.window.findChildren(QWidget, object_name)
+            self._check(
+                any(candidate.isVisibleTo(self.window) for candidate in candidates),
+                f"가이드 캡처 objectName 표시: {object_name}",
+            )
+        tab.top_scroll.verticalScrollBar().setValue(0)
+        self._flush()
+
+    def _capture_handler_context_help(self, scenario: dict) -> None:
+        window = self._require_window()
+        window.navigate_to("diagnostics", "ping")
+        self._flush()
+        self._click(window.guide_button)
+        self._check(window.help_dock.isVisible(), "현재 작업 도움말 표시")
+        self._check(window.quick_help_panel.current_entry.id == "diagnostics.ping", "Ping 전용 도움말 연결")
+        viewport = scenario["viewport"]
+        self._check(window.width() == int(viewport[0]) and window.height() == int(viewport[1]), "가이드 도움말 캡처 크기 유지")
+        for object_name in scenario["expected_object_names"]:
+            candidates = window.findChildren(QWidget, object_name)
+            self._check(
+                any(candidate.isVisibleTo(window) for candidate in candidates),
+                f"가이드 캡처 objectName 표시: {object_name}",
+            )
+        self._active_capture_widget = window
+        self._post_capture = window.help_dock.hide
+
+    def _scenario_home_tasks(self) -> None:
+        window = self._require_window()
+        for key, button in window.home_page.task_buttons.items():
+            window.navigate_to("home")
+            self._flush()
+            self._click(button)
+            self._check(window.tab_widget.currentWidget().property("mainPageKey") == key, f"시작 카드에서 {key} 직접 진입")
+        window.navigate_to("home")
+        self._flush()
+        self._check(window._guide_dialog is None, "도움말 창 자동 표시 없음")
+
+    def _scenario_diagnostic_input_error(self) -> None:
+        window = self._require_window()
+        window.navigate_to("diagnostics", "ping")
+        tab = window.diagnostics_tab
+        self._flush()
+        self._paste(tab.ping_targets_edit, "")
+        self._click(tab.ping_start_button)
+        self._check(not tab.active_task_keys(), "빈 입력으로 작업을 시작하지 않음")
+        self._check(tab.ping_start_button.isEnabled(), "오류 후 입력을 수정하여 재실행 가능")
+
+    def _scenario_diagnostic_options(self) -> None:
+        window = self._require_window()
+        window.navigate_to("diagnostics", "ping")
+        tab = window.diagnostics_tab
+        self._flush()
+        if not tab.ping_options_section.isExpanded():
+            self._click(tab.ping_options_section.toggle_button)
+        self._paste(tab.ping_count_edit, "8")
+        self._click(tab.ping_options_section.toggle_button)
+        self._check("변경된 옵션" in tab.ping_options_section.toggle_button.text(), "접힌 실행 옵션 변경수 표시")
+        self._check(tab.ping_count_edit.text() == "8", "옵션을 접어도 값 보존")
+        self._post_capture = lambda: tab.ping_count_edit.setText("")
+
+    def _scenario_diagnostic_running(self) -> None:
+        window = self._require_window()
+        window.navigate_to("diagnostics", "ping")
+        tab = window.diagnostics_tab
+        self._flush()
+        self._paste(tab.ping_targets_edit, "Gateway,192.0.2.1")
+        self._click(tab.ping_start_button)
+        window._update_navigation_activity()
+        self._check("ping" in tab.active_task_keys(), "진행 중 작업 추적")
+        self._check(tab.ping_cancel_button.isEnabled(), "실행 중 중지 접근 가능")
+        self._check(not tab.ping_start_button.isEnabled(), "중복 실행 차단")
+
+    def _scenario_context_help_compact(self) -> None:
+        window = self._require_window()
+        window.navigate_to("transfer")
+        self._flush()
+        self._click(window.guide_button)
+        self._check(window.help_dock.isFloating(), "좁은 창에서는 비모달 분리 도움말")
+        self._check(window.tab_widget.currentWidget().width() >= 720, "작업 영역 최소 폭 보존")
+        self._active_capture_widget = window.help_dock
+        self._post_capture = window.help_dock.hide
+
+    def _capture_handler_workspace_state(self, scenario: dict) -> None:
+        """Exercise common task states at every supported logical viewport."""
+        from app.ui.common import set_inline_status
+
+        window = self._require_window()
+        window.help_dock.hide()
+        window.navigate_to("diagnostics", "ping")
+        tab = window.diagnostics_tab
+        tab.ping_options_section.setExpanded(False)
+        tab.ping_splitter.hide()
+        tab.ping_empty_label.show()
+        set_inline_status(tab.ping_input_error, "error", "")
+        set_inline_status(tab.ping_status_label, "info", "")
+        self._flush()
+        state = str(scenario["workspace_state"])
+        if state == "error":
+            self._scenario_diagnostic_input_error()
+            self._ensure_control_visible(tab.ping_input_error)
+            self._check(bool(tab.ping_input_error.text()), "입력 옆 오류와 수정 안내 표시")
+        elif state == "running":
+            self._scenario_diagnostic_running()
+            self._ensure_control_visible(tab.ping_cancel_button)
+        elif state == "complete":
+            self._scenario_multi_ping()
+            self._ensure_control_visible(tab.ping_table)
+            self._check("완료" in tab.ping_status_label.text(), "완료 요약과 결과 표시")
+        elif state == "help":
+            self._ensure_control_visible(tab.ping_targets_edit)
+            tab.ping_targets_edit.setFocus()
+            QTest.keyClick(tab.ping_targets_edit, Qt.Key.Key_F1)
+            self._flush()
+            self._check(window.help_dock.isVisible(), "F1으로 현재 작업 도움말 열기")
+            self._check(window.quick_help_panel.current_entry.id == "diagnostics.ping", "현재 작업과 도움말 일치")
+            self._check(window.tab_widget.currentWidget().width() >= 720, "도움말 표시 중 작업 영역 최소 폭 보존")
+            if window.help_dock.isFloating():
+                self._active_capture_widget = window.help_dock
+
+            def close_help() -> None:
+                window.help_dock.hide()
+                self._flush()
+                self._check(self.app.focusWidget() is tab.ping_targets_edit, "도움말 닫기 후 원래 입력으로 포커스 복원")
+
+            self._post_capture = close_help
+        elif state == "default":
+            self._paste(tab.ping_targets_edit, "")
+            self._ensure_control_visible(tab.ping_empty_label)
+            self._check(not tab.active_task_keys(), "화면 진입만으로 실행하지 않음")
+        else:
+            raise AssertionError(f"알 수 없는 작업 상태: {state}")
+        self._check(window.size().width() == int(scenario["viewport"][0]), "요청한 창 너비 유지")
+        self._check(window.size().height() == int(scenario["viewport"][1]), "요청한 창 높이 유지")
+
     def _show_guide_overview_page(self, row: int, expected_title: str) -> None:
         window = self._require_window()
         self._navigate_main(row)
@@ -590,7 +894,7 @@ class OffscreenQaHarness:
             current is not None and current.isVisibleTo(window),
             f"가이드 화면 표시: {expected_title}",
         )
-        hint = current.findChild(QWidget, "stepHint") if current is not None else None
+        hint = (current.findChild(QWidget, "pageHeader") or current.findChild(QWidget, "stepHint")) if current is not None else None
         self._check(
             hint is not None and hint.isVisibleTo(current),
             f"가이드 작업 흐름 표시: {expected_title}",
@@ -616,8 +920,11 @@ class OffscreenQaHarness:
         window = self._require_window()
         self._navigate_main(1)
         tab = window.diagnostics_tab
-        self._paste(tab.quick_target_edit, "192.168.10.42/24")
-        self._click(tab.quick_subnet_button)
+        tab.select_tool("subnet")
+        self._flush()
+        self._paste(tab.subnet_calc_ip_edit, "192.168.10.42")
+        self._paste(tab.subnet_calc_prefix_edit, "24")
+        self._click(tab.subnet_calc_button)
         self._check(tab._current_tool_key() == "subnet", "서브넷 계산기로 이동")
         self._check(
             tab.subnet_calc_summary_labels["network_address"].text()
@@ -628,8 +935,7 @@ class OffscreenQaHarness:
             tab.subnet_calc_detail_table.rowCount() >= 8,
             "서브넷 상세 결과 표시",
         )
-        widths = [button.width() for button in tab.quick_action_buttons]
-        self._check(max(widths) - min(widths) <= 1, "빠른 진단 버튼 동일 폭")
+        self._check(not tab.quick_target_edit.isVisibleTo(window), "중복 대상 입력 비표시")
 
     def _scenario_multi_ping(self) -> None:
         window = self._require_window()
@@ -693,19 +999,24 @@ class OffscreenQaHarness:
         window = self._require_window()
         self._navigate_main(1)
         tab = window.diagnostics_tab
-        self._paste(tab.quick_target_edit, "example.com")
-        self._click(tab.quick_dns_button)
+        tab.select_tool("dns")
+        self._flush()
+        self._paste(tab.dns_query_edit, "example.com")
+        self._click(tab.dns_run_button)
         self._check(not tab.dns_run_button.isEnabled(), "DNS 조회 중 실행 차단")
         self._release_next()
         self._check("203.0.113.10" in tab.dns_output.toPlainText(), "DNS 결과 표시")
 
         expected_outputs = (
-            (tab.quick_ipconfig_button, "192.168.10.42"),
-            (tab.quick_route_button, "0.0.0.0"),
-            (tab.quick_arp_table_button, "00-11-22-33-44-55"),
+            ("ipconfig", "192.168.10.42"),
+            ("route", "0.0.0.0"),
+            ("arp", "00-11-22-33-44-55"),
         )
-        for button, expected in expected_outputs:
-            self._click(button)
+        tab.select_tool("commands")
+        self._flush()
+        for command, expected in expected_outputs:
+            tab.command_tool_combo.setCurrentIndex(tab.command_tool_combo.findData(command))
+            self._click(tab.command_run_button)
             self._release_next()
             self._check(expected in tab.tools_output.toPlainText(), f"명령 출력: {expected}")
 
@@ -731,11 +1042,10 @@ class OffscreenQaHarness:
 
     def _scenario_file_transfer_routing(self) -> None:
         window = self._require_window()
-        self._navigate_main(1)
+        window.navigate_to("transfer")
+        self._flush()
         tab = window.diagnostics_tab
-        self._paste(tab.quick_target_edit, "192.0.2.20")
-        self._click(tab.quick_transfer_button)
-        self._check(tab._current_tool_key() == "transfer", "파일 전송 화면 이동")
+        self._check(window.tab_widget.currentWidget() is window.transfer_tab, "독립 파일 전송 화면 이동")
         for role in range(2):
             tab.file_transfer_role_combo.setCurrentIndex(role)
             self._flush()
@@ -748,7 +1058,7 @@ class OffscreenQaHarness:
                     f"파일 전송 역할 {role}, 방식 {mode} 페이지",
                 )
                 self._check(
-                    tab.file_transfer_page_stack.currentWidget().isVisibleTo(tab),
+                    tab.file_transfer_page_stack.currentWidget().isVisibleTo(window.transfer_tab),
                     "현재 파일 전송 페이지 표시",
                 )
         self._check(
@@ -772,14 +1082,107 @@ class OffscreenQaHarness:
         self._check(tab.nearby_table.rowCount() == 3, "주변 AP 3개 표시")
         self._paste(tab.nearby_search_edit, "QA")
         self._check(tab.nearby_table.rowCount() == 2, "검색 필터 적용")
+        if not tab.nearby_options_section.isExpanded():
+            self._click(tab.nearby_options_section.toggle_button)
         index = tab.nearby_band_filter.findData("5")
         tab.nearby_band_filter.setCurrentIndex(index)
         self._flush()
         self._check(tab.nearby_table.rowCount() == 1, "5 GHz 필터 적용")
 
+        def reset_filters() -> None:
+            tab.nearby_search_edit.clear()
+            tab.nearby_band_filter.setCurrentIndex(0)
+            tab.nearby_options_section.setExpanded(False)
+
+        self._post_capture = reset_filters
+
+    def _capture_handler_wireless_expanded(self, scenario: dict) -> None:
+        """Exercise the expanded workspace, including the content below the fold."""
+        window = self._require_window()
+        self._navigate_main(2)
+        tab = window.wireless_tab
+        sections = (tab.status_details_section, tab.change_log_section, tab.nearby_options_section)
+        tab.nearby_search_edit.clear()
+        tab.nearby_band_filter.setCurrentIndex(0)
+        tab.nearby_security_filter.setCurrentIndex(0)
+        tab.nearby_connected_only_check.setChecked(False)
+        self._click(tab.refresh_button)
+        self._release_next()
+        self._click(tab.nearby_refresh_button)
+        self._release_next()
+        self._check(tab.nearby_table.rowCount() == 3, "확대 검사에 주변 AP 3개 준비")
+        tab.change_log.clear()
+        for index in range(12):
+            tab.change_log.addItem(f"14:05:{index:02d} · QA-Lab-5G · 연결 유지 · 신호 {85 - index}%")
+
+        def reset_workspace() -> None:
+            for section in sections:
+                section.setExpanded(False)
+            tab.change_log.clear()
+            tab.wireless_scroll_area.verticalScrollBar().setValue(0)
+
+        self._post_capture = reset_workspace
+        for section in sections:
+            section.setExpanded(False)
+        self._flush()
+        expected_values = {key: label.text() for key, label in tab.info_labels.items()}
+        for cycle in range(3):
+            for section in sections:
+                self._click(section.toggle_button)
+                self._check(section.isExpanded(), f"Wi-Fi {cycle + 1}회 펼치기: {section.toggle_button.text()}")
+            for key, card in tab.status_cards.items():
+                self._assert_readable_card(card, f"Wi-Fi {key}")
+            self._assert_non_overlapping(tuple(tab.status_cards.values()), tab.wireless_content, "Wi-Fi 상태 카드")
+            for control in (
+                tab.auto_refresh_check, tab.interval_spin,
+                tab.nearby_search_edit, tab.nearby_band_filter,
+                tab.nearby_security_filter, tab.nearby_sort_combo,
+                tab.nearby_connected_only_check, tab.nearby_column_button,
+                tab.nearby_auto_refresh_check, tab.nearby_interval_spin,
+                tab.nearby_refresh_oui_button,
+            ):
+                self._assert_control_accessible(control)
+            self._assert_viewport_height(tab.change_log, 120, "Wi-Fi 연결 변화 로그")
+            tab.change_log.scrollToItem(tab.change_log.item(tab.change_log.count() - 1))
+            self._flush()
+            self._check(
+                tab.change_log.viewport().rect().contains(tab.change_log.visualItemRect(tab.change_log.item(tab.change_log.count() - 1))),
+                "Wi-Fi 로그 마지막 항목까지 스크롤 접근",
+            )
+            self._assert_viewport_height(tab.nearby_table, 180, "Wi-Fi 주변 AP 표")
+            last_item = tab.nearby_table.item(tab.nearby_table.rowCount() - 1, tab.nearby_table.columnCount() - 1)
+            tab.nearby_table.scrollToItem(last_item)
+            self._flush()
+            self._check(
+                tab.nearby_table.viewport().rect().contains(tab.nearby_table.visualItemRect(last_item).center()),
+                "Wi-Fi AP 표 마지막 행·열까지 스크롤 접근",
+            )
+            self._check(
+                expected_values == {key: label.text() for key, label in tab.info_labels.items()},
+                "Wi-Fi 반복 펼치기 후 현재 연결 값 보존",
+            )
+            if cycle < 2:
+                for section in reversed(sections):
+                    self._click(section.toggle_button)
+                    self._check(not section.isExpanded(), f"Wi-Fi {cycle + 1}회 접기")
+
+        self._check(tab.wireless_scroll_area.horizontalScrollBar().maximum() == 0, "Wi-Fi 작업영역 가로 잘림 없음")
+        for object_name in scenario.get("expected_object_names", []):
+            self._check(
+                any(widget.isVisibleTo(window) for widget in window.findChildren(QWidget, object_name)),
+                f"가이드 캡처 objectName 표시: {object_name}",
+            )
+        viewport = scenario["viewport"]
+        self._check(window.size().width() == viewport[0] and window.size().height() == viewport[1], "Wi-Fi 펼침 후 창 크기 유지")
+        tab.change_log.scrollToTop()
+        tab.nearby_table.scrollToTop()
+        tab.nearby_table.horizontalScrollBar().setValue(0)
+        tab.wireless_scroll_area.verticalScrollBar().setValue(0)
+        self._flush()
+
     def _scenario_settings_save(self) -> None:
         window = self._require_window()
-        self._navigate_main(6)
+        self._navigate_main(5)
         tab = window.settings_tab
         tab.show_section("program")
         self._check(
@@ -837,7 +1240,7 @@ class OffscreenQaHarness:
 
     def _scenario_settings_oui_updates(self) -> None:
         window = self._require_window()
-        self._navigate_main(6)
+        self._navigate_main(5)
         tab = window.settings_tab
         tab.show_section("tools", "oui")
 
@@ -885,7 +1288,7 @@ class OffscreenQaHarness:
 
     def _scenario_settings_management(self) -> None:
         window = self._require_window()
-        self._navigate_main(6)
+        self._navigate_main(5)
         tab = window.settings_tab
         tab.show_section("maintenance")
         tab.maintenance_scroll.ensureWidgetVisible(tab.reset_all_settings_button)
@@ -910,73 +1313,23 @@ class OffscreenQaHarness:
             "설정 관리 가로 잘림 없음",
         )
 
-    def _scenario_ai_tool_ordering(self) -> None:
-        window = self._require_window()
-        self._navigate_main(5)
-        tab = window.ai_chat_tab
-        tab.ai_chat_tabs.setCurrentWidget(tab.chat_page)
-        tab._messages.clear()
-        tab._render_transcript()
-        tab._confirm_netops_chat_action = lambda _action: True
-        tab._run_netops_chat_action = lambda action, approved, cancel_event: (
-            "NetOps Suite tool result\n"
-            f"Ping targets: {', '.join(action.targets)}\n"
-            "8.8.8.8: 정상, 손실 0%\n"
-            "1.1.1.1: 정상, 손실 0%"
-        )
-
-        with patch.object(
-            ai_chat_module,
-            "inspect_provider",
-            lambda _config: SimpleNamespace(
-                installed=False, detail="QA에서는 외부 AI CLI를 실행하지 않습니다."
-            ),
-        ):
-            self._paste(tab.prompt_edit, "ping 8.8.8.8 1.1.1.1")
-            self._click(tab.send_button)
-            self._check(self.pool is not None and len(self.pool.pending) == 1, "AI 도구 작업 대기")
-            self._check(
-                [item["title"] for item in tab._messages[:2]]
-                == ["사용자", "시스템"],
-                "사용자 메시지가 도구 안내보다 먼저 표시",
-            )
-            self._check(bool(tab._working_status_text), "AI 작업 중 표시")
-            self._check(not tab.send_button.isEnabled(), "AI 작업 중 보내기 비활성")
-            self._check(tab.stop_button.isEnabled(), "AI 작업 중 중지 활성")
-            self._release_next()
-
-        titles = [item["title"] for item in tab._messages]
-        self._check(titles[:3] == ["사용자", "시스템", "NetOps"], "대화/도구 결과 순서")
-        netops_body = next(
-            item["body"] for item in tab._messages if item["title"] == "NetOps"
-        )
-        self._check(
-            "8.8.8.8" in netops_body and "1.1.1.1" in netops_body,
-            "AI 도구 결과에 요청한 대상 2개 포함",
-        )
-        self._check(not tab._working_status_text, "AI 도구 완료 후 작업 표시 제거")
-
-    def _scenario_ai_image_paste(self) -> None:
-        window = self._require_window()
-        self._navigate_main(5)
-        tab = window.ai_chat_tab
-        tab.ai_chat_tabs.setCurrentWidget(tab.chat_page)
-        self._paste_clipboard_image(tab)
-        self._check(len(tab._attachments) == 1, "클립보드 이미지 첨부")
-        card = tab.attachment_list.itemWidget(tab.attachment_list.item(0))
-        remove_button = card.findChild(QToolButton, "attachmentRemoveButton")
-        self._check(remove_button is not None, "첨부 카드 제거 버튼")
-        button_center = remove_button.mapTo(card, remove_button.rect().center())
-        self._check(card.rect().contains(button_center), "제거 버튼이 카드 경계 안에 표시")
-        self._click(remove_button)
-        self._check(not tab._attachments, "첨부 카드 X로 제거")
-        self._paste_clipboard_image(tab)
-        self._check(len(tab._attachments) == 1, "제거 후 이미지 재첨부")
+    def _capture_handler_settings_storage(self, scenario: dict) -> None:
+        self._capture_handler_guide_overview(scenario)
+        tab = self._require_window().settings_tab
+        tab.show_section("storage")
+        self._check(tab.applied_paths_group.isHidden(), "중복 경로는 기본 접힘")
+        self._click(tab.path_details_button)
+        self._check(not tab.applied_paths_group.isHidden(), "실제 적용 경로 상세 보기")
+        self._click(tab.path_details_button)
+        self._check(len(tab.path_edits) == 3, "저장 위치 세 항목 표시")
 
     def _scenario_inspector_profile(self) -> None:
         window = self._require_window()
         self._navigate_main(3)
-        dialog = InspectorProfileDialog(window.inspector_tab.service, window)
+        dialog = InspectorProfileDialog(
+            window.inspector_tab.service,
+            window,
+        )
         dialog.resize(1120, 780)
         dialog.show()
         self._active_capture_widget = dialog
@@ -987,6 +1340,24 @@ class OffscreenQaHarness:
         self._paste(dialog.model_edit, "QA-9000")
         self._paste(dialog.os_edit, "QA-OS")
         self._paste(dialog.os_version_edit, "1.0")
+        self._check(
+            dialog.windowTitle() == "장비 작업 자동화 프로파일 만들기",
+            "장비 작업 프로파일 창 명칭",
+        )
+        self._check(
+            all("AI" not in button.text() for button in dialog.findChildren(QPushButton)),
+            "장비 작업 프로파일에 AI 초안 버튼 없음",
+        )
+        self._check(
+            dialog.profile_scope_combo.itemData(1) == "model",
+            "모델 전용 프로파일 적용 범위 제공",
+        )
+        dialog.profile_scope_combo.setCurrentIndex(1)
+        self._flush()
+        self._check(
+            dialog.profile_scope_combo.currentData() == "model",
+            "모델 전용 프로파일 적용 범위 선택",
+        )
         self._click_tab(dialog, 1)
         self._check(
             dialog.sample_output_edit.height()
@@ -1007,25 +1378,35 @@ class OffscreenQaHarness:
         self._click(refresh_button)
         self._check(dialog.save_button.isEnabled(), "유효한 프로파일 저장 가능")
         yaml_text = dialog.yaml_preview.toPlainText()
+        self._check("model_profiles:" in yaml_text, "모델 프로파일 YAML 생성")
         self._check("inspection_commands:" in yaml_text, "점검 명령 YAML 생성")
-        self._check("backup_commands:" in yaml_text, "백업 명령 YAML 생성")
+        self._check("backup_command:" in yaml_text, "모델 백업 명령 YAML 생성")
         self._click(dialog.save_button)
         self._check(
             dialog.service.custom_rules_path.is_file(),
             "격리된 설정 폴더에 프로파일 저장",
         )
 
-    def _paste_clipboard_image(self, tab: AiChatTab) -> None:
-        image = QImage(96, 64, QImage.Format.Format_ARGB32)
-        image.fill(QColor("#5b8def"))
-        self.app.clipboard().setImage(image)
-        tab.prompt_edit.setFocus()
-        QTest.keyClick(
-            tab.prompt_edit,
-            Qt.Key.Key_V,
-            Qt.KeyboardModifier.ControlModifier,
+    def _scenario_config_builder_profile(self) -> None:
+        window = self._require_window()
+        self._navigate_main(4)
+        dialog = ProfileBuilderDialog(
+            window.config_builder_tab.service.profiles_dir,
+            None,
+            window,
         )
+        dialog.resize(1080, 820)
+        dialog.show()
+        self._active_capture_widget = dialog
+        self._post_capture = dialog.reject
         self._flush()
+
+        self._check(dialog.windowTitle() == "프로파일 작성", "장비 설정 프로파일 작성 창 명칭")
+        self._check(
+            all("AI" not in button.text() for button in dialog.findChildren(QPushButton)),
+            "장비 설정 프로파일에 AI 초안 버튼 없음",
+        )
+        self._check(dialog.saved_path is None, "명시 저장 전 프로파일 파일 미생성")
 
     def _click_tab(self, dialog: InspectorProfileDialog, index: int) -> None:
         rect = dialog.tabs.tabBar().tabRect(index)
@@ -1046,7 +1427,12 @@ class OffscreenQaHarness:
 
     def _navigate_main(self, row: int) -> None:
         window = self._require_window()
-        self._click_list_row(window.nav_list, row)
+        page_key = window._MAIN_PAGE_KEYS[row]
+        if page_key == "settings":
+            self._click(window.settings_button)
+        else:
+            nav_row = next(index for index in range(window.nav_list.count()) if window.nav_list.item(index).data(Qt.ItemDataRole.UserRole) == page_key)
+            self._click_list_row(window.nav_list, nav_row)
         self._check(window.tab_widget.currentIndex() == row, f"메인 화면 {row} 이동")
 
     def _click_list_row(self, widget: QListWidget, row: int) -> None:
@@ -1062,6 +1448,7 @@ class OffscreenQaHarness:
         self._flush()
 
     def _click(self, widget: QWidget) -> None:
+        self._ensure_control_visible(widget)
         if not widget.isEnabled():
             raise AssertionError(
                 f"비활성 컨트롤을 클릭할 수 없습니다: {widget.objectName() or type(widget).__name__}"
@@ -1074,6 +1461,7 @@ class OffscreenQaHarness:
         self._flush()
 
     def _paste(self, widget: QWidget, text: str) -> None:
+        self._ensure_control_visible(widget)
         self.app.clipboard().setText(text)
         widget.setFocus()
         QTest.keyClick(
@@ -1081,11 +1469,10 @@ class OffscreenQaHarness:
             Qt.Key.Key_A,
             Qt.KeyboardModifier.ControlModifier,
         )
-        QTest.keyClick(
-            widget,
-            Qt.Key.Key_V,
-            Qt.KeyboardModifier.ControlModifier,
-        )
+        if text:
+            QTest.keyClick(widget, Qt.Key.Key_V, Qt.KeyboardModifier.ControlModifier)
+        else:
+            QTest.keyClick(widget, Qt.Key.Key_Backspace)
         self._flush()
         if isinstance(widget, QLineEdit):
             actual = widget.text()
@@ -1097,6 +1484,52 @@ class OffscreenQaHarness:
             raise AssertionError(
                 f"붙여넣기 결과가 다릅니다: expected={text!r}, actual={actual!r}"
             )
+
+    def _ensure_control_visible(self, widget: QWidget) -> None:
+        parent = widget.parentWidget()
+        while parent is not None:
+            if isinstance(parent, QScrollArea):
+                parent.ensureWidgetVisible(widget, 0, max(24, widget.height()))
+            parent = parent.parentWidget()
+        self._flush()
+        if not widget.isVisible() or not widget.visibleRegion().contains(widget.rect().center()):
+            raise AssertionError(f"보이지 않는 컨트롤을 조작할 수 없습니다: {widget.objectName() or type(widget).__name__}")
+
+    def _assert_control_accessible(self, widget: QWidget) -> None:
+        self._ensure_control_visible(widget)
+        name = widget.accessibleName() or widget.objectName() or getattr(widget, "text", lambda: type(widget).__name__)()
+        visible = widget.visibleRegion().boundingRect()
+        self._check(
+            widget.height() >= widget.fontMetrics().height() and visible.height() >= widget.height() - 2
+            and visible.width() >= widget.width() - 2,
+            f"조작부 전체 높이 및 클릭 영역: {name} (위젯 {widget.width()}×{widget.height()}, 가시 {visible.width()}×{visible.height()})",
+        )
+
+    def _assert_viewport_height(self, view, minimum: int, name: str) -> None:
+        viewport = view.viewport()
+        self._ensure_control_visible(viewport)
+        self._check(
+            viewport.height() >= minimum and viewport.visibleRegion().boundingRect().height() >= minimum,
+            f"{name} viewport 최소 {minimum}px (실제 {viewport.height()}px)",
+        )
+
+    def _assert_readable_card(self, card: QWidget, name: str) -> None:
+        labels = card.findChildren(QLabel)
+        for label in labels:
+            self._ensure_control_visible(label)
+            required_height = label.heightForWidth(label.width()) if label.wordWrap() else label.fontMetrics().height()
+            self._check(
+                label.height() >= required_height and card.rect().contains(label.geometry()),
+                f"{name} 텍스트 높이와 카드 내부 배치: {label.text()}",
+            )
+        self._assert_non_overlapping(tuple(labels), card, f"{name} 제목·값")
+
+    def _assert_non_overlapping(self, widgets: tuple[QWidget, ...], parent: QWidget, name: str) -> None:
+        rects = [QRect(widget.mapTo(parent, QPoint(0, 0)), widget.size()) for widget in widgets if widget.isVisible()]
+        self._check(
+            all(not left.intersects(right) for index, left in enumerate(rects) for right in rects[index + 1:]),
+            f"{name} 영역 비중첩",
+        )
 
     def _release_next(self) -> None:
         if self.pool is None:
@@ -1223,7 +1656,7 @@ class OffscreenQaHarness:
                 "",
                 "## 증거 한계",
                 "",
-                "- 외부 네트워크, 운영 장비, AI CLI, 파일 전송 서버는 결정론적 테스트 대역으로 교체했습니다.",
+                "- 외부 네트워크, 운영 장비와 파일 전송 서버는 결정론적 테스트 대역으로 교체했습니다.",
                 "- 화면 캡처와 Qt 속성은 확인했지만 실제 스크린 리더 인증을 대신하지 않습니다.",
                 "- 동시성 경쟁은 별도 실제 QThreadPool 회귀 테스트에서 검증합니다.",
                 "",

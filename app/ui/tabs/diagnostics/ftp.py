@@ -37,14 +37,25 @@ from app.ui.common import (
     set_table_minimums,
 )
 from app.ui.dialogs.ftp_profile_dialog import FtpProfileDialog
+from app.ui.common.disclosure import CollapsibleSection
 from app.utils.file_utils import open_in_explorer
 from app.utils.validators import (
     default_ftp_port,
+    validate_ftp_host,
+    ValidationError,
 )
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
 from netops_suite.ui.selection_inputs import NoWheelComboBox
+
+
+# Which protocol to pick, in one line, for people new to file transfer.
+_TRANSFER_MODE_ADVICE = {
+    "FTP/FTPS/SFTP": "암호화가 필요하면 SFTP나 FTPS를 고릅니다.",
+    "SCP": "SSH로 접속되는 장비에 암호화된 복사를 할 때 씁니다.",
+    "TFTP": "계정·암호화가 없어 펌웨어·설정 파일을 격리망에서 옮길 때만 씁니다.",
+}
 
 class FtpDiagnosticsMixin:
     def _build_ftp_tab(self) -> QWidget:
@@ -81,8 +92,8 @@ class FtpDiagnosticsMixin:
         selector_layout.setContentsMargins(0, 0, 0, 0)
 
         self.file_transfer_role_combo = NoWheelComboBox()
-        self.file_transfer_role_combo.addItem("클라이언트", 0)
-        self.file_transfer_role_combo.addItem("서버", 1)
+        self.file_transfer_role_combo.addItem("파일 보내기·받기", 0)
+        self.file_transfer_role_combo.addItem("내 PC에서 파일 제공", 1)
         self.file_transfer_role_combo.setMinimumWidth(120)
         self.file_transfer_mode_combo = NoWheelComboBox()
         self.file_transfer_mode_combo.addItem("FTP/FTPS/SFTP", 0)
@@ -90,7 +101,7 @@ class FtpDiagnosticsMixin:
         self.file_transfer_mode_combo.addItem("TFTP", 2)
         self.file_transfer_mode_combo.setMinimumWidth(150)
 
-        selector_layout.addWidget(QLabel("역할"))
+        selector_layout.addWidget(QLabel("작업"))
         selector_layout.addWidget(self.file_transfer_role_combo)
         selector_layout.addSpacing(12)
         selector_layout.addWidget(QLabel("전송 방식"))
@@ -98,8 +109,8 @@ class FtpDiagnosticsMixin:
         selector_layout.addStretch(1)
         layout.addWidget(selector_widget)
         self.file_transfer_hint_label = QLabel("")
+        self.file_transfer_hint_label.setObjectName("diagnosticToolHint")
         self.file_transfer_hint_label.setWordWrap(True)
-        self.file_transfer_hint_label.setStyleSheet("color:#475569;")
         layout.addWidget(self.file_transfer_hint_label)
 
         self.file_transfer_page_stack = QStackedWidget()
@@ -109,8 +120,10 @@ class FtpDiagnosticsMixin:
         self.file_transfer_page_stack.addWidget(self._build_ftp_server_page())
         self.file_transfer_page_stack.addWidget(self._build_scp_server_page())
         self.file_transfer_page_stack.addWidget(self._build_tftp_server_page())
+        for index in range(self.file_transfer_page_stack.count()):
+            # Keep short pages top-aligned instead of centring them in the spare height.
+            self.file_transfer_page_stack.widget(index).layout().addStretch(0)
 
-        self.file_transfer_page_stack.setStyleSheet("background:#ffffff;")
         self.file_transfer_page_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self.file_transfer_scroll_area = QScrollArea()
@@ -120,6 +133,8 @@ class FtpDiagnosticsMixin:
         self.file_transfer_scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.file_transfer_scroll_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
         self.file_transfer_scroll_area.setWidget(self.file_transfer_page_stack)
+        self.file_transfer_page_stack.setAutoFillBackground(False)
+        self.file_transfer_scroll_area.viewport().setAutoFillBackground(False)
         layout.addWidget(self.file_transfer_scroll_area, 1)
 
         self.file_transfer_role_combo.currentIndexChanged.connect(self._handle_file_transfer_role_changed)
@@ -239,10 +254,16 @@ class FtpDiagnosticsMixin:
     def _update_file_transfer_hint(self) -> None:
         role = self.file_transfer_role_combo.currentIndex()
         mode = self.file_transfer_mode_combo.currentText()
+        advice = _TRANSFER_MODE_ADVICE.get(mode, "")
         if role == 0:
-            self.file_transfer_hint_label.setText(f"{mode} 클라이언트: 원격 장비/서버에 접속해 파일을 업로드하거나 다운로드합니다.")
+            self.file_transfer_hint_label.setText(
+                f"{mode} 클라이언트: 이 PC가 장비·서버에 접속해 파일을 올리거나 내려받습니다. {advice}"
+            )
             return
-        self.file_transfer_hint_label.setText(f"{mode} 서버: 이 PC에서 임시 서버를 열어 다른 장비가 접속하도록 합니다. 방화벽과 바인드 IP를 확인하세요.")
+        self.file_transfer_hint_label.setText(
+            f"{mode} 서버: 이 PC에 임시 서버를 열어 장비가 파일을 가져가거나 올리게 합니다. "
+            f"방화벽과 바인드 IP를 확인하세요. {advice}"
+        )
 
     def _sync_file_transfer_page_minimum_size(self) -> None:
         current_page = self.file_transfer_page_stack.currentWidget()
@@ -261,7 +282,7 @@ class FtpDiagnosticsMixin:
         for widget in widgets:
             widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
 
-    def _prepare_file_transfer_page(self, page: QWidget, minimum_width: int = 760) -> None:
+    def _prepare_file_transfer_page(self, page: QWidget, minimum_width: int = 620) -> None:
         page.setMinimumWidth(minimum_width)
         page.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
@@ -280,6 +301,68 @@ class FtpDiagnosticsMixin:
         for button in buttons:
             button.setMinimumWidth(max(width, button.minimumSizeHint().width()))
             button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+
+    def _fold_transfer_options(self, form, layout, key: str, fields: list) -> None:
+        section = CollapsibleSection("연결 옵션")
+        options_form = QFormLayout()
+        # Empty numeric fields use these same defaults in the service calls.
+        # Restored settings often store the default explicitly; neither form
+        # represents an advanced option changed by the user.
+        numeric_defaults = {
+            "ftp": {"port": "21", "timeout": "15"},
+            "scp": {"port": "22", "timeout": "15"},
+            "tftp": {"port": "69", "timeout": "5", "retries": "3"},
+        }
+        empty_values = {
+            getattr(self, f"{key}_client_{name}_edit"): value
+            for name, value in numeric_defaults[key].items()
+        }
+        for field in fields:
+            index = form.indexOf(field)
+            if index < 0:
+                continue
+            row, column, _rows, _columns = form.getItemPosition(index)
+            label_item = form.itemAtPosition(row, column - 1) if column else None
+            label = label_item.widget() if label_item is not None else None
+            form.removeWidget(field)
+            if isinstance(label, QLabel):
+                form.removeWidget(label)
+                options_form.addRow(label, field)
+            else:
+                options_form.addRow(field)
+            section.watch(field, empty_value=empty_values.get(field))
+        section.content_layout.addLayout(options_form)
+        layout.addWidget(section)
+        setattr(self, f"{key}_options_section", section)
+
+    def _transfer_log_section(self, key: str, panel: QWidget) -> QWidget:
+        section = CollapsibleSection("원문 로그")
+        section.content_layout.addWidget(panel)
+        setattr(self, f"{key}_log_section", section)
+        return section
+
+    def _progressive_transfer_table(self, table: QTableWidget) -> None:
+        table.hide()
+        table.model().rowsInserted.connect(lambda *_args: table.show())
+
+    def _transfer_input_error(self, protocol: str, message: str, field: QWidget | None = None) -> None:
+        label = getattr(self, f"{protocol}_client_status_label")
+        label.setText(message)
+        label.setWordWrap(True)
+        label.setStyleSheet("color:#b42318;")
+        if field is not None:
+            field.setFocus()
+
+    def _validate_transfer_host(self, protocol: str) -> bool:
+        field = getattr(self, f"{protocol}_client_host_edit")
+        label = getattr(self, f"{protocol}_client_status_label")
+        label.setStyleSheet("")
+        try:
+            validate_ftp_host(field.text())
+        except ValidationError as exc:
+            self._transfer_input_error(protocol, str(exc), field)
+            return False
+        return True
 
     def _confirm_transfer_preflight(
         self,
@@ -327,7 +410,9 @@ class FtpDiagnosticsMixin:
         profile_row.addWidget(self.ftp_profile_add_button)
         profile_row.addWidget(self.ftp_profile_edit_button)
         profile_row.addWidget(self.ftp_profile_delete_button)
-        connection_layout.addLayout(profile_row)
+        self.ftp_profiles_section = CollapsibleSection("저장된 접속 프로파일")
+        self.ftp_profiles_section.content_layout.addLayout(profile_row)
+        connection_layout.addWidget(self.ftp_profiles_section)
 
         form = QGridLayout()
         self._configure_transfer_form_grid(form)
@@ -346,6 +431,7 @@ class FtpDiagnosticsMixin:
         self.ftp_client_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.ftp_client_password_edit.setPlaceholderText("세션 중에만 사용합니다")
         self.ftp_client_passive_check = make_visible_checkbox("패시브 모드")
+        self.ftp_client_passive_check.setChecked(True)
         self.ftp_client_timeout_edit = QLineEdit()
         self.ftp_client_timeout_edit.setPlaceholderText("15")
         self.ftp_client_remote_path_edit = QLineEdit()
@@ -397,6 +483,9 @@ class FtpDiagnosticsMixin:
 
         form.addWidget(self.ftp_client_passive_check, 4, 1)
         connection_layout.addLayout(form)
+        self._fold_transfer_options(form, connection_layout, "ftp", [
+            self.ftp_client_port_edit, self.ftp_client_timeout_edit, self.ftp_client_passive_check,
+        ])
 
         button_row = QHBoxLayout()
         self.ftp_client_connect_button = make_action_button("연결", ActionKind.START)
@@ -421,18 +510,22 @@ class FtpDiagnosticsMixin:
         )
         for button in (
             self.ftp_client_connect_button,
-            self.ftp_client_refresh_button,
             self.ftp_client_disconnect_button,
             self.ftp_client_upload_button,
             self.ftp_client_download_button,
-            self.ftp_client_mkdir_button,
-            self.ftp_client_rename_button,
-            self.ftp_client_delete_button,
             self.ftp_client_cancel_button,
         ):
             button_row.addWidget(button)
         button_row.addStretch(1)
         connection_layout.addLayout(button_row)
+        self.ftp_file_management_section = CollapsibleSection("원격 파일 관리")
+        management_row = QHBoxLayout()
+        for button in (self.ftp_client_refresh_button, self.ftp_client_mkdir_button,
+                       self.ftp_client_rename_button, self.ftp_client_delete_button):
+            management_row.addWidget(button)
+        management_row.addStretch(1)
+        self.ftp_file_management_section.content_layout.addLayout(management_row)
+        connection_layout.addWidget(self.ftp_file_management_section)
         self.ftp_client_support_label = QLabel("")
         self.ftp_client_support_label.setWordWrap(True)
         self.ftp_client_support_label.hide()
@@ -501,7 +594,8 @@ class FtpDiagnosticsMixin:
         self.ftp_client_log_output.setMinimumHeight(110)
         self.ftp_client_log_output.setMaximumHeight(16777215)
         ftp_log_layout.addWidget(self.ftp_client_log_output)
-        self.ftp_client_result_log_splitter.addWidget(ftp_log_panel)
+        self.ftp_client_result_log_splitter.addWidget(self._transfer_log_section("ftp_client", ftp_log_panel))
+        self._progressive_transfer_table(self.ftp_transfer_table)
         self.ftp_client_result_log_splitter.setSizes([420, 160])
         result_layout.addWidget(self.ftp_client_result_log_splitter, 1)
         self.ftp_client_activity_splitter.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -570,7 +664,7 @@ class FtpDiagnosticsMixin:
         form.addWidget(self.ftp_server_protocol_combo, 0, 1)
         form.addWidget(QLabel("바인드 IP"), 0, 2)
         form.addWidget(self.ftp_server_bind_host_edit, 0, 3)
-        form.addWidget(self.ftp_server_bind_warning_label, 0, 4)
+        form.addWidget(self.ftp_server_bind_warning_label, 4, 0, 1, 4)
 
         form.addWidget(QLabel("포트"), 1, 0)
         form.addWidget(self.ftp_server_port_edit, 1, 1)
@@ -634,7 +728,7 @@ class FtpDiagnosticsMixin:
         self.ftp_server_splitter = QSplitter(Qt.Vertical)
         self.ftp_server_splitter.setChildrenCollapsible(False)
         self.ftp_server_splitter.addWidget(server_group)
-        self.ftp_server_splitter.addWidget(self.ftp_server_log_group)
+        self.ftp_server_splitter.addWidget(self._transfer_log_section("ftp_server", self.ftp_server_log_group))
         self.ftp_server_splitter.setSizes([260, 360])
         layout.addWidget(self.ftp_server_splitter, 1)
 
@@ -794,6 +888,8 @@ class FtpDiagnosticsMixin:
             self.ftp_client_local_folder_edit.setText(folder)
 
     def _connect_ftp_client(self) -> None:
+        if self._ftp_client_busy or not self._validate_transfer_host("ftp"):
+            return
         if self._ftp_client_connected:
             QMessageBox.information(self, "이미 연결됨", "먼저 현재 연결을 종료해 주세요.")
             return
@@ -823,12 +919,13 @@ class FtpDiagnosticsMixin:
             on_progress=self._handle_ftp_client_progress,
             on_result=self._finish_ftp_connect,
             on_finished=lambda: self._set_ftp_client_busy(False),
+            on_error=lambda message: self._transfer_input_error("ftp", message, self.ftp_client_host_edit),
             error_title="FTP 연결 실패",
         )
 
     def _finish_ftp_connect(self, result: OperationResult) -> None:
         if not result.success:
-            QMessageBox.warning(self, "FTP 연결 실패", result.message)
+            self._transfer_input_error("ftp", result.message, self.ftp_client_host_edit)
             return
         payload = result.payload if isinstance(result.payload, dict) else {}
         self._ftp_session_id = str(payload.get("session_id", "") or "")
@@ -1273,6 +1370,11 @@ class FtpDiagnosticsMixin:
         self.ftp_client_delete_button.setEnabled(connected and not self._ftp_client_busy)
         self.ftp_client_cancel_button.setEnabled(self._ftp_client_busy)
         self.ftp_remote_table.setEnabled(connected)
+        self.ftp_remote_group.setVisible(connected)
+        self.ftp_file_management_section.setVisible(connected)
+        for button in (self.ftp_client_upload_button, self.ftp_client_download_button,
+                       self.ftp_client_disconnect_button):
+            button.setVisible(connected)
         self.ftp_remote_status_label.setVisible(not connected)
         self.ftp_client_fingerprint_label.setVisible(connected and self.ftp_client_fingerprint_label.text().strip() not in {"", "-"})
         self._update_ftp_client_activity_visibility()

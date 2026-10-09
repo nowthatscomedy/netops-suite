@@ -9,7 +9,7 @@ from core import telnet_compat as telnetlib
 import time
 import logging
 from vendors.base import CustomDeviceHandler, register_handler
-import paramiko
+from core.ssh_compat import CompatibleSSHClient
 import re
 
 logger = logging.getLogger(__name__)
@@ -187,8 +187,7 @@ class UbiquossE4020SSHHandler(CustomDeviceHandler):
         self.logger.debug("Ubiquoss E4020 SSH 접속 시작: %s", self.device['ip'])
         
         try:
-            self.ssh = paramiko.SSHClient()
-            self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            self.ssh = CompatibleSSHClient(self.device, self.session_log_file)
 
             self.ssh.connect(
                 hostname=self.device['ip'],

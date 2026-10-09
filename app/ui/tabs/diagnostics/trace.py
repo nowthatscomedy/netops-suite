@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QSplitter,
     QTableWidget,
     QVBoxLayout,
@@ -20,7 +19,8 @@ from PySide6.QtWidgets import (
 
 from app.models.network_models import TraceHop
 from app.models.result_models import OperationResult
-from app.ui.common import make_table_item, set_table_minimums
+from app.ui.common import make_empty_state, make_inline_status, make_table_item, set_inline_status, set_table_minimums
+from app.ui.common.disclosure import CollapsibleSection
 from app.utils.parser import parse_trace_hop_line, parse_trace_hops
 from app.utils.validators import ValidationError, validate_host_input
 
@@ -49,12 +49,17 @@ class TraceDiagnosticsMixin:
         button_row.addStretch(1)
 
         form.addRow("대상", self.trace_target_edit)
-        form.addRow("", self.trace_no_resolve_check)
+        self.trace_options_section = CollapsibleSection("실행 옵션")
+        self.trace_options_section.content_layout.addWidget(self.trace_no_resolve_check)
+        self.trace_options_section.watch(self.trace_no_resolve_check)
+        form.addRow(self.trace_options_section)
         form.addRow("", button_row)
         self.pathping_hint_label = QLabel("pathping은 홉별 손실률을 측정하므로 수 분 걸릴 수 있습니다.")
         self.pathping_hint_label.setWordWrap(True)
         self.pathping_hint_label.setStyleSheet("color:#475467;")
         form.addRow("", self.pathping_hint_label)
+        self.trace_input_error = make_inline_status("error", "")
+        form.addRow(self.trace_input_error)
         layout.addWidget(group)
 
         self.trace_status_label = QLabel("준비")
@@ -71,9 +76,15 @@ class TraceDiagnosticsMixin:
         self.trace_output.setMinimumHeight(100)
         self.trace_output.setMaximumHeight(16777215)
         self.trace_output.setPlaceholderText("tracert/pathping 원본 명령 출력이 여기에 표시됩니다.")
-        self.trace_splitter.addWidget(self.trace_output)
+        self.trace_log_section = CollapsibleSection("원문 로그")
+        self.trace_log_section.content_layout.addWidget(self.trace_output)
+        self.trace_splitter.addWidget(self.trace_log_section)
         self.trace_splitter.setSizes([420, 160])
+        self.trace_empty_label = make_empty_state("대상을 입력하고 실행하면 경로와 홉별 응답이 표시됩니다.")
+        self.trace_empty_label.setMaximumHeight(72)
+        layout.addWidget(self.trace_empty_label)
         layout.addWidget(self.trace_splitter, 1)
+        self.trace_splitter.hide()
 
         self.tracert_button.clicked.connect(lambda: self.start_trace("tracert"))
         self.pathping_button.clicked.connect(lambda: self.start_trace("pathping"))
@@ -81,15 +92,21 @@ class TraceDiagnosticsMixin:
         return page
 
     def start_trace(self, mode: str) -> None:
+        if not self.tracert_button.isEnabled():
+            return
+        set_inline_status(self.trace_input_error, "error", "")
         try:
             target = validate_host_input(self.trace_target_edit.text())
         except ValidationError as exc:
-            QMessageBox.warning(self, "입력 확인", str(exc))
+            set_inline_status(self.trace_input_error, "error", str(exc))
+            self.trace_target_edit.setFocus()
             return
 
         self.trace_output.clear()
         self.trace_table.setRowCount(0)
         self.trace_row_map.clear()
+        self.trace_splitter.show()
+        self.trace_empty_label.hide()
         self.trace_status_label.setText(f"{mode} 실행 중...")
         self.trace_cancel_event = Event()
         self._set_trace_running(True)
@@ -120,6 +137,7 @@ class TraceDiagnosticsMixin:
             self._upsert_trace_hop(hop)
 
     def _set_trace_running(self, running: bool) -> None:
+        self._set_diagnostic_running("trace", running)
         self.tracert_button.setEnabled(not running)
         self.pathping_button.setEnabled(not running)
         self.trace_cancel_button.setEnabled(running)

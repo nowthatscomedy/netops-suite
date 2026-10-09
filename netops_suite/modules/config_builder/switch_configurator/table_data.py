@@ -94,6 +94,41 @@ def make_blank_table_row(
     return row
 
 
+def make_sample_table_row(
+    headers: list[str],
+    profile: Profile,
+    index: int = 0,
+) -> dict[str, str]:
+    """Blank row filled with example values that pass the profile's types."""
+    row = make_blank_table_row(headers, profile)
+    if "device_id" in row:
+        row["device_id"] = f"SW-{index + 1:02d}"
+    for name, variable in profile.variables.items():
+        row[name] = _sample_variable_value(name, variable.type, variable.default, index)
+    return row
+
+
+def _sample_variable_value(name: str, variable_type: str, default: Any, index: int) -> str:
+    if default is not None and str(default).strip():
+        return str(default).strip().lower() if isinstance(default, bool) else str(default)
+    key = name.lower()
+    if variable_type == "bool":
+        return "true"
+    if variable_type == "int":
+        return str(100 + index * 10) if "vlan" in key else "1"
+    if variable_type == "ipv4":
+        if "mask" in key:
+            return "255.255.255.0"
+        if "gw" in key or "gateway" in key:
+            return "192.0.2.1"
+        return f"192.0.2.{11 + index}"
+    if "secret" in key or "password" in key:
+        return "CHANGE_ME_SECRET"
+    if "host" in key or "name" in key:
+        return f"SW-{index + 1:02d}"
+    return f"sample-{index + 1}"
+
+
 def build_records_from_table(headers: list[str], rows: list[dict[str, Any]]) -> list[DeviceRecord]:
     normalized_headers = [str(header).strip() for header in headers if str(header).strip()]
     records: list[DeviceRecord] = []

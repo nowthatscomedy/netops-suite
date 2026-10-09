@@ -1,0 +1,3 @@
+# Optional separate process only. Never install into the main application venv.
+paramiko==3.5.1
+cryptography==50.0.0

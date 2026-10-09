@@ -515,6 +515,11 @@ def _validate_manifest_structure(
                 break
         if anchor and anchor not in anchors:
             result.error(f"{raw_path}: guide anchor not found: {anchor}")
+        quick_anchor = guide.get("quick_help_anchor", "")
+        if not isinstance(quick_anchor, str) or (quick_anchor and not ANCHOR_RE.fullmatch(quick_anchor)):
+            result.error(f"{label}.quick_help_anchor must be a stable lowercase ASCII anchor")
+        elif quick_anchor and quick_anchor not in anchors:
+            result.error(f"{raw_path}: quick help anchor not found: {quick_anchor}")
         if isinstance(raw_path, str):
             owner_key = (raw_path, anchor)
             if owner_key in anchor_owners:

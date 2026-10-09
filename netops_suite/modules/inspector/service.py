@@ -31,6 +31,7 @@ _PROFILE_RULE_SECTIONS = (
     "handler_overrides",
     "profile_metadata",
 )
+_MODEL_PROFILE_SECTION = "model_profiles"
 
 
 @dataclass(slots=True)
@@ -61,6 +62,8 @@ class InspectorRunResult:
 class CustomCommandValidationSummary:
     command_count: int
     variable_names: tuple[str, ...]
+    preview_device: str | None = None
+    preview_commands: tuple[str, ...] = ()
 
 
 class InspectorService:
@@ -103,6 +106,22 @@ class InspectorService:
                 for vendor, os_map in sorted(INSPECTION_COMMANDS.items())
             }
 
+    def handler_connection_types(self, vendor: str, os_name: str) -> tuple[str, ...]:
+        """Connection types that have a dedicated handler for vendor/OS."""
+        self._ensure_runtime_modules_current()
+        with self._runtime_import_path():
+            from vendors.base import HANDLER_REGISTRY
+
+            vendor_key = str(vendor or "").strip().lower()
+            os_key = str(os_name or "").strip().lower()
+            return tuple(
+                sorted(
+                    conn
+                    for (handler_vendor, handler_os, conn) in HANDLER_REGISTRY
+                    if handler_vendor == vendor_key and handler_os == os_key
+                )
+            )
+
     def supported_profile_definitions(self) -> list[dict[str, Any]]:
         self._ensure_runtime_modules_current()
         with self._runtime_import_path():
@@ -112,9 +131,11 @@ class InspectorService:
                 CUSTOM_PARSERS,
                 HANDLER_OVERRIDES,
                 INSPECTION_COMMANDS,
+                MODEL_PROFILES,
                 PARSING_RULES,
                 is_custom_rule_pair,
             )
+            from core.profile_resolver import resolve_device_profile
 
             profiles: list[dict[str, Any]] = []
             custom_parsers = sorted(CUSTOM_PARSERS.keys())
@@ -155,8 +176,60 @@ class InspectorService:
                             "is_reference": False,
                             "display_name": f"{vendor} / {os_name}",
                             "source": "runtime",
+                            "profile_scope": "base",
                         }
                     )
+            for vendor, os_map in sorted(MODEL_PROFILES.items()):
+                if not isinstance(os_map, dict):
+                    continue
+                for os_name, model_map in sorted(os_map.items()):
+                    if not isinstance(model_map, dict):
+                        continue
+                    for model in sorted(model_map):
+                        raw_profile = model_map.get(model, {})
+                        if not isinstance(raw_profile, dict):
+                            continue
+                        resolved = resolve_device_profile(vendor, os_name, model)
+                        output_columns = list(resolved.output_columns) or self._collect_output_columns(
+                            resolved.parsing_rules
+                        )
+                        profiles.append(
+                            {
+                                "vendor": resolved.vendor,
+                                "model": resolved.model,
+                                "os": resolved.os_name,
+                                "os_version": resolved.os_version,
+                                "key": f"{resolved.vendor}|{resolved.os_name}|{resolved.model}",
+                                "command_count": len(resolved.inspection_commands),
+                                "commands": list(resolved.inspection_commands),
+                                "backup_command": resolved.backup_command,
+                                "has_backup": bool(resolved.backup_command),
+                                "parse_rule_count": len(resolved.parsing_rules),
+                                "parsing_rules": resolved.parsing_rules,
+                                "output_columns": output_columns,
+                                "connection_overrides": dict(
+                                    raw_profile.get("connection_overrides", {})
+                                ),
+                                "handler_overrides": dict(
+                                    raw_profile.get("handler_overrides", {})
+                                ),
+                                "effective_connection_overrides": (
+                                    resolved.connection_overrides
+                                ),
+                                "effective_handler_overrides": (
+                                    resolved.handler_overrides
+                                ),
+                                "custom_parsers": custom_parsers,
+                                "is_custom": True,
+                                "is_reference": False,
+                                "display_name": (
+                                    f"{resolved.vendor} / {resolved.os_name} / "
+                                    f"{resolved.model} (모델 전용)"
+                                ),
+                                "source": "model_profiles",
+                                "profile_scope": "model",
+                            }
+                        )
             existing_keys = {str(profile["key"]) for profile in profiles}
             profiles.extend(
                 self._load_reference_profile_files(existing_keys, custom_parsers)
@@ -214,6 +287,8 @@ class InspectorService:
         self.vendor_profiles_dir.mkdir(parents=True, exist_ok=True)
         count = 0
         for profile in self.supported_profile_definitions():
+            if profile.get("profile_scope") == "model":
+                continue
             vendor = profile["vendor"]
             os_name = profile["os"]
             path = (
@@ -250,6 +325,11 @@ class InspectorService:
 
         incoming = self._load_custom_rules_document(text)
         targets = self._profile_keys(incoming.get("inspection_commands"))
+        model_targets = self._model_profile_keys(incoming.get(_MODEL_PROFILE_SECTION))
+        if targets and model_targets:
+            raise ValueError("한 번에 공통 프로파일과 모델 전용 프로파일을 함께 저장할 수 없습니다.")
+        if model_targets:
+            return self._merge_model_profile_document(incoming, model_targets)
         if not targets:
             raise ValueError(
                 "저장할 inspection_commands의 벤더와 OS 프로파일이 필요합니다."
@@ -296,7 +376,9 @@ class InspectorService:
             yaml.safe_dump(merged, sort_keys=False, allow_unicode=True)
         )
 
-    def custom_profile_exists(self, vendor: str, os_name: str) -> bool:
+    def custom_profile_exists(
+        self, vendor: str, os_name: str, model: str | None = None
+    ) -> bool:
         vendor_key = self._normalize_key(vendor)
         os_key = self._normalize_key(os_name)
         if not vendor_key or not os_key or not self.custom_rules_path.is_file():
@@ -307,8 +389,60 @@ class InspectorService:
             )
         except (OSError, ValueError, yaml.YAMLError):
             return False
-        return (vendor_key, os_key) in self._profile_keys(
-            data.get("inspection_commands")
+        if model is not None:
+            model_key = self._normalize_key(model)
+            return (vendor_key, os_key, model_key) in self._model_profile_keys(
+                data.get(_MODEL_PROFILE_SECTION)
+            )
+        return (vendor_key, os_key) in self._profile_keys(data.get("inspection_commands"))
+
+    def _merge_model_profile_document(
+        self,
+        incoming: dict[str, Any],
+        targets: set[tuple[str, str, str]],
+    ) -> Path:
+        existing: dict[str, Any] = {}
+        if self.custom_rules_path.is_file():
+            existing = self._load_custom_rules_document(
+                self.custom_rules_path.read_text(encoding="utf-8")
+            )
+        merged = dict(existing)
+        current = self._mapping_copy(merged.get(_MODEL_PROFILE_SECTION))
+        incoming_section = self._mapping_copy(incoming.get(_MODEL_PROFILE_SECTION))
+
+        for vendor_key, os_key, model_key in targets:
+            vendor_map: dict[str, Any] = {}
+            for existing_vendor in list(current):
+                if self._normalize_key(existing_vendor) == vendor_key:
+                    vendor_map.update(self._mapping_copy(current.pop(existing_vendor)))
+
+            os_map: dict[str, Any] = {}
+            for existing_os in list(vendor_map):
+                if self._normalize_key(existing_os) == os_key:
+                    os_map.update(self._mapping_copy(vendor_map.pop(existing_os)))
+            for existing_model in list(os_map):
+                if self._normalize_key(existing_model) == model_key:
+                    os_map.pop(existing_model)
+
+            incoming_value = self._model_profile_section_value(
+                incoming_section, vendor_key, os_key, model_key
+            )
+            if incoming_value is not _MISSING_PROFILE_VALUE:
+                os_map[model_key] = incoming_value
+            if os_map:
+                vendor_map[os_key] = os_map
+            if vendor_map:
+                current[vendor_key] = vendor_map
+
+        if current:
+            merged[_MODEL_PROFILE_SECTION] = current
+        else:
+            merged.pop(_MODEL_PROFILE_SECTION, None)
+        for key, value in incoming.items():
+            if key != _MODEL_PROFILE_SECTION:
+                merged[key] = value
+        return self.save_custom_rules_text(
+            yaml.safe_dump(merged, sort_keys=False, allow_unicode=True)
         )
 
     @staticmethod
@@ -337,6 +471,26 @@ class InspectorService:
         return keys
 
     @classmethod
+    def _model_profile_keys(
+        cls, section: object
+    ) -> set[tuple[str, str, str]]:
+        keys: set[tuple[str, str, str]] = set()
+        for vendor_value, os_map in cls._mapping_copy(section).items():
+            vendor = cls._normalize_key(vendor_value)
+            if not vendor or not isinstance(os_map, dict):
+                continue
+            for os_value, model_map in os_map.items():
+                os_name = cls._normalize_key(os_value)
+                if not os_name or not isinstance(model_map, dict):
+                    continue
+                keys.update(
+                    (vendor, os_name, cls._normalize_key(model_value))
+                    for model_value in model_map
+                    if cls._normalize_key(model_value)
+                )
+        return keys
+
+    @classmethod
     def _profile_section_value(
         cls, section: object, vendor: str, os_name: str
     ) -> object:
@@ -346,6 +500,25 @@ class InspectorService:
             for os_key, value in os_map.items():
                 if cls._normalize_key(os_key) == os_name:
                     return value
+        return _MISSING_PROFILE_VALUE
+
+    @classmethod
+    def _model_profile_section_value(
+        cls,
+        section: object,
+        vendor: str,
+        os_name: str,
+        model: str,
+    ) -> object:
+        for vendor_value, os_map in cls._mapping_copy(section).items():
+            if cls._normalize_key(vendor_value) != vendor or not isinstance(os_map, dict):
+                continue
+            for os_value, model_map in os_map.items():
+                if cls._normalize_key(os_value) != os_name or not isinstance(model_map, dict):
+                    continue
+                for model_value, profile in model_map.items():
+                    if cls._normalize_key(model_value) == model:
+                        return profile
         return _MISSING_PROFILE_VALUE
 
     def _backup_custom_rules_file(self) -> Path | None:
@@ -396,6 +569,7 @@ class InspectorService:
         os_version: str = "",
         output_columns: list[str] | None = None,
         parsing_rules: dict[str, Any] | None = None,
+        model_specific: bool = False,
     ) -> str:
         vendor_key = self._normalize_key(vendor)
         os_key = self._normalize_key(os_name)
@@ -407,36 +581,71 @@ class InspectorService:
         if not cleaned_commands:
             raise ValueError("점검 명령을 하나 이상 입력하세요.")
 
-        document: dict[str, Any] = {
-            "inspection_commands": {vendor_key: {os_key: cleaned_commands}}
-        }
-        if backup_command.strip():
-            document["backup_commands"] = {vendor_key: {os_key: backup_command.strip()}}
-
         connection_override: dict[str, str] = {}
         if default_device_type.strip():
             connection_override["default"] = default_device_type.strip()
             connection_override["ssh"] = default_device_type.strip()
         if telnet_device_type.strip():
             connection_override["telnet"] = telnet_device_type.strip()
-        if connection_override:
-            document["connection_overrides"] = {
-                vendor_key: {os_key: connection_override}
-            }
 
         rule_map = (
             parsing_rules
             if isinstance(parsing_rules, dict)
             else self._build_parsing_rules_from_rows(parser_rows or [])
         )
-        if rule_map:
-            document["parsing_rules"] = {vendor_key: {os_key: rule_map}}
-
         cleaned_handler = {
             key: value
             for key, value in (handler_overrides or {}).items()
             if value not in ("", None)
         }
+        model_handler = {
+            key: value
+            for key, value in (handler_overrides or {}).items()
+            if value is not None
+        }
+        if connection_override:
+            model_handler.setdefault("handler_type", "netmiko")
+            cleaned_handler.setdefault("handler_type", "netmiko")
+        cleaned_columns = [
+            str(column).strip()
+            for column in (output_columns or [])
+            if str(column).strip()
+        ]
+
+        if model_specific:
+            model_key = self._normalize_key(model)
+            if not model_key:
+                raise ValueError("모델 전용 프로파일에는 장비 모델이 필요합니다.")
+            document = {
+                _MODEL_PROFILE_SECTION: {
+                    vendor_key: {
+                        os_key: {
+                            model_key: {
+                                "os_version": os_version.strip(),
+                                "inspection_commands": cleaned_commands,
+                                "backup_command": backup_command.strip(),
+                                "parsing_rules": rule_map,
+                                "connection_overrides": connection_override,
+                                "handler_overrides": model_handler,
+                                "output_columns": cleaned_columns,
+                            }
+                        }
+                    }
+                }
+            }
+            return yaml.safe_dump(document, sort_keys=False, allow_unicode=True)
+
+        document: dict[str, Any] = {
+            "inspection_commands": {vendor_key: {os_key: cleaned_commands}}
+        }
+        if backup_command.strip():
+            document["backup_commands"] = {vendor_key: {os_key: backup_command.strip()}}
+        if connection_override:
+            document["connection_overrides"] = {
+                vendor_key: {os_key: connection_override}
+            }
+        if rule_map:
+            document["parsing_rules"] = {vendor_key: {os_key: rule_map}}
         if cleaned_handler:
             document["handler_overrides"] = {vendor_key: {os_key: cleaned_handler}}
 
@@ -448,11 +657,6 @@ class InspectorService:
             }.items()
             if value
         }
-        cleaned_columns = [
-            str(column).strip()
-            for column in (output_columns or [])
-            if str(column).strip()
-        ]
         if cleaned_columns:
             metadata["output_columns"] = cleaned_columns
         if metadata:
@@ -526,6 +730,37 @@ class InspectorService:
             validated = validate_dataframe(df)
             return validated.to_dict("records")
 
+    def inventory_profile_warnings(
+        self, devices: list[dict[str, Any]]
+    ) -> tuple[str, ...]:
+        """Return deterministic warnings for requested models without a match."""
+
+        self._ensure_runtime_modules_current()
+        warnings: list[str] = []
+        seen: set[tuple[str, str, str]] = set()
+        with self._runtime_import_path():
+            from core.profile_resolver import resolve_device_profile
+
+            for device in devices:
+                profile = resolve_device_profile(
+                    device.get("vendor", ""),
+                    device.get("os", ""),
+                    device.get("model", ""),
+                )
+                key = (profile.vendor, profile.os_name, profile.model)
+                if (
+                    not profile.model_requested
+                    or profile.model_matched
+                    or key in seen
+                ):
+                    continue
+                seen.add(key)
+                warnings.append(
+                    f"{profile.vendor} / {profile.os_name} / {profile.model}: "
+                    "모델 전용 프로파일이 없어 벤더/OS 프로파일을 사용합니다."
+                )
+        return tuple(warnings)
+
     def read_command_file(self, path: str) -> list[str]:
         self._ensure_runtime_modules_current()
         with self._runtime_import_path():
@@ -543,10 +778,22 @@ class InspectorService:
             from core.command_patterns import prepare_custom_commands
 
             prepared = prepare_custom_commands(commands, devices)
+        preview_device, preview_commands = next(
+            iter(prepared.commands_by_device.items()), (None, [])
+        )
         return CustomCommandValidationSummary(
             command_count=prepared.command_count,
             variable_names=prepared.variable_names,
+            preview_device=preview_device,
+            preview_commands=tuple(preview_commands),
         )
+
+    def inspect_command_patterns(
+        self,
+        commands: list[str],
+    ) -> CustomCommandValidationSummary:
+        """Check command syntax and variables without an inventory."""
+        return self.validate_custom_commands(commands, [])
 
     def validate_custom_command_file(
         self,
@@ -716,7 +963,7 @@ class InspectorService:
 
     @staticmethod
     def _normalize_key(value: str) -> str:
-        return str(value or "").strip().lower()
+        return " ".join(str(value or "").strip().casefold().split())
 
     @staticmethod
     def _safe_file_part(value: str) -> str:

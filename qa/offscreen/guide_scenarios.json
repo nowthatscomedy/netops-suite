@@ -6,29 +6,47 @@
   "scenarios": [
     {
       "id": "guide_interface_overview",
-      "title": "가이드 이미지 - 네트워크 설정",
-      "viewport": [1280, 800],
+      "title": "가이드 이미지 - 내 PC 네트워크",
+      "viewport": [
+        1280,
+        800
+      ],
       "guide_asset": "interface-overview.png",
       "capture_handler": "guide_overview",
       "page_index": 0,
-      "expected_title": "네트워크 설정",
+      "expected_title": "내 PC 네트워크",
       "expected_object_names": [
         "appShell",
         "mainNavigation",
         "workspacePanel",
-        "stepHint"
+        "pageHeader"
       ],
       "source_paths": [
         "app/main_window.py",
         "app/ui/common/theme.py",
         "app/ui/common/ux.py",
-        "app/ui/tabs/interface_tab.py"
-      ]
+        "app/ui/tabs/interface_tab.py",
+        "app/ui/common/disclosure.py",
+        "netops_suite/ui/actions.py",
+        "netops_suite/ui/icons.py",
+        "assets/icons/lucide/house.svg",
+        "assets/icons/lucide/network.svg",
+        "assets/icons/lucide/activity.svg",
+        "assets/icons/lucide/wifi.svg",
+        "assets/icons/lucide/server-cog.svg",
+        "assets/icons/lucide/square-terminal.svg",
+        "assets/icons/lucide/folder-sync.svg",
+        "assets/icons/lucide/settings-2.svg"
+      ],
+      "capture_target": "page"
     },
     {
       "id": "guide_diagnostics_overview",
       "title": "가이드 이미지 - 연결 진단",
-      "viewport": [1280, 800],
+      "viewport": [
+        1280,
+        800
+      ],
       "guide_asset": "diagnostics-overview.png",
       "capture_handler": "guide_overview",
       "page_index": 1,
@@ -37,7 +55,7 @@
         "appShell",
         "mainNavigation",
         "workspacePanel",
-        "stepHint",
+        "pageHeader",
         "diagnosticToolStack"
       ],
       "source_paths": [
@@ -46,115 +64,211 @@
         "app/ui/common/ux.py",
         "app/ui/tabs/diagnostics_tab.py",
         "app/ui/tabs/diagnostics/core.py",
-        "app/ui/tabs/diagnostics/ping.py"
-      ]
+        "app/ui/tabs/diagnostics/ping.py",
+        "app/ui/common/disclosure.py",
+        "netops_suite/ui/actions.py",
+        "netops_suite/ui/icons.py",
+        "assets/icons/lucide/house.svg",
+        "assets/icons/lucide/network.svg",
+        "assets/icons/lucide/activity.svg",
+        "assets/icons/lucide/wifi.svg",
+        "assets/icons/lucide/server-cog.svg",
+        "assets/icons/lucide/square-terminal.svg",
+        "assets/icons/lucide/folder-sync.svg",
+        "assets/icons/lucide/settings-2.svg"
+      ],
+      "capture_target": "page"
     },
     {
       "id": "guide_wireless_overview",
-      "title": "가이드 이미지 - Wi-Fi 분석",
-      "viewport": [1280, 800],
+      "title": "가이드 이미지 - Wi-Fi 확인",
+      "viewport": [
+        1280,
+        800
+      ],
       "guide_asset": "wireless-overview.png",
       "capture_handler": "guide_overview",
       "page_index": 2,
-      "expected_title": "Wi-Fi 분석",
+      "expected_title": "Wi-Fi 확인",
       "expected_object_names": [
         "appShell",
         "mainNavigation",
         "workspacePanel",
-        "stepHint",
+        "pageHeader",
         "wirelessStatusCard"
       ],
       "source_paths": [
         "app/main_window.py",
         "app/ui/common/theme.py",
         "app/ui/common/ux.py",
-        "app/ui/tabs/wireless_tab.py"
-      ]
+        "app/ui/tabs/wireless_tab.py",
+        "app/ui/common/disclosure.py",
+        "netops_suite/ui/actions.py",
+        "netops_suite/ui/icons.py",
+        "assets/icons/lucide/house.svg",
+        "assets/icons/lucide/network.svg",
+        "assets/icons/lucide/activity.svg",
+        "assets/icons/lucide/wifi.svg",
+        "assets/icons/lucide/server-cog.svg",
+        "assets/icons/lucide/square-terminal.svg",
+        "assets/icons/lucide/folder-sync.svg",
+        "assets/icons/lucide/settings-2.svg"
+      ],
+      "capture_target": "page"
+    },
+    {
+      "id": "guide_wireless_expanded",
+      "title": "가이드 이미지 - Wi-Fi 상세 정보 펼침",
+      "viewport": [
+        1280,
+        800
+      ],
+      "guide_asset": "wireless-expanded.png",
+      "capture_handler": "wireless_expanded",
+      "expected_object_names": [
+        "wirelessWorkspaceScroll",
+        "wirelessWorkspaceContent",
+        "wirelessStatusCard",
+        "wirelessChangeLog",
+        "wirelessNearbyTable"
+      ],
+      "source_paths": [
+        "app/main_window.py",
+        "app/ui/tabs/wireless_tab.py",
+        "app/ui/common/disclosure.py",
+        "app/ui/common/theme.py",
+        "netops_suite/ui/actions.py",
+        "netops_suite/ui/icons.py",
+        "assets/icons/lucide/house.svg",
+        "assets/icons/lucide/network.svg",
+        "assets/icons/lucide/activity.svg",
+        "assets/icons/lucide/wifi.svg",
+        "assets/icons/lucide/server-cog.svg",
+        "assets/icons/lucide/square-terminal.svg",
+        "assets/icons/lucide/folder-sync.svg",
+        "assets/icons/lucide/settings-2.svg"
+      ],
+      "capture_target": "page"
     },
     {
       "id": "guide_inspector_overview",
-      "title": "가이드 이미지 - 장비 점검과 백업",
-      "viewport": [1280, 800],
+      "title": "가이드 이미지 - 장비 점검·백업",
+      "viewport": [
+        1280,
+        800
+      ],
       "guide_asset": "inspector-overview.png",
       "capture_handler": "guide_overview",
       "page_index": 3,
-      "expected_title": "장비 점검/백업",
+      "expected_title": "장비 점검·백업",
       "expected_object_names": [
         "appShell",
         "mainNavigation",
         "workspacePanel",
-        "stepHint",
-        "inspectorTopPanel"
+        "pageHeader",
+        "inspectorTopPanel",
+        "inspectorSupportingTools"
       ],
       "source_paths": [
         "app/main_window.py",
         "app/ui/common/theme.py",
         "app/ui/common/ux.py",
-        "app/ui/tabs/inspector_tab.py"
-      ]
+        "app/ui/tabs/inspector_tab.py",
+        "app/ui/common/disclosure.py",
+        "netops_suite/ui/actions.py",
+        "netops_suite/ui/icons.py",
+        "assets/icons/lucide/house.svg",
+        "assets/icons/lucide/network.svg",
+        "assets/icons/lucide/activity.svg",
+        "assets/icons/lucide/wifi.svg",
+        "assets/icons/lucide/server-cog.svg",
+        "assets/icons/lucide/square-terminal.svg",
+        "assets/icons/lucide/folder-sync.svg",
+        "assets/icons/lucide/settings-2.svg",
+        "assets/icons/lucide/book-open.svg",
+        "assets/icons/lucide/server.svg"
+      ],
+      "capture_target": "page"
+    },
+    {
+      "id": "guide_inspector_custom_commands",
+      "title": "가이드 이미지 - 사용자 명령",
+      "viewport": [
+        1280,
+        800
+      ],
+      "guide_asset": "inspector-custom-commands.png",
+      "capture_handler": "inspector_custom_commands",
+      "expected_object_names": [
+        "pageHeader",
+        "inspectorCustomCommandEditor",
+        "inspectorCustomCommandCheck",
+        "inspectorCustomCommandPreview"
+      ],
+      "source_paths": [
+        "app/ui/tabs/inspector_tab.py",
+        "app/ui/common/ux.py",
+        "app/ui/common/theme.py",
+        "netops_suite/modules/inspector/service.py",
+        "netops_suite/modules/inspector_runtime/core/command_patterns.py"
+      ],
+      "capture_target": "page"
     },
     {
       "id": "guide_config_builder_overview",
-      "title": "가이드 이미지 - CLI 설정 생성",
-      "viewport": [1280, 800],
+      "title": "가이드 이미지 - 설정 명령 만들기",
+      "viewport": [
+        1280,
+        800
+      ],
       "guide_asset": "config-builder-overview.png",
       "capture_handler": "guide_overview",
       "page_index": 4,
-      "expected_title": "CLI 설정 생성",
+      "expected_title": "설정 명령 만들기",
       "expected_object_names": [
         "appShell",
         "mainNavigation",
         "workspacePanel",
-        "stepHint",
-        "configBuilderEmbeddedBuilder"
+        "pageHeader",
+        "configBuilderEmbeddedBuilder",
+        "configBuilderProfileManagementButton"
       ],
       "source_paths": [
         "app/main_window.py",
         "app/ui/common/theme.py",
         "app/ui/common/ux.py",
         "app/ui/tabs/config_builder_tab.py",
-        "netops_suite/modules/config_builder/switch_configurator/desktop_impl.py"
-      ]
-    },
-    {
-      "id": "guide_assistant_overview",
-      "title": "가이드 이미지 - NetOps 어시스턴트",
-      "viewport": [1280, 800],
-      "guide_asset": "assistant-overview.png",
-      "capture_handler": "guide_overview",
-      "page_index": 5,
-      "expected_title": "NetOps 어시스턴트",
-      "expected_object_names": [
-        "appShell",
-        "mainNavigation",
-        "workspacePanel",
-        "stepHint",
-        "aiProviderSettingsGroup",
-        "aiProviderSetupButton"
+        "netops_suite/modules/config_builder/switch_configurator/desktop_impl.py",
+        "app/ui/common/disclosure.py",
+        "netops_suite/ui/actions.py",
+        "netops_suite/ui/icons.py",
+        "assets/icons/lucide/house.svg",
+        "assets/icons/lucide/network.svg",
+        "assets/icons/lucide/activity.svg",
+        "assets/icons/lucide/wifi.svg",
+        "assets/icons/lucide/server-cog.svg",
+        "assets/icons/lucide/square-terminal.svg",
+        "assets/icons/lucide/folder-sync.svg",
+        "assets/icons/lucide/settings-2.svg"
       ],
-      "source_paths": [
-        "app/main_window.py",
-        "app/ui/common/theme.py",
-        "app/ui/common/ux.py",
-        "app/ui/tabs/ai_chat_tab.py",
-        "app/models/ai_models.py",
-        "app/services/ai_agent_service.py",
-        "app/services/ai_model_catalog_service.py"
-      ]
+      "capture_target": "page"
     },
     {
       "id": "guide_settings_overview",
       "title": "가이드 이미지 - 설정",
-      "viewport": [1280, 800],
+      "viewport": [
+        1280,
+        800
+      ],
       "guide_asset": "settings-overview.png",
-      "capture_handler": "guide_overview",
-      "page_index": 6,
+      "capture_handler": "settings_storage",
+      "page_index": 5,
       "expected_title": "설정",
       "expected_object_names": [
         "appShell",
         "mainNavigation",
         "workspacePanel",
-        "stepHint",
+        "pageHeader",
         "settingsSectionTabs"
       ],
       "source_paths": [
@@ -162,8 +276,116 @@
         "app/ui/common/theme.py",
         "app/ui/common/ux.py",
         "app/ui/tabs/settings_tab.py",
-        "app/models/ai_models.py",
-        "app/services/ai_agent_service.py"
+        "app/ui/common/disclosure.py",
+        "netops_suite/ui/actions.py",
+        "netops_suite/ui/icons.py",
+        "assets/icons/lucide/house.svg",
+        "assets/icons/lucide/network.svg",
+        "assets/icons/lucide/activity.svg",
+        "assets/icons/lucide/wifi.svg",
+        "assets/icons/lucide/server-cog.svg",
+        "assets/icons/lucide/square-terminal.svg",
+        "assets/icons/lucide/folder-sync.svg",
+        "assets/icons/lucide/settings-2.svg"
+      ],
+      "capture_target": "page"
+    },
+    {
+      "id": "guide_home_overview",
+      "title": "가이드 이미지 - 시작",
+      "viewport": [
+        1280,
+        800
+      ],
+      "guide_asset": "home-overview.png",
+      "capture_handler": "guide_overview",
+      "page_index": 6,
+      "expected_title": "시작",
+      "expected_object_names": [
+        "appShell",
+        "mainNavigation",
+        "homePage",
+        "pageHeader"
+      ],
+      "source_paths": [
+        "app/main_window.py",
+        "app/ui/home.py",
+        "app/ui/common/theme.py",
+        "app/ui/common/disclosure.py",
+        "netops_suite/ui/icons.py",
+        "assets/icons/lucide/house.svg",
+        "assets/icons/lucide/network.svg",
+        "assets/icons/lucide/activity.svg",
+        "assets/icons/lucide/wifi.svg",
+        "assets/icons/lucide/server-cog.svg",
+        "assets/icons/lucide/square-terminal.svg",
+        "assets/icons/lucide/folder-sync.svg",
+        "assets/icons/lucide/settings-2.svg"
+      ]
+    },
+    {
+      "id": "guide_transfer_overview",
+      "title": "가이드 이미지 - 파일 전송",
+      "viewport": [
+        1280,
+        800
+      ],
+      "guide_asset": "transfer-overview.png",
+      "capture_handler": "guide_overview",
+      "page_index": 7,
+      "expected_title": "파일 전송",
+      "expected_object_names": [
+        "appShell",
+        "mainNavigation",
+        "workspacePanel"
+      ],
+      "source_paths": [
+        "app/main_window.py",
+        "app/ui/tabs/transfer_tab.py",
+        "app/ui/tabs/diagnostics/ftp.py",
+        "app/ui/tabs/diagnostics/scp.py",
+        "app/ui/tabs/diagnostics/tftp.py",
+        "app/ui/common/disclosure.py",
+        "app/ui/common/theme.py",
+        "netops_suite/ui/actions.py",
+        "netops_suite/ui/icons.py",
+        "assets/icons/lucide/house.svg",
+        "assets/icons/lucide/network.svg",
+        "assets/icons/lucide/activity.svg",
+        "assets/icons/lucide/wifi.svg",
+        "assets/icons/lucide/server-cog.svg",
+        "assets/icons/lucide/square-terminal.svg",
+        "assets/icons/lucide/folder-sync.svg",
+        "assets/icons/lucide/settings-2.svg"
+      ],
+      "capture_target": "page"
+    },
+    {
+      "id": "guide_context_help",
+      "title": "가이드 이미지 - 현재 작업 도움말",
+      "viewport": [
+        1280,
+        800
+      ],
+      "guide_asset": "context-help.png",
+      "capture_handler": "context_help",
+      "expected_object_names": [
+        "contextHelpDock"
+      ],
+      "source_paths": [
+        "app/main_window.py",
+        "app/guides/quick_help.py",
+        "app/guides/catalog.py",
+        "app/ui/common/theme.py",
+        "netops_suite/ui/icons.py",
+        "assets/icons/lucide/house.svg",
+        "assets/icons/lucide/network.svg",
+        "assets/icons/lucide/activity.svg",
+        "assets/icons/lucide/wifi.svg",
+        "assets/icons/lucide/server-cog.svg",
+        "assets/icons/lucide/square-terminal.svg",
+        "assets/icons/lucide/folder-sync.svg",
+        "assets/icons/lucide/settings-2.svg"
       ]
     }
   ]

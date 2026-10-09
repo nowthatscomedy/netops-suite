@@ -35,8 +35,10 @@ def test_quick_command_latest_request_owns_status_and_output(
     tab = window.diagnostics_tab
     tab.select_diagnostic_tab("commands")
 
-    harness._click(tab.quick_ipconfig_button)
-    harness._click(tab.quick_route_button)
+    # Legacy programmatic callers can replace a request; the visible run
+    # button prevents accidental duplicate clicks during a command.
+    tab.run_quick_ipconfig()
+    tab.run_quick_route_print()
     assert harness.pool is not None
     assert len(harness.pool.pending) == 2
 
@@ -137,13 +139,9 @@ def test_compact_diagnostics_keep_core_actions_reachable_and_lock_inputs(
     harness._navigate_main(1)
     tab = window.diagnostics_tab
 
-    assert tab.quick_transfer_button.text() == "파일전송"
-    assert (
-        tab.quick_transfer_button.fontMetrics().horizontalAdvance(
-            tab.quick_transfer_button.text()
-        )
-        < tab.quick_transfer_button.contentsRect().width()
-    )
+    assert tab.diagnostic_tool_combo.isVisibleTo(tab)
+    assert tab.quick_diagnostics_bar.isHidden()
+    assert not tab.quick_target_edit.isVisibleTo(tab)
 
     tab.select_diagnostic_tab("ping")
     assert tab.ping_targets_edit.tabChangesFocus()

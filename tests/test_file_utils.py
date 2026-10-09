@@ -8,6 +8,7 @@ from threading import Barrier, Lock
 
 import pytest
 
+from app.utils import file_utils
 from app.utils.file_utils import (
     build_app_paths,
     default_effective_path_settings,
@@ -55,15 +56,50 @@ def test_config_builder_state_read_paths_include_legacy_only_for_default(
     assert desktop_impl._app_state_read_paths() == [custom_state]
 
 
-def test_build_app_paths_defaults_to_local_appdata(monkeypatch, tmp_path):
+def test_source_run_keeps_data_in_portable_data_folder(monkeypatch, tmp_path):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local_appdata"))
+    monkeypatch.delenv("NETOPS_SUITE_DATA_ROOT", raising=False)
+    monkeypatch.delenv("NETOPS_SUITE_USE_PROJECT_DATA", raising=False)
+    root = tmp_path / "app"
+
+    assert file_utils.detect_data_root(root) == root / "data"
+
+
+def test_unzipped_packaged_copy_keeps_data_next_to_program(monkeypatch, tmp_path):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local_appdata"))
+    monkeypatch.delenv("NETOPS_SUITE_DATA_ROOT", raising=False)
+    monkeypatch.delenv("NETOPS_SUITE_USE_PROJECT_DATA", raising=False)
+    monkeypatch.setattr(file_utils.sys, "frozen", True, raising=False)
+    root = tmp_path / "NetOpsSuite"
+    root.mkdir()
+
+    assert file_utils.detect_data_root(root) == root / "data"
+
+
+def test_installed_copy_defaults_to_local_appdata(monkeypatch, tmp_path):
     local_appdata = tmp_path / "local_appdata"
     monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
     monkeypatch.delenv("NETOPS_SUITE_DATA_ROOT", raising=False)
     monkeypatch.delenv("NETOPS_SUITE_USE_PROJECT_DATA", raising=False)
+    monkeypatch.setattr(file_utils.sys, "frozen", True, raising=False)
+    root = tmp_path / "Installed"
+    root.mkdir()
+    (root / "unins000.exe").write_bytes(b"")
 
-    paths = build_app_paths()
+    assert file_utils.detect_data_root(root) == local_appdata / "NetOps Suite"
+    assert not (root / "data").exists()
 
-    assert paths.data_root == local_appdata / "NetOps Suite"
+
+def test_program_files_copy_never_writes_next_to_program(monkeypatch, tmp_path):
+    local_appdata = tmp_path / "local_appdata"
+    program_files = tmp_path / "Program Files"
+    monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
+    monkeypatch.setenv("ProgramFiles", str(program_files))
+    monkeypatch.delenv("NETOPS_SUITE_DATA_ROOT", raising=False)
+    root = program_files / "NetOps Suite"
+
+    assert file_utils.detect_data_root(root) == local_appdata / "NetOps Suite"
+    assert not (root / "data").exists()
 
 
 def test_build_app_paths_explicit_root_keeps_project_data(monkeypatch, tmp_path):
@@ -255,12 +291,8 @@ def test_resolve_app_paths_applies_overrides_and_rebuilds_dependent_paths(tmp_pa
 
     assert resolved.config_dir == custom_config.resolve()
     assert resolved.logs_dir == custom_logs.resolve()
-    assert resolved.exports_dir == custom_logs.resolve() / "exports"
+    assert resolved.exports_dir == (base_paths.data_root / "results").resolve()
     assert resolved.app_config == custom_config.resolve() / "app_config.json"
-    assert (
-        resolved.ai_model_catalog_cache
-        == custom_config.resolve() / "ai_model_catalog_cache.json"
-    )
     assert resolved.ftp_keys_dir == custom_config.resolve() / "ftp_keys"
     assert resolved.app_log == custom_logs.resolve() / "app.log"
     assert resolved.path_settings == base_paths.data_root / "path_settings.json"
@@ -268,13 +300,13 @@ def test_resolve_app_paths_applies_overrides_and_rebuilds_dependent_paths(tmp_pa
         "version": 1,
         "config_dir": str(custom_config.resolve()),
         "logs_dir": str(custom_logs.resolve()),
-        "exports_dir": str((custom_logs / "exports").resolve()),
+        "exports_dir": str((base_paths.data_root / "results").resolve()),
     }
     assert default_effective_path_settings(resolved) == {
         "version": 1,
         "config_dir": str((base_paths.data_root / "config").resolve()),
         "logs_dir": str((base_paths.data_root / "logs").resolve()),
-        "exports_dir": str((base_paths.data_root / "logs" / "exports").resolve()),
+        "exports_dir": str((base_paths.data_root / "results").resolve()),
     }
 
 
@@ -320,7 +352,7 @@ def test_build_app_paths_keeps_defaults_when_bootstrap_is_invalid(
     assert paths.path_settings == data_root / "path_settings.json"
     assert paths.config_dir == data_root / "config"
     assert paths.logs_dir == data_root / "logs"
-    assert paths.exports_dir == data_root / "logs" / "exports"
+    assert paths.exports_dir == data_root / "results"
 
 
 def test_build_app_paths_keeps_defaults_for_non_utf8_bootstrap(monkeypatch, tmp_path):
@@ -462,3 +494,145 @@ def test_migrate_config_directory_rejects_target_inside_source(tmp_path):
 
     with pytest.raises(ValueError):
         migrate_config_directory(source, source / "nested-target")
+
+
+def _write(path: Path, text: str = "x") -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_migrate_legacy_data_layout_flattens_results_without_overwriting(tmp_path):
+    paths = build_app_paths(tmp_path)
+    _write(tmp_path / "inspector" / "runs" / "results" / "inspection_results_1.xlsx")
+    _write(tmp_path / "inspector" / "runs" / "backup" / "20260101" / "sw1.txt")
+    _write(tmp_path / "inspector" / "runs" / "session_logs" / "20260101" / "sw1.log")
+    _write(tmp_path / "config_builder" / "outputs" / "backups" / "devices_1.csv")
+    _write(tmp_path / "config_builder" / "outputs" / "desktop_activity.log", "old")
+    _write(tmp_path / "logs" / "exports" / "ping_1.csv", "legacy")
+    _write(tmp_path / "results" / "ping_1.csv", "current")
+    _write(tmp_path / "inspector" / "custom_rules.yaml")
+
+    messages = file_utils.migrate_legacy_data_layout(paths)
+
+    results = tmp_path / "results"
+    assert messages
+    assert (results / "inspection_results_1.xlsx").is_file()
+    assert (results / "backup" / "20260101" / "sw1.txt").is_file()
+    assert (results / "session_logs" / "20260101" / "sw1.log").is_file()
+    assert (results / "backup" / "devices_1.csv").is_file()
+    assert (tmp_path / "logs" / "config_builder_activity.log").read_text(
+        encoding="utf-8"
+    ) == "old"
+    assert (results / "ping_1.csv").read_text(encoding="utf-8") == "current"
+    assert (tmp_path / "logs" / "exports" / "ping_1.csv").is_file()
+    assert not (tmp_path / "inspector" / "runs").exists()
+    assert not (tmp_path / "config_builder" / "outputs").exists()
+    assert (tmp_path / "inspector" / "custom_rules.yaml").is_file()
+
+
+def test_migrate_legacy_data_layout_is_noop_for_new_layout(tmp_path):
+    paths = build_app_paths(tmp_path)
+    ensure_runtime_files(paths)
+
+    assert file_utils.migrate_legacy_data_layout(paths) == []
+
+
+def test_import_installed_settings_copies_settings_into_fresh_portable_folder(
+    monkeypatch, tmp_path
+):
+    installed = tmp_path / "installed"
+    _write(installed / "config" / "app_config.json", "{}")
+    _write(installed / "config" / "ftp_keys" / "key.pem")
+    _write(installed / "inspector" / "custom_rules.yaml")
+    _write(installed / "inspector" / "runs" / "results" / "old.xlsx")
+    _write(installed / "config_builder" / "profiles" / "p.yaml")
+    _write(installed / "config_builder" / "outputs" / "old.txt")
+    root = tmp_path / "portable"
+    monkeypatch.delenv("NETOPS_SUITE_DATA_ROOT", raising=False)
+    monkeypatch.delenv("NETOPS_SUITE_USE_PROJECT_DATA", raising=False)
+    monkeypatch.setattr(file_utils, "detect_root_path", lambda: root)
+    paths = build_app_paths()
+    data = root / "data"
+    assert paths.data_root == data
+
+    messages = file_utils.import_installed_settings(paths, installed)
+
+    assert messages
+    assert (data / "config" / "app_config.json").is_file()
+    assert (data / "config" / "ftp_keys" / "key.pem").is_file()
+    assert (data / "inspector" / "custom_rules.yaml").is_file()
+    assert (data / "config_builder" / "profiles" / "p.yaml").is_file()
+    assert not (data / "inspector" / "runs").exists()
+    assert not (data / "config_builder" / "outputs").exists()
+    assert (installed / "config" / "app_config.json").is_file()
+    assert file_utils.import_installed_settings(paths, installed) == []
+
+
+def test_import_installed_settings_skips_non_portable_data_root(tmp_path):
+    installed = tmp_path / "installed"
+    _write(installed / "config" / "app_config.json", "{}")
+    paths = build_app_paths(tmp_path / "explicit")
+
+    assert file_utils.import_installed_settings(paths, installed) == []
+
+
+def test_saved_old_default_results_folder_moves_to_new_results_folder(
+    monkeypatch, tmp_path
+):
+    data_root = tmp_path / "data"
+    monkeypatch.setenv("NETOPS_SUITE_DATA_ROOT", str(data_root))
+    save_json(
+        data_root / "path_settings.json",
+        {
+            "version": 1,
+            "config_dir": str(data_root / "config"),
+            "logs_dir": str(data_root / "logs"),
+            "exports_dir": str(data_root / "logs" / "exports"),
+        },
+    )
+    _write(data_root / "inspector" / "runs" / "results" / "inspection_results_1.xlsx")
+
+    paths = build_app_paths()
+    messages = file_utils.prepare_data_root(paths)
+
+    assert paths.exports_dir == data_root / "results"
+    assert (data_root / "results" / "inspection_results_1.xlsx").is_file()
+    assert load_json(data_root / "path_settings.json", None)["exports_dir"] == ""
+    assert any("logs/exports" in message for message in messages)
+
+
+def test_custom_results_folder_is_kept(monkeypatch, tmp_path):
+    data_root = tmp_path / "data"
+    custom = tmp_path / "custom-results"
+    monkeypatch.setenv("NETOPS_SUITE_DATA_ROOT", str(data_root))
+    save_json(
+        data_root / "path_settings.json",
+        {"version": 1, "exports_dir": str(custom)},
+    )
+
+    paths = build_app_paths()
+    file_utils.prepare_data_root(paths)
+
+    assert paths.exports_dir == custom.resolve()
+    assert load_json(data_root / "path_settings.json", None)["exports_dir"] == str(
+        custom
+    )
+
+
+def test_upgrade_removes_retired_ai_cache_but_keeps_settings(monkeypatch, tmp_path):
+    data_root = tmp_path / "data"
+    monkeypatch.setenv("NETOPS_SUITE_DATA_ROOT", str(data_root))
+    retired = data_root / "config" / "ai_model_catalog_cache.json"
+    settings = data_root / "config" / "app_config.json"
+    audit_log = data_root / "logs" / "netops_assistant_audit.jsonl"
+    for path in (retired, settings, audit_log):
+        _write(path)
+
+    paths = build_app_paths()
+    messages = file_utils.prepare_data_root(paths)
+
+    assert not retired.exists()
+    assert settings.is_file()
+    assert audit_log.is_file()
+    assert any("ai_model_catalog_cache.json" in message for message in messages)

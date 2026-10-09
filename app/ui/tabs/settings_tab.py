@@ -23,19 +23,13 @@ from PySide6.QtWidgets import (
 )
 
 from app.app_state import AppState
-from app.models.ai_models import KNOWN_AI_PROVIDERS, normalize_ai_chat_config
 from app.models.result_models import OperationResult
-from app.services.ai_agent_service import (
-    PROVIDER_SPECS,
-    inspect_provider,
-    provider_configs_from_app_config,
-)
 from app.ui.common import (
     JobRunner,
     confirm_risky_action,
     make_selectable_wrapped_label,
-    make_step_hint,
 )
+from app.ui.common.disclosure import make_page_header
 from app.utils.file_utils import (
     default_effective_path_settings,
     default_update_config,
@@ -43,6 +37,7 @@ from app.utils.file_utils import (
     load_json,
     normalize_path_settings,
     open_in_explorer,
+    storage_mode_label,
 )
 from app.version import __version__
 from netops_suite.ui.actions import ActionKind, make_action_button
@@ -56,7 +51,7 @@ class SettingsTab(QWidget):
 
     _PATH_FIELDS = (
         ("config_dir", "설정 파일 폴더", "프로파일과 기능별 JSON 설정 파일을 저장합니다."),
-        ("logs_dir", "로그 폴더", "프로그램 로그와 AI 감사 로그를 저장합니다."),
+        ("logs_dir", "로그 폴더", "프로그램 로그를 저장합니다."),
         (
             "exports_dir",
             "결과/내보내기 폴더",
@@ -73,7 +68,6 @@ class SettingsTab(QWidget):
         ("SCP 화면 상태", "scp_runtime.json"),
         ("TFTP 화면 상태", "tftp_runtime.json"),
         ("공개 iperf 서버 캐시", "public_iperf_servers_cache.json"),
-        ("AI 모델 목록 캐시", "ai_model_catalog_cache.json"),
         ("OUI 캐시", "oui_cache.json"),
         ("FTP/SCP 키 폴더", "ftp_keys"),
     )
@@ -103,8 +97,9 @@ class SettingsTab(QWidget):
         outer_layout.setContentsMargins(12, 12, 12, 12)
         outer_layout.setSpacing(10)
         outer_layout.addWidget(
-            make_step_hint(
-                "프로그램 업데이트, 저장 위치, 외부 도구 연동, 설정 파일 관리를 한곳에서 변경합니다."
+            make_page_header(
+                "설정",
+                "프로그램 업데이트, 저장 위치, 외부 도구 연동, 설정 파일 관리를 한곳에서 변경합니다.",
             )
         )
 
@@ -193,17 +188,12 @@ class SettingsTab(QWidget):
         storage_group = QGroupBox("저장 위치")
         storage_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         storage_layout = QVBoxLayout(storage_group)
-        storage_help = QLabel(
-            "설정 파일 폴더와 결과/내보내기 폴더는 저장 즉시 이후 파일 작업에 적용됩니다. "
-            "결과/내보내기 폴더는 자동 결과·백업 저장 위치이자 수동 저장 대화상자의 기본 제안 위치이며, "
-            "수동 저장 파일은 대화상자에서 사용자가 선택한 경로에 저장됩니다. "
-            "로그 폴더는 열려 있는 로그 파일의 경로가 섞이지 않도록 프로그램을 다시 시작한 뒤 적용됩니다. "
-            "설정 폴더를 바꾸면 기존 파일은 새 폴더에 복사하되 기존 대상 파일은 덮어쓰지 않습니다."
-        )
+        storage_help = QLabel("저장할 폴더를 선택한 뒤 경로 설정을 저장하세요.")
         storage_help.setWordWrap(True)
         storage_layout.addWidget(storage_help)
 
         path_form = QFormLayout()
+        path_form.setVerticalSpacing(18)
         path_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.path_edits: dict[str, QLineEdit] = {}
         self.path_change_buttons = {}
@@ -242,7 +232,16 @@ class SettingsTab(QWidget):
             row_layout.addWidget(open_button)
             label_widget = QLabel(label)
             label_widget.setBuddy(edit)
-            path_form.addRow(label_widget, row_widget)
+            field = QWidget()
+            field_layout = QVBoxLayout(field)
+            field_layout.setContentsMargins(0, 0, 0, 0)
+            field_layout.setSpacing(4)
+            field_layout.addWidget(row_widget)
+            hint = QLabel(tooltip)
+            hint.setWordWrap(True)
+            hint.setObjectName("storageFieldHint")
+            field_layout.addWidget(hint)
+            path_form.addRow(label_widget, field)
             self.path_edits[key] = edit
             self.path_change_buttons[key] = change_button
             self.path_open_buttons[key] = open_button
@@ -266,19 +265,37 @@ class SettingsTab(QWidget):
         path_action_row.addWidget(self.save_paths_button)
         path_action_row.addWidget(self.reset_paths_button)
         path_action_row.addStretch(1)
+        storage_note = QLabel(
+            "설정·결과 폴더는 저장 후 바로 적용됩니다. 로그 폴더는 앱 재시작 후 적용됩니다.\n"
+            "설정 폴더 변경 시 기존 파일을 복사하며, 대상 폴더의 같은 이름 파일은 보존합니다."
+        )
+        storage_note.setWordWrap(True)
+        storage_layout.addWidget(storage_note)
+        storage_layout.addSpacing(8)
         storage_layout.addLayout(path_action_row)
         self.path_status_label = make_selectable_wrapped_label()
         storage_layout.addWidget(self.path_status_label)
         layout.addWidget(storage_group)
 
+        self.path_details_button = make_action_button(
+            "현재 적용 경로 보기", ActionKind.UTILITY,
+            tooltip="실제로 사용 중인 폴더와 주요 설정 파일 경로를 확인합니다.",
+        )
+        self.path_details_button.setCheckable(True)
+        layout.addWidget(self.path_details_button, 0, Qt.AlignmentFlag.AlignLeft)
         applied_group = QGroupBox("현재 적용 중인 위치")
+        self.applied_paths_group = applied_group
+        applied_group.setVisible(False)
+        self.path_details_button.toggled.connect(applied_group.setVisible)
         applied_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         applied_layout = QVBoxLayout(applied_group)
+        self.data_root_label = make_selectable_wrapped_label()
         self.config_dir_label = make_selectable_wrapped_label()
         self.ip_profile_label = make_selectable_wrapped_label()
         self.log_dir_label = make_selectable_wrapped_label()
         self.export_dir_label = make_selectable_wrapped_label()
         for label in (
+            self.data_root_label,
             self.config_dir_label,
             self.ip_profile_label,
             self.log_dir_label,
@@ -296,13 +313,14 @@ class SettingsTab(QWidget):
         intro_row = QHBoxLayout()
         intro_label = QLabel(
             "실행 프로그램의 설치 상태와 여러 기능이 함께 사용하는 제조사 데이터를 관리합니다. "
-            "측정 대상, 모델, 응답 옵션은 각 기능 화면에서 설정합니다."
+            "측정 대상과 실행 옵션은 각 기능 화면에서 설정합니다."
         )
         intro_label.setWordWrap(True)
         self.tool_refresh_button = make_action_button("전체 상태 새로고침", ActionKind.REFRESH)
         intro_row.addWidget(intro_label, 1)
         intro_row.addWidget(self.tool_refresh_button)
         layout.addLayout(intro_row)
+
 
         self.iperf_tool_group = QGroupBox("iperf3")
         self.iperf_tool_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
@@ -386,70 +404,6 @@ class SettingsTab(QWidget):
         oui_layout.addWidget(self.oui_tool_log)
         layout.addWidget(self.oui_tool_group)
 
-        self.ai_cli_group = QGroupBox("AI CLI 실행 파일")
-        self.ai_cli_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
-        ai_layout = QVBoxLayout(self.ai_cli_group)
-        ai_help = QLabel(
-            "비워 두면 설치된 CLI를 자동으로 찾습니다. 자동 감지가 실패할 때만 실제 실행 파일을 지정하세요. "
-            "로그인과 모델·응답 옵션은 NetOps 어시스턴트에서 관리합니다."
-        )
-        ai_help.setWordWrap(True)
-        ai_layout.addWidget(ai_help)
-
-        self.ai_cli_path_edits: dict[str, QLineEdit] = {}
-        self.ai_cli_browse_buttons = {}
-        self.ai_cli_status_labels: dict[str, QLabel] = {}
-        for key in KNOWN_AI_PROVIDERS:
-            provider_row = QWidget()
-            provider_layout = QVBoxLayout(provider_row)
-            provider_layout.setContentsMargins(0, 2, 0, 4)
-            provider_layout.setSpacing(3)
-            edit_row = QHBoxLayout()
-            name_label = QLabel(PROVIDER_SPECS[key].display_name)
-            name_label.setMinimumWidth(125)
-            edit = QLineEdit()
-            edit.setObjectName(f"{key}CliPathEdit")
-            edit.setPlaceholderText(f"자동 감지: {PROVIDER_SPECS[key].executable}")
-            edit.setClearButtonEnabled(True)
-            edit.setAccessibleName(f"{PROVIDER_SPECS[key].display_name} 실행 파일")
-            edit.setAccessibleDescription(
-                "비워 두면 설치된 CLI를 자동으로 찾습니다. 자동 감지가 실패할 때만 실행 파일을 지정합니다."
-            )
-            edit.setMinimumWidth(0)
-            browse_button = make_action_button(
-                "찾아보기",
-                ActionKind.OPEN,
-                tooltip=f"{PROVIDER_SPECS[key].display_name} 실행 파일을 선택합니다.",
-            )
-            browse_button.setAccessibleName(
-                f"{PROVIDER_SPECS[key].display_name} 실행 파일 찾아보기"
-            )
-            browse_button.clicked.connect(lambda _checked=False, provider=key: self._browse_ai_cli(provider))
-            name_label.setBuddy(edit)
-            edit_row.addWidget(name_label)
-            edit_row.addWidget(edit, 1)
-            edit_row.addWidget(browse_button)
-            provider_layout.addLayout(edit_row)
-            status_label = make_selectable_wrapped_label("감지 상태: 확인 전")
-            status_label.setAccessibleName(f"{PROVIDER_SPECS[key].display_name} 감지 상태")
-            status_label.setContentsMargins(131, 0, 0, 0)
-            provider_layout.addWidget(status_label)
-            ai_layout.addWidget(provider_row)
-            self.ai_cli_path_edits[key] = edit
-            self.ai_cli_browse_buttons[key] = browse_button
-            self.ai_cli_status_labels[key] = status_label
-
-        ai_actions = QHBoxLayout()
-        self.save_ai_cli_paths_button = make_action_button("AI CLI 경로 저장", ActionKind.SAVE)
-        self.reset_ai_cli_paths_button = make_action_button("자동 감지 사용", ActionKind.UTILITY)
-        ai_actions.addWidget(self.save_ai_cli_paths_button)
-        ai_actions.addWidget(self.reset_ai_cli_paths_button)
-        ai_actions.addStretch(1)
-        ai_layout.addLayout(ai_actions)
-        self.ai_cli_path_status_label = make_selectable_wrapped_label()
-        ai_layout.addWidget(self.ai_cli_path_status_label)
-        layout.addWidget(self.ai_cli_group)
-
         layout.addStretch(1)
 
         self.tool_refresh_button.clicked.connect(self.refresh_tool_statuses)
@@ -457,8 +411,6 @@ class SettingsTab(QWidget):
         self.iperf_tool_cancel_button.clicked.connect(self._cancel_iperf_install)
         self.oui_check_updates_button.clicked.connect(self._check_oui_updates)
         self.oui_update_button.clicked.connect(self._update_oui_data)
-        self.save_ai_cli_paths_button.clicked.connect(self._save_ai_cli_paths)
-        self.reset_ai_cli_paths_button.clicked.connect(self._reset_ai_cli_paths)
 
     def _build_maintenance_page(self, layout: QVBoxLayout) -> None:
         files_group = QGroupBox("설정 파일")
@@ -491,7 +443,7 @@ class SettingsTab(QWidget):
         reset_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         reset_layout = QVBoxLayout(reset_group)
         reset_help = QLabel(
-            "프로그램 옵션, 화면 상태, 네트워크·파일 전송 프로파일과 입력값, AI 설정, "
+            "프로그램 옵션, 화면 상태, 네트워크·파일 전송 프로파일과 입력값, "
             "사용자 장비 점검 규칙을 처음 상태로 되돌립니다. 저장 위치 설정도 기본 경로로 "
             "돌아가지만 기존 애플리케이션 로그와 실행 결과·백업·내보낸 파일은 삭제하지 않습니다."
         )
@@ -523,15 +475,11 @@ class SettingsTab(QWidget):
         self.section_tabs.setCurrentIndex(self._SECTION_KEYS.index(key))
         if key != "tools":
             return
-        if tool_key in KNOWN_AI_PROVIDERS or tool_key == "ai":
-            target: QWidget = self.ai_cli_group
-        elif tool_key in {"oui", "oui_cache"}:
+        if tool_key in {"oui", "oui_cache"}:
             target = self.oui_tool_group
         else:
             target = self.iperf_tool_group
         self.tools_scroll.ensureWidgetVisible(target)
-        if tool_key in self.ai_cli_path_edits:
-            self.ai_cli_path_edits[tool_key].setFocus()
 
     def save_ui_state(self) -> dict[str, str]:
         index = self.section_tabs.currentIndex()
@@ -574,7 +522,6 @@ class SettingsTab(QWidget):
         self.check_on_startup_check.setChecked(bool(update_config.get("check_on_startup", False)))
         self.check_on_startup_check.blockSignals(was_blocked)
 
-        self._load_ai_cli_paths()
         self._refresh_effective_path_labels()
         if not self._path_dirty:
             self._load_saved_path_fields()
@@ -583,43 +530,6 @@ class SettingsTab(QWidget):
         self.version_label.setText(__version__)
         self.set_update_status("업데이트는 프로그램 이름에 고정된 공식 배포 채널을 사용합니다.")
         self._refresh_oui_action_states()
-
-    def _load_ai_cli_paths(self) -> None:
-        ai_config = normalize_ai_chat_config(self.state.app_config.get("ai_chat", {}))
-        providers = ai_config["providers"]
-        for key, edit in self.ai_cli_path_edits.items():
-            blocked = edit.blockSignals(True)
-            edit.setText(str(providers[key].get("command_path", "") or ""))
-            edit.blockSignals(blocked)
-
-    def _browse_ai_cli(self, provider_key: str) -> None:
-        edit = self.ai_cli_path_edits[provider_key]
-        initial = edit.text().strip() or str(getattr(self.state.paths, "root", Path.cwd()))
-        selected, _selected_filter = QFileDialog.getOpenFileName(
-            self,
-            f"{PROVIDER_SPECS[provider_key].display_name} 실행 파일 선택",
-            initial,
-            "실행 파일 (*.exe *.cmd *.bat);;모든 파일 (*)",
-        )
-        if selected:
-            edit.setText(selected)
-
-    def _reset_ai_cli_paths(self) -> None:
-        for edit in self.ai_cli_path_edits.values():
-            edit.clear()
-        self.ai_cli_path_status_label.setText("자동 감지를 사용하려면 변경된 경로를 저장하세요.")
-
-    def _save_ai_cli_paths(self) -> None:
-        ai_config = normalize_ai_chat_config(self.state.app_config.get("ai_chat", {}))
-        providers = ai_config["providers"]
-        for key, edit in self.ai_cli_path_edits.items():
-            providers[key]["command_path"] = edit.text().strip()
-        config = dict(self.state.app_config)
-        config["ai_chat"] = ai_config
-        self.state.save_app_config(config)
-        self.ai_cli_path_status_label.setText("AI CLI 실행 파일 경로를 저장했습니다.")
-        self.integration_changed.emit("ai")
-        self.refresh_tool_statuses()
 
     def refresh_tool_statuses(self) -> None:
         if (
@@ -635,22 +545,14 @@ class SettingsTab(QWidget):
         self.oui_update_button.setEnabled(False)
         self.iperf_tool_status_label.setText("iperf3 상태를 확인하는 중입니다...")
         self.oui_tool_status_label.setText("로컬 OUI 데이터 상태를 확인하는 중입니다...")
-        for label in self.ai_cli_status_labels.values():
-            label.setText("감지 상태: 확인 중...")
-        ai_config = normalize_ai_chat_config(self.state.app_config.get("ai_chat", {}))
         self._job_runner.start(
             self._collect_tool_status,
-            ai_config,
             on_result=self._apply_tool_status,
             on_error=self._handle_tool_status_error,
             on_finished=self._finish_tool_status_refresh,
         )
 
-    def _collect_tool_status(self, ai_config: dict[str, Any]) -> dict[str, Any]:
-        ai_status = {
-            key: inspect_provider(config)
-            for key, config in provider_configs_from_app_config(ai_config).items()
-        }
+    def _collect_tool_status(self) -> dict[str, Any]:
         oui_service = getattr(self.state, "oui_service", None)
         cache_status = getattr(oui_service, "cache_status", None)
         oui_status = cache_status() if callable(cache_status) else None
@@ -667,7 +569,6 @@ class SettingsTab(QWidget):
                 "manage": service.managed_install_state(),
             }
         return {
-            "ai": ai_status,
             "iperf": iperf_status,
             "oui": oui_status,
         }
@@ -676,19 +577,6 @@ class SettingsTab(QWidget):
         if not isinstance(result, dict):
             self._handle_tool_status_error("도구 상태 응답 형식이 올바르지 않습니다.")
             return
-        for key, health in dict(result.get("ai", {})).items():
-            label = self.ai_cli_status_labels.get(key)
-            if label is None:
-                continue
-            if bool(getattr(health, "installed", False)):
-                resolved = str(getattr(health, "resolved_path", "") or "")
-                label.setText(f"감지됨: {resolved}")
-                label.setToolTip(resolved)
-            else:
-                detail = str(getattr(health, "detail", "") or "실행 파일을 찾지 못했습니다.")
-                label.setText("찾지 못함 · 경로를 지정하거나 CLI를 설치하세요.")
-                label.setToolTip(detail)
-
         self._apply_oui_status(result.get("oui"))
 
         iperf = result.get("iperf")
@@ -731,9 +619,6 @@ class SettingsTab(QWidget):
     def _handle_tool_status_error(self, message: str) -> None:
         self.iperf_tool_status_label.setText(f"상태 확인 실패: {message}")
         self.oui_tool_status_label.setText(f"로컬 상태 확인 실패: {message}")
-        for label in self.ai_cli_status_labels.values():
-            if "확인 중" in label.text():
-                label.setText("감지 상태를 확인하지 못했습니다.")
 
     def _finish_tool_status_refresh(self) -> None:
         self._tool_status_busy = False
@@ -955,10 +840,6 @@ class SettingsTab(QWidget):
         self.oui_update_button.setEnabled(
             not running and not self._oui_operation_busy
         )
-        for edit in self.ai_cli_path_edits.values():
-            edit.setEnabled(not running)
-        self.save_ai_cli_paths_button.setEnabled(not running)
-        self.reset_ai_cli_paths_button.setEnabled(not running)
 
     def _cancel_iperf_install(self) -> None:
         if self._iperf_install_cancel_event is not None:
@@ -1127,6 +1008,9 @@ class SettingsTab(QWidget):
 
     def _refresh_effective_path_labels(self) -> None:
         paths = self.state.paths
+        self.data_root_label.setText(
+            f"데이터 폴더: {paths.data_root}\n저장 방식: {storage_mode_label(paths)}"
+        )
         self.config_dir_label.setText(f"설정 파일 폴더: {paths.config_dir}")
         self.ip_profile_label.setText(f"주 설정 파일: {paths.app_config}\nIP 프로파일: {paths.ip_profiles}")
         self.log_dir_label.setText(f"로그 폴더: {paths.logs_dir}")
@@ -1171,7 +1055,7 @@ class SettingsTab(QWidget):
             "모든 설정 초기화",
             impact=(
                 "프로그램 옵션과 화면 상태, 저장된 IP·FTP·SCP 프로파일, 파일 전송 입력값, "
-                "AI CLI·모델 설정, 사용자 장비 점검 규칙·파서를 기본값으로 되돌립니다. "
+                "사용자 장비 점검 규칙·파서를 기본값으로 되돌립니다. "
                 "저장 위치는 기본 경로로 변경됩니다."
             ),
             reversibility=(
@@ -1211,7 +1095,6 @@ class SettingsTab(QWidget):
 
         self._path_dirty = False
         self.reset_all_settings_button.setEnabled(False)
-        self.integration_changed.emit("ai")
         restart_required = bool(
             result.get("restart_required", True)
             if isinstance(result, dict)

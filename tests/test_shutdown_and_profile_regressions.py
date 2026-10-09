@@ -262,7 +262,6 @@ def test_main_window_shutdown_is_ordered_and_idempotent() -> None:
         diagnostics_tab=tab("diagnostics"),
         wireless_tab=tab("wireless"),
         inspector_tab=tab("inspector"),
-        ai_chat_tab=tab("ai"),
         state=state,
     )
 
@@ -273,7 +272,6 @@ def test_main_window_shutdown_is_ordered_and_idempotent() -> None:
         "diagnostics",
         "wireless",
         "inspector",
-        "ai",
         ("wait", 5000),
         "state",
     ]

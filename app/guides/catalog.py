@@ -1,11 +1,52 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import unquote
+
+
+def extract_heading_section(markdown: str, anchor: str) -> str:
+    """Extract a Markdown heading and its children, ignoring fenced code."""
+    if not anchor:
+        return markdown
+    lines = markdown.splitlines(keepends=True)
+    start: int | None = None
+    level = 0
+    fence = ""
+    seen: dict[str, int] = {}
+    for index, line in enumerate(lines):
+        stripped = line.lstrip()
+        fence_match = re.match(r"(`{3,}|~{3,})", stripped)
+        if fence_match:
+            marker = fence_match.group(1)
+            if not fence:
+                fence = marker
+            elif marker[0] == fence[0] and len(marker) >= len(fence):
+                fence = ""
+            continue
+        if fence:
+            continue
+        heading = re.match(r"^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$", line)
+        if not heading:
+            continue
+        depth, title = len(heading.group(1)), heading.group(2)
+        if start is not None and depth <= level:
+            return "".join(lines[start:index]).strip()
+        explicit = re.search(r"\s*\{#([^}]+)\}\s*$", title)
+        plain = title[:explicit.start()] if explicit else title
+        slug = re.sub(r"[^\w\s-]", "", plain.casefold())
+        slug = re.sub(r"[\s-]+", "-", slug).strip("-")
+        count = seen.get(slug, 0)
+        seen[slug] = count + 1
+        slug = f"{slug}-{count}" if count else slug
+        targets = {slug, explicit.group(1).casefold() if explicit else ""}
+        if anchor.casefold() in targets:
+            start, level = index, depth
+    return "".join(lines[start:]).strip() if start is not None else ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,6 +60,7 @@ class GuideEntry:
     content_path: Path
     parent_id: str = ""
     anchor: str = ""
+    quick_help_anchor: str = ""
     route: str = ""
     source_paths: tuple[str, ...] = ()
     keywords: tuple[str, ...] = ()
@@ -165,6 +207,7 @@ class GuideCatalog:
                     path=raw_path,
                     content_path=content_path,
                     anchor=_clean_string(raw_entry.get("anchor")),
+                    quick_help_anchor=_clean_string(raw_entry.get("quick_help_anchor")),
                     route=_clean_string(raw_entry.get("route")) or guide_id,
                     source_paths=_string_tuple(raw_entry.get("source_paths")),
                     keywords=_string_tuple(raw_entry.get("keywords")),
@@ -229,22 +272,58 @@ class GuideCatalog:
         self._content_cache[entry.id] = result
         return result
 
-    def matches(self, entry: GuideEntry, query: str) -> bool:
+    def read_topic(self, entry: GuideEntry) -> tuple[str | None, str | None]:
+        """Read the owned document, or only the topic in a shared document."""
+        markdown, error = self.read_markdown(entry)
+        if markdown is None:
+            return None, error
+        owners = self._entries_by_path.get(entry.content_path.resolve(strict=False), ())
+        if len(owners) <= 1:
+            return markdown, None
+        section = extract_heading_section(markdown, entry.anchor)
+        if not section:
+            return None, "요청한 도움말 주제를 찾을 수 없습니다."
+        return section, None
+
+    def read_quick_help(self, entry: GuideEntry) -> tuple[str | None, str | None]:
+        if not entry.quick_help_anchor:
+            return self.read_topic(entry)
+        markdown, error = self.read_markdown(entry)
+        if markdown is None:
+            return None, error
+        section = extract_heading_section(markdown, entry.quick_help_anchor)
+        if not section:
+            return None, "이 화면의 짧은 도움말을 찾을 수 없습니다."
+        return section, None
+
+    def search_score(self, entry: GuideEntry, query: str) -> int | None:
+        normalized = str(query or "").strip().casefold()
+        if not normalized:
+            return 0
         terms = tuple(part.casefold() for part in query.split() if part.strip())
-        if not terms:
-            return True
-        content, _error = self.read_markdown(entry)
-        searchable = "\n".join(
-            (
-                entry.id,
-                entry.route,
-                entry.title,
-                " ".join(entry.capability_ids),
-                " ".join(entry.keywords),
-                content or "",
-            )
-        ).casefold()
-        return all(term in searchable for term in terms)
+        title = entry.title.casefold()
+        aliases = tuple(value.casefold() for value in entry.keywords)
+        if normalized == title:
+            return 0
+        if normalized in aliases or normalized in {entry.id, entry.route}:
+            return 1
+        if all(term in title for term in terms):
+            return 2
+        metadata = "\n".join((title, *aliases, entry.id, entry.route)).casefold()
+        if all(term in metadata for term in terms):
+            return 3
+        topic, _error = self.read_topic(entry)
+        quick, _error = self.read_quick_help(entry)
+        searchable = "\n".join((metadata, topic or "", quick or "")).casefold()
+        return 4 if all(term in searchable for term in terms) else None
+
+    def search(self, query: str) -> tuple[GuideEntry, ...]:
+        scored = [(score, index, entry) for index, entry in enumerate(self.entries)
+                  if (score := self.search_score(entry, query)) is not None]
+        return tuple(entry for _score, _index, entry in sorted(scored, key=lambda item: item[:2]))
+
+    def matches(self, entry: GuideEntry, query: str) -> bool:
+        return self.search_score(entry, query) is not None
 
     def entry_for_link(
         self,

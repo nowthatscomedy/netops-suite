@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import QEvent, Qt, QTimer
+from PySide6.QtCore import QEvent, QSize, Qt, QTimer
 from PySide6.QtGui import QAction, QFont, QFontDatabase, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
@@ -25,35 +25,47 @@ from PySide6.QtWidgets import (
 )
 
 from app.app_state import AppState
-from app.guides import GuideCatalog, GuideDialog
+from app.guides import GuideCatalog, GuideDialog, QuickHelpPanel
 from app.models.update_models import DownloadedUpdate, UpdateCheckResult
 from app.ui.common import JobRunner, confirm_risky_action, make_menu_button
-from app.ui.tabs.ai_chat_tab import AiChatTab
+from app.ui.home import HomePage
 from app.ui.tabs.config_builder_tab import ConfigBuilderTab
 from app.ui.tabs.diagnostics_tab import DiagnosticsTab
 from app.ui.tabs.inspector_tab import InspectorTab
 from app.ui.tabs.interface_tab import InterfaceTab
 from app.ui.tabs.settings_tab import SettingsTab
+from app.ui.tabs.transfer_tab import TransferTab
 from app.ui.tabs.wireless_tab import WirelessTab
 from app.utils.admin import relaunch_as_admin
 from app.utils.app_icon import load_app_icon
 from app.version import __version__
+from netops_suite.ui.icons import PAGE_ICONS, icon
 
 
 _GUIDE_CONTEXT_PROPERTY = "guideContextId"
 _MAIN_PAGE_KEY_PROPERTY = "mainPageKey"
 _MAIN_PAGE_CONTEXT_SPECS = (
-    ("interface_tab", "네트워크 설정", "interface", "interface"),
+    ("interface_tab", "내 PC 네트워크", "interface", "interface"),
     ("diagnostics_tab", "연결 진단", "diagnostics", "diagnostics"),
-    ("wireless_tab", "Wi-Fi 분석", "wireless", "wireless"),
-    ("inspector_tab", "장비 점검/백업", "inspector", "inspector"),
-    ("config_builder_tab", "CLI 설정 생성", "config_builder", "config-builder"),
-    ("ai_chat_tab", "NetOps 어시스턴트", "assistant", "assistant"),
+    ("wireless_tab", "Wi-Fi 확인", "wireless", "wireless"),
+    ("inspector_tab", "장비 점검·백업", "inspector", "inspector"),
+    ("config_builder_tab", "설정 명령 만들기", "config_builder", "config-builder"),
     ("settings_tab", "설정", "settings", "settings"),
+    ("home_page", "시작", "home", "getting-started"),
+    ("transfer_tab", "파일 전송", "transfer", "diagnostics.transfer"),
 )
 
 
 class MainWindow(QMainWindow):
+    _NAV_ITEMS = (
+        ("home", "시작"),
+        ("interface", "내 PC 네트워크"),
+        ("diagnostics", "연결 진단"),
+        ("wireless", "Wi-Fi 확인"),
+        ("inspector", "장비 점검·백업"),
+        ("config_builder", "설정 명령 만들기"),
+        ("transfer", "파일 전송"),
+    )
     _MAIN_PAGE_SPECS = _MAIN_PAGE_CONTEXT_SPECS
     _MAIN_PAGE_KEYS = tuple(spec[2] for spec in _MAIN_PAGE_CONTEXT_SPECS)
     _MAIN_GUIDE_IDS = tuple(spec[3] for spec in _MAIN_PAGE_CONTEXT_SPECS)
@@ -87,6 +99,9 @@ class MainWindow(QMainWindow):
         self._startup_activated = False
         self.guide_catalog = GuideCatalog.load()
         self._guide_dialog: GuideDialog | None = None
+        self._help_focus_return: QWidget | None = None
+        self._last_workspace_focus: QWidget | None = None
+        self._adapting_help = False
         self.setWindowTitle("NetOps Suite")
         self._apply_locale_font()
         self._apply_window_icon()
@@ -104,6 +119,10 @@ class MainWindow(QMainWindow):
         self._connect_signals()
         self._report_startup("이전 화면 상태 복원", "마지막으로 열었던 탭과 도킹 패널 상태를 불러옵니다.")
         self._restore_ui_state()
+        self._activity_timer = QTimer(self)
+        self._activity_timer.setInterval(500)
+        self._activity_timer.timeout.connect(self._update_navigation_activity)
+        self._activity_timer.start()
         self._startup_update_timer = QTimer(self)
         self._startup_update_timer.setSingleShot(True)
         self._startup_update_timer.timeout.connect(
@@ -147,14 +166,14 @@ class MainWindow(QMainWindow):
         self.diagnostics_tab = DiagnosticsTab(self.state)
         self._report_startup("Wi-Fi 분석 화면 구성", "무선 인터페이스와 주변 AP 분석 화면을 준비합니다.")
         self.wireless_tab = WirelessTab(self.state)
-        self._report_startup("장비 점검 화면 구성", "대상 장비 목록 기반 점검과 백업 작업 화면을 준비합니다.")
+        self._report_startup("장비 작업 자동화 화면 구성", "대상 장비 목록 기반 점검과 백업 작업 화면을 준비합니다.")
         self.inspector_tab = InspectorTab(self.state)
-        self._report_startup("CLI 설정 생성 화면 구성", "장비 설정 생성 도구를 포함합니다.")
+        self._report_startup("장비 설정 생성 화면 구성", "장비 설정 생성 도구를 포함합니다.")
         self.config_builder_tab = ConfigBuilderTab(self.state)
-        self._report_startup("NetOps 어시스턴트 화면 구성", "승인 기반 NetOps 도구 채팅 화면을 준비합니다.")
-        self.ai_chat_tab = AiChatTab(self.state)
         self._report_startup("설정 화면 구성", "프로그램, 저장 위치, 외부 도구와 설정 관리 화면을 준비합니다.")
         self.settings_tab = SettingsTab(self.state)
+        self.home_page = HomePage()
+        self.transfer_tab = TransferTab(self.diagnostics_tab)
 
         for attribute, title, page_key, guide_id in self._MAIN_PAGE_SPECS:
             page = getattr(self, attribute)
@@ -181,25 +200,52 @@ class MainWindow(QMainWindow):
         self.nav_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
         self.nav_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.nav_list.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        for index in range(self.tab_widget.count()):
-            item = QListWidgetItem(self.tab_widget.tabText(index))
-            item.setData(Qt.ItemDataRole.UserRole, index)
+        self.nav_list.setIconSize(QSize(19, 19))
+        for page_key, title in self._NAV_ITEMS:
+            item = QListWidgetItem(title)
+            item.setIcon(icon(PAGE_ICONS[page_key], "#b7cbea", 20))
+            item.setData(Qt.ItemDataRole.UserRole, page_key)
+            item.setData(Qt.ItemDataRole.UserRole + 1, title)
             self.nav_list.addItem(item)
         self.nav_list.setCurrentRow(0)
 
         nav_panel = QFrame()
+        self.nav_panel = nav_panel
         nav_panel.setObjectName("sideNavigation")
         nav_layout = QVBoxLayout(nav_panel)
         nav_layout.setContentsMargins(14, 14, 14, 14)
         nav_layout.setSpacing(10)
+        brand_row = QHBoxLayout()
+        brand_row.setSpacing(9)
+        brand_icon = QLabel()
+        brand_icon.setObjectName("appLogoTile")
+        brand_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        brand_icon.setPixmap(load_app_icon().pixmap(28, 28))
+        brand_icon.setFixedSize(34, 34)
+        brand_row.addWidget(brand_icon)
+        brand_text = QVBoxLayout()
+        brand_text.setSpacing(3)
         title_label = QLabel("NetOps Suite")
         title_label.setObjectName("appTitle")
         version_label = QLabel(f"v{__version__}")
         version_label.setObjectName("appVersion")
-        nav_layout.addWidget(title_label)
-        nav_layout.addWidget(version_label)
-        nav_layout.addSpacing(8)
+        brand_text.addWidget(title_label)
+        brand_text.addWidget(version_label)
+        brand_row.addLayout(brand_text, 1)
+        nav_layout.addLayout(brand_row)
+        nav_layout.addSpacing(14)
+        caption = QLabel("네트워크 작업")
+        caption.setObjectName("navigationCaption")
+        nav_layout.addWidget(caption)
         nav_layout.addWidget(self.nav_list, 1)
+        self.settings_button = QToolButton()
+        self.settings_button.setObjectName("sideUtilityButton")
+        self.settings_button.setText("설정")
+        self.settings_button.setIcon(icon("settings-2", "#b7cbea", 18))
+        self.settings_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.settings_button.setCheckable(True)
+        self.settings_button.clicked.connect(lambda: self.navigate_to("settings"))
+        nav_layout.addWidget(self.settings_button)
         utility_row = QHBoxLayout()
         utility_row.setContentsMargins(0, 0, 0, 0)
         utility_row.setSpacing(6)
@@ -214,7 +260,7 @@ class MainWindow(QMainWindow):
         self.view_button.setMaximumHeight(32)
         self.view_button.installEventFilter(self)
         self.guide_action = QAction("도움말", self)
-        self.guide_action.setToolTip("현재 화면의 사용자 가이드를 엽니다 (F1)")
+        self.guide_action.setToolTip("현재 작업의 짧은 안내를 엽니다 (F1)")
         self.guide_action.setShortcut(QKeySequence("F1"))
         self.guide_action.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
         self.addAction(self.guide_action)
@@ -260,6 +306,23 @@ class MainWindow(QMainWindow):
 
         self.log_dock.hide()
 
+        self.quick_help_panel = QuickHelpPanel(self.guide_catalog)
+        self.help_dock = QDockWidget("현재 작업 도움말", self)
+        self.help_dock.setObjectName("contextHelpDock")
+        self.help_dock.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
+        self.help_dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetClosable | QDockWidget.DockWidgetFeature.DockWidgetFloatable)
+        self.help_dock.setWidget(self.quick_help_panel)
+        self.help_dock.setMinimumWidth(320)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.help_dock)
+        self.help_dock.hide()
+        self.quick_help_panel.full_guide_requested.connect(self.open_guide)
+        self.help_dock.visibilityChanged.connect(self._help_visibility_changed)
+        close_help = QAction(self.help_dock)
+        close_help.setShortcut(QKeySequence(Qt.Key.Key_Escape))
+        close_help.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        close_help.triggered.connect(self.help_dock.hide)
+        self.help_dock.addAction(close_help)
+
         status_bar = QStatusBar()
         self.setStatusBar(status_bar)
         self.admin_status_label = QLabel()
@@ -268,11 +331,24 @@ class MainWindow(QMainWindow):
         status_bar.showMessage(f"준비 - v{__version__}")
 
     def _connect_signals(self) -> None:
+        app = QApplication.instance()
+        if app is not None:
+            app.focusChanged.connect(self._remember_workspace_focus)
         self.restart_admin_action.triggered.connect(self._restart_as_admin)
-        self.guide_action.triggered.connect(lambda _checked=False: self.open_guide())
+        self.guide_action.triggered.connect(lambda _checked=False: self.show_context_help())
+        self.home_page.navigate_requested.connect(self.navigate_to)
+        self.diagnostics_tab.transfer_requested.connect(lambda: self.navigate_to("transfer"))
+        self.diagnostics_tab.wireless_requested.connect(lambda: self.navigate_to("wireless"))
+        if hasattr(self.interface_tab, "admin_requested"):
+            self.interface_tab.admin_requested.connect(self._restart_as_admin)
         self.tab_widget.currentChanged.connect(self._handle_main_tab_changed)
         self.tab_widget.currentChanged.connect(self._sync_nav_to_tab)
         self.nav_list.currentRowChanged.connect(self._handle_nav_changed)
+        self.nav_list.itemClicked.connect(lambda item: self.navigate_to(str(item.data(Qt.ItemDataRole.UserRole))))
+        self.nav_list.itemActivated.connect(lambda item: self.navigate_to(str(item.data(Qt.ItemDataRole.UserRole))))
+        self.diagnostics_tab.diagnostic_stack.currentChanged.connect(self._refresh_context_help)
+        for combo_name in ("file_transfer_role_combo", "file_transfer_mode_combo", "ftp_client_protocol_combo", "ftp_server_protocol_combo"):
+            getattr(self.diagnostics_tab, combo_name).currentIndexChanged.connect(self._refresh_context_help)
         self.toggle_log_view_action.toggled.connect(self._set_log_dock_visible)
         self.ping_result_view_action.toggled.connect(
             lambda checked: self.diagnostics_tab.set_result_dock_visible("ping", checked)
@@ -283,10 +359,6 @@ class MainWindow(QMainWindow):
         self.settings_tab.check_updates_requested.connect(lambda config: self._check_for_updates(config, manual=True))
         self.settings_tab.integration_changed.connect(self._handle_integration_changed)
         self.diagnostics_tab.tool_settings_requested.connect(self._show_tool_settings)
-        self.ai_chat_tab.tool_settings_requested.connect(self._show_tool_settings)
-        self.ai_chat_tab.feature_requested.connect(self.open_feature_route)
-        self.ai_chat_tab.guide_requested.connect(self.open_guide)
-
         self.state.log_message.connect(self.log_view.appendPlainText)
         self.interface_tab.status_message.connect(self.statusBar().showMessage)
         self.state.config_reloaded.connect(self._update_admin_status)
@@ -303,49 +375,27 @@ class MainWindow(QMainWindow):
             self.state.logger.warning("User guide: %s", diagnostic)
 
     def _handle_nav_changed(self, row: int) -> None:
-        if 0 <= row < self.tab_widget.count() and self.tab_widget.currentIndex() != row:
-            self.tab_widget.setCurrentIndex(row)
+        item = self.nav_list.item(row)
+        if item is not None:
+            self.navigate_to(str(item.data(Qt.ItemDataRole.UserRole)))
 
-    def open_feature_route(self, route: str) -> bool:
-        """Open a stable public feature route emitted by the assistant."""
-
-        requested = str(route or "").strip()
-        if not requested:
+    def navigate_to(self, page_key: str, tool_key: str | None = None) -> bool:
+        """Select an existing workspace without starting a task or recreating it."""
+        if page_key == "diagnostics" and tool_key == "transfer":
+            page_key, tool_key = "transfer", None
+        if page_key == "diagnostics" and tool_key == "wireless":
+            page_key, tool_key = "wireless", None
+        if page_key not in self._MAIN_PAGE_KEYS:
             return False
-        route_key = requested.casefold().replace("_", "-")
-        aliases = {
-            "ai-chat": "assistant",
-            "netops-assistant": "assistant",
-            "config-builder": "config-builder",
-            "configuration-builder": "config-builder",
-        }
-        route_key = aliases.get(route_key, route_key)
-
-        target_page = None
-        for attribute, _title, page_key, guide_id in self._MAIN_PAGE_SPECS:
-            public_routes = {
-                page_key.casefold().replace("_", "-"),
-                guide_id.casefold(),
-            }
-            if route_key in public_routes or any(
-                route_key.startswith(f"{candidate}.")
-                for candidate in public_routes
-            ):
-                target_page = getattr(self, attribute)
-                break
-        if target_page is None:
-            self.statusBar().showMessage(
-                f"연결된 NetOps 기능 화면을 찾을 수 없습니다: {requested}", 5000
-            )
-            return False
-
-        self.tab_widget.setCurrentWidget(target_page)
-        if target_page is self.diagnostics_tab and route_key.startswith("diagnostics."):
-            diagnostic_key = route_key.split(".", 2)[1]
-            select_tool = getattr(self.diagnostics_tab, "select_diagnostic_tab", None)
-            if callable(select_tool):
-                select_tool(diagnostic_key)
-        self.statusBar().showMessage("추천된 NetOps 기능 화면을 열었습니다.", 3000)
+        if page_key == "diagnostics" and tool_key:
+            if tool_key not in self.diagnostics_tab._diagnostic_tool_index_by_key:
+                return False
+            self.diagnostics_tab.select_tool(tool_key)
+        elif page_key == "diagnostics" and self.diagnostics_tab._current_tool_key() == "transfer":
+            self.diagnostics_tab.select_tool("ping")
+        self.tab_widget.setCurrentIndex(self._MAIN_PAGE_KEYS.index(page_key))
+        self._sync_nav_to_tab(self.tab_widget.currentIndex())
+        self._refresh_context_help()
         return True
 
     def eventFilter(self, watched, event) -> bool:
@@ -372,12 +422,13 @@ class MainWindow(QMainWindow):
 
         preferred = {
             self.interface_tab: self.interface_tab.refresh_button,
-            self.diagnostics_tab: self.diagnostics_tab.quick_target_edit,
+            self.diagnostics_tab: self.diagnostics_tab.diagnostic_tool_combo,
             self.wireless_tab: self.wireless_tab.refresh_button,
-            self.inspector_tab: self.inspector_tab.profile_editor_button,
+            self.inspector_tab: self.inspector_tab.mode_combo,
             self.config_builder_tab: self.config_builder_tab.full_editor_button,
-            self.ai_chat_tab: self.ai_chat_tab.prompt_edit,
             self.settings_tab: self.settings_tab.section_tabs.tabBar(),
+            self.home_page: self.home_page.task_buttons["interface"],
+            self.transfer_tab: self.diagnostics_tab.file_transfer_role_combo,
         }.get(page)
         if self._is_valid_page_focus_target(page, preferred):
             preferred.setFocus(Qt.FocusReason.TabFocusReason)
@@ -408,7 +459,7 @@ class MainWindow(QMainWindow):
         )
 
     def _show_tool_settings(self, tool_key: str = "") -> None:
-        self.tab_widget.setCurrentWidget(self.settings_tab)
+        self.navigate_to("settings")
         self.settings_tab.show_section("tools", tool_key)
 
     @staticmethod
@@ -592,7 +643,12 @@ class MainWindow(QMainWindow):
         return tuple(errors)
 
     def current_guide_id(self) -> str:
+        builder_window = getattr(self.config_builder_tab, "_builder_window", None)
+        if builder_window is not None and QApplication.activeWindow() is builder_window:
+            return "config-builder"
         current_page = self.tab_widget.currentWidget()
+        if current_page is self.transfer_tab:
+            return self._current_transfer_guide_id()
         if current_page is self.diagnostics_tab:
             current_tool = getattr(self.diagnostics_tab, "_current_tool_key", None)
             if callable(current_tool):
@@ -643,25 +699,77 @@ class MainWindow(QMainWindow):
             target = self.current_guide_id()
         return self._guide_dialog.open_guide(target)
 
+    def show_context_help(self) -> bool:
+        builder_window = getattr(self.config_builder_tab, "_builder_window", None)
+        self._help_for_detached_builder = (
+            builder_window is not None and QApplication.activeWindow() is builder_window
+        )
+        if not self.help_dock.isVisible():
+            self._help_focus_return = self._last_workspace_focus or QApplication.focusWidget()
+        available = self.quick_help_panel.show_guide(self.current_guide_id())
+        self._adapt_help_layout()
+        self.help_dock.show()
+        self.help_dock.raise_()
+        self.quick_help_panel.setFocus(Qt.FocusReason.ShortcutFocusReason)
+        return available
+
+    def _refresh_context_help(self, *_args) -> None:
+        if hasattr(self, "help_dock") and self.help_dock.isVisible():
+            self.quick_help_panel.show_guide(self.current_guide_id())
+
+    def _adapt_help_layout(self) -> None:
+        if self._adapting_help or not hasattr(self, "help_dock"):
+            return
+        self._adapting_help = True
+        try:
+            floating = getattr(self, "_help_for_detached_builder", False) or self.width() - self.nav_panel.width() - 344 < 720
+            if floating != self.help_dock.isFloating():
+                self.help_dock.setFloating(floating)
+            if floating:
+                self.help_dock.resize(360, min(620, self.height() - 60))
+            else:
+                self.resizeDocks([self.help_dock], [336], Qt.Orientation.Horizontal)
+        finally:
+            self._adapting_help = False
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "help_dock") and self.help_dock.isVisible():
+            QTimer.singleShot(0, self._adapt_help_layout)
+
+    def _help_visibility_changed(self, visible: bool) -> None:
+        if visible or self._adapting_help:
+            return
+        target = self._help_focus_return
+        self._help_focus_return = None
+        self._help_for_detached_builder = False
+        def restore_focus() -> None:
+            if self._shutdown_started:
+                return
+            try:
+                if target is not None and target.isVisible() and target.isEnabled():
+                    target.window().activateWindow()
+                    target.setFocus(Qt.FocusReason.OtherFocusReason)
+                else:
+                    self.activateWindow()
+                    self._focus_current_page_first_control()
+            except RuntimeError:
+                self._focus_current_page_first_control()
+        QTimer.singleShot(0, restore_focus)
+
+    def _remember_workspace_focus(self, _old: QWidget | None, current: QWidget | None) -> None:
+        page = self.tab_widget.currentWidget()
+        builder = self.config_builder_tab.builder_widget
+        if current is not None and (
+            (page is not None and page.isAncestorOf(current)) or builder.isAncestorOf(current)
+        ):
+            self._last_workspace_focus = current
+
     def _maybe_show_first_run_guide(self) -> None:
+        """Remember onboarding without interrupting the selected workspace."""
         guide_config = self.state.app_config.get("guide", {})
         if isinstance(guide_config, dict) and bool(guide_config.get("welcome_seen", False)):
             return
-        welcome_entry = self.guide_catalog.get("getting-started")
-        if welcome_entry is None:
-            self.state.logger.warning(
-                "User guide welcome was not shown because getting-started is unavailable."
-            )
-            return
-        markdown, error = self.guide_catalog.read_markdown(welcome_entry)
-        if markdown is None:
-            self.state.logger.warning(
-                "User guide welcome was not shown: %s", error or "content unavailable"
-            )
-            return
-        if not self.open_guide(welcome_entry.id):
-            return
-
         config = dict(self.state.app_config)
         normalized_guide_config = dict(guide_config) if isinstance(guide_config, dict) else {}
         normalized_guide_config["welcome_seen"] = True
@@ -674,17 +782,40 @@ class MainWindow(QMainWindow):
     def _handle_integration_changed(self, integration: str) -> None:
         if integration == "iperf3":
             self.diagnostics_tab.refresh_iperf_availability(deep_check=False)
-            return
-        if integration == "ai":
-            self.ai_chat_tab.reload_integration_settings()
 
     def _sync_nav_to_tab(self, index: int) -> None:
         if not hasattr(self, "nav_list"):
             return
-        if 0 <= index < self.nav_list.count() and self.nav_list.currentRow() != index:
-            self.nav_list.blockSignals(True)
-            self.nav_list.setCurrentRow(index)
-            self.nav_list.blockSignals(False)
+        page = self.tab_widget.widget(index)
+        page_key = str(page.property(_MAIN_PAGE_KEY_PROPERTY) or "") if page else ""
+        row = next((row for row in range(self.nav_list.count()) if self.nav_list.item(row).data(Qt.ItemDataRole.UserRole) == page_key), -1)
+        self.nav_list.blockSignals(True)
+        if row >= 0:
+            self.nav_list.setCurrentRow(row)
+        else:
+            # Keep a valid keyboard cursor: clearing the current index makes Qt
+            # select row zero when focus falls back here after a settings tab hides.
+            self.nav_list.clearSelection()
+        self.nav_list.blockSignals(False)
+        self.settings_button.setChecked(page_key == "settings")
+        self._refresh_context_help()
+
+    def _update_navigation_activity(self) -> None:
+        diagnostic = self.diagnostics_tab
+        transfer_busy = diagnostic.is_transfer_running()
+        busy = {
+            "interface": bool(getattr(self.interface_tab, "_active_workers", ())),
+            "diagnostics": bool(diagnostic.active_task_keys() - {"transfer"}),
+            "wireless": bool(getattr(self.wireless_tab, "_active_workers", ())),
+            "inspector": bool(getattr(self.inspector_tab, "_inspector_running", False)),
+            "transfer": transfer_busy,
+        }
+        for row in range(self.nav_list.count()):
+            item = self.nav_list.item(row)
+            title = str(item.data(Qt.ItemDataRole.UserRole + 1))
+            running = busy.get(str(item.data(Qt.ItemDataRole.UserRole)), False)
+            item.setText(title + (" · 실행 중" if running else ""))
+            item.setToolTip(title.strip() + (" — 작업이 진행 중입니다." if running else ""))
 
     def _update_admin_status(self) -> None:
         text = "관리자 권한 사용 중" if self.state.is_admin else "관리자 권한 미사용"
@@ -737,26 +868,19 @@ class MainWindow(QMainWindow):
         self.interface_tab.restore_ui_state(ui_state.get("interface_tab", {}))
         self.diagnostics_tab.restore_ui_state(ui_state.get("diagnostics_tab", {}))
         self.wireless_tab.restore_ui_state(ui_state.get("wireless_tab", {}))
-        self.ai_chat_tab.restore_ui_state(ui_state.get("ai_chat_tab", {}))
         self.settings_tab.restore_ui_state(ui_state.get("settings_tab", {}))
 
         page_key = str(window_state.get("current_page_key", "") or "")
-        if page_key in self._MAIN_PAGE_KEYS:
-            main_tab_index = self._MAIN_PAGE_KEYS.index(page_key)
-        else:
+        if page_key not in self._MAIN_PAGE_KEYS:
             try:
-                legacy_index = int(window_state.get("current_tab", 0) or 0)
+                legacy_index = int(window_state.get("current_tab", -1))
             except (TypeError, ValueError):
-                legacy_index = 0
-            # Before the Results page was removed, Results and Settings used indices 6 and 7.
-            if legacy_index in {6, 7}:
-                main_tab_index = 6
-            elif 0 <= legacy_index < 6:
-                main_tab_index = legacy_index
-            else:
-                main_tab_index = 0
-        if 0 <= main_tab_index < self.tab_widget.count():
-            self.tab_widget.setCurrentIndex(main_tab_index)
+                legacy_index = -1
+            legacy_pages = {0: "interface", 1: "diagnostics", 2: "wireless", 3: "inspector", 4: "config_builder", 6: "settings", 7: "settings"}
+            page_key = "home" if page_key else legacy_pages.get(legacy_index, "home")
+        if page_key == "diagnostics" and self.diagnostics_tab._current_tool_key() == "transfer":
+            page_key = "transfer"
+        self.navigate_to(page_key)
 
         log_visible = bool(window_state.get("log_dock_visible", False))
         ping_result_visible = bool(window_state.get("ping_result_dock_visible", False))
@@ -777,6 +901,7 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, self._maybe_show_first_run_guide)
 
     def _handle_main_tab_changed(self, index: int) -> None:
+        self._refresh_context_help()
         if not self._startup_activated:
             return
         self._start_tab_initial_load(index)
@@ -785,15 +910,9 @@ class MainWindow(QMainWindow):
         self._start_tab_initial_load(self.tab_widget.currentIndex())
 
     def _start_tab_initial_load(self, index: int) -> None:
-        if index == 0:
-            self.interface_tab.start_initial_refresh()
-            return
-        if index == 1:
-            self.diagnostics_tab.start_initial_refresh()
-            return
-        if index == 2:
-            self.wireless_tab.start_initial_refresh()
-            return
+        page = self.tab_widget.widget(index)
+        if page in (self.interface_tab, self.diagnostics_tab, self.wireless_tab):
+            page.start_initial_refresh()
 
     def _save_ui_state(self) -> None:
         if bool(getattr(self.state, "settings_reset_pending_restart", False)):
@@ -803,11 +922,11 @@ class MainWindow(QMainWindow):
         current_page_key = (
             self._MAIN_PAGE_KEYS[current_index]
             if 0 <= current_index < len(self._MAIN_PAGE_KEYS)
-            else "interface"
+            else "home"
         )
-        config["ui_state"] = {
+        ui_state = dict(self.state.get_ui_state())
+        ui_state.update({
             "main_window": {
-                "current_tab": current_index,
                 "current_page_key": current_page_key,
                 "log_dock_visible": not self.log_dock.isHidden(),
                 "ping_result_dock_visible": self.diagnostics_tab.is_result_dock_visible("ping"),
@@ -816,9 +935,9 @@ class MainWindow(QMainWindow):
             "interface_tab": self.interface_tab.save_ui_state(),
             "diagnostics_tab": self.diagnostics_tab.save_ui_state(),
             "wireless_tab": self.wireless_tab.save_ui_state(),
-            "ai_chat_tab": self.ai_chat_tab.save_ui_state(),
             "settings_tab": self.settings_tab.save_ui_state(),
-        }
+        })
+        config["ui_state"] = ui_state
         self.state.save_app_config(config)
 
     def _maybe_check_updates_on_startup(self) -> None:
@@ -1008,13 +1127,18 @@ class MainWindow(QMainWindow):
         if self._shutdown_started:
             return
         self._shutdown_started = True
+        activity_timer = getattr(self, "_activity_timer", None)
+        if activity_timer is not None:
+            activity_timer.stop()
+        if hasattr(self, "help_dock"):
+            self.help_dock.hide()
         startup_update_timer = getattr(self, "_startup_update_timer", None)
         if startup_update_timer is not None:
             startup_update_timer.stop()
         guide_dialog = getattr(self, "_guide_dialog", None)
         if guide_dialog is not None:
             guide_dialog.close()
-        for tab_name in ("diagnostics_tab", "wireless_tab", "inspector_tab", "ai_chat_tab", "settings_tab"):
+        for tab_name in ("diagnostics_tab", "wireless_tab", "inspector_tab", "settings_tab"):
             tab = getattr(self, tab_name, None)
             shutdown = getattr(tab, "shutdown", None)
             if callable(shutdown):

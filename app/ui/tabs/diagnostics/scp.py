@@ -25,6 +25,7 @@ from app.models.result_models import OperationResult
 from app.models.scp_models import ScpProfile, ScpServerRuntime, ScpTransferResult
 from app.ui.common import confirm_risky_action, make_empty_state, make_table_item, set_table_minimums
 from app.ui.dialogs.scp_profile_dialog import ScpProfileDialog
+from app.ui.common.disclosure import CollapsibleSection
 from app.utils.file_utils import open_in_explorer
 
 
@@ -51,7 +52,9 @@ class ScpDiagnosticsMixin:
         profile_row.addWidget(self.scp_profile_add_button)
         profile_row.addWidget(self.scp_profile_edit_button)
         profile_row.addWidget(self.scp_profile_delete_button)
-        connection_layout.addLayout(profile_row)
+        self.scp_profiles_section = CollapsibleSection("저장된 접속 프로파일")
+        self.scp_profiles_section.content_layout.addLayout(profile_row)
+        connection_layout.addWidget(self.scp_profiles_section)
 
         form = QGridLayout()
         self._configure_transfer_form_grid(form)
@@ -108,6 +111,9 @@ class ScpDiagnosticsMixin:
         local_row_layout.addWidget(self.scp_client_local_browse_button)
         form.addWidget(local_row, 3, 1, 1, 3)
         connection_layout.addLayout(form)
+        self._fold_transfer_options(form, connection_layout, "scp", [
+            self.scp_client_port_edit, self.scp_client_timeout_edit,
+        ])
 
         self.scp_client_remote_sources_edit = QPlainTextEdit()
         self.scp_client_remote_sources_edit.setTabChangesFocus(True)
@@ -185,7 +191,8 @@ class ScpDiagnosticsMixin:
         self.scp_client_log_output.setMinimumHeight(110)
         self.scp_client_log_output.setMaximumHeight(16777215)
         scp_log_layout.addWidget(self.scp_client_log_output)
-        self.scp_client_result_log_splitter.addWidget(scp_log_panel)
+        self.scp_client_result_log_splitter.addWidget(self._transfer_log_section("scp_client", scp_log_panel))
+        self._progressive_transfer_table(self.scp_transfer_table)
         self.scp_client_result_log_splitter.setSizes([420, 160])
         result_layout.addWidget(self.scp_client_result_log_splitter, 1)
         self.scp_client_activity_splitter.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -236,7 +243,7 @@ class ScpDiagnosticsMixin:
 
         form.addWidget(QLabel("바인드 IP"), 0, 0)
         form.addWidget(self.scp_server_bind_host_edit, 0, 1)
-        form.addWidget(self.scp_server_bind_warning_label, 0, 4)
+        form.addWidget(self.scp_server_bind_warning_label, 4, 0, 1, 4)
         form.addWidget(QLabel("포트"), 0, 2)
         form.addWidget(self.scp_server_port_edit, 0, 3)
         form.addWidget(QLabel("공유 루트"), 1, 0)
@@ -299,7 +306,7 @@ class ScpDiagnosticsMixin:
         self.scp_server_splitter = QSplitter(Qt.Vertical)
         self.scp_server_splitter.setChildrenCollapsible(False)
         self.scp_server_splitter.addWidget(self.scp_server_top_group)
-        self.scp_server_splitter.addWidget(self.scp_server_log_group)
+        self.scp_server_splitter.addWidget(self._transfer_log_section("scp_server", self.scp_server_log_group))
         self.scp_server_splitter.setSizes([260, 360])
         layout.addWidget(self.scp_server_splitter, 1)
 
@@ -422,6 +429,8 @@ class ScpDiagnosticsMixin:
             self.scp_client_local_folder_edit.setText(folder)
 
     def _upload_scp_files(self) -> None:
+        if self._scp_client_busy or not self._validate_transfer_host("scp"):
+            return
         support = self.state.scp_client_service.runtime_support_status()
         self._apply_scp_support_label(self.scp_client_support_label, support)
         if not support.success:
@@ -468,6 +477,8 @@ class ScpDiagnosticsMixin:
         )
 
     def _download_scp_files(self) -> None:
+        if self._scp_client_busy or not self._validate_transfer_host("scp"):
+            return
         support = self.state.scp_client_service.runtime_support_status()
         self._apply_scp_support_label(self.scp_client_support_label, support)
         if not support.success:
@@ -483,7 +494,7 @@ class ScpDiagnosticsMixin:
 
         remote_sources = [line.strip() for line in self.scp_client_remote_sources_edit.toPlainText().splitlines() if line.strip()]
         if not remote_sources:
-            QMessageBox.warning(self, "입력 필요", "다운로드할 원격 경로를 한 줄에 하나씩 입력해 주세요.")
+            self._transfer_input_error("scp", "다운로드할 원격 경로를 한 줄에 하나씩 입력해 주세요.", self.scp_client_remote_sources_edit)
             return
         if not self._confirm_transfer_preflight(
             protocol="SCP",

@@ -3,6 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDockWidget,
+    QCheckBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.ui.common import set_table_minimums
+from app.ui.common.disclosure import CollapsibleSection
 
 from netops_suite.ui.actions import ActionKind, make_action_button
 
@@ -31,14 +33,12 @@ class ResultDockWidget(QDockWidget):
 
 class ResultDockMixin:
     def _build_log_panel(self, title: str, output) -> QWidget:
-        panel = QWidget()
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(0, 0, 0, 0)
+        panel = CollapsibleSection("원문 로그")
+        layout = panel.content_layout
         if hasattr(output, "setMinimumHeight"):
             output.setMinimumHeight(max(output.minimumHeight(), 110))
         if hasattr(output, "setMaximumHeight"):
             output.setMaximumHeight(16777215)
-        layout.addWidget(QLabel(title))
         layout.addWidget(output)
         return panel
 
@@ -66,6 +66,16 @@ class ResultDockMixin:
         log_button = make_action_button("로그 저장", ActionKind.EXPORT, tooltip="선택 항목 로그를 저장합니다.")
         button_row.addWidget(csv_button)
         button_row.addWidget(log_button)
+        detail_columns = [3, 4, 5, 7, 9, 10] if key == "ping" else [4, 5, 6, 8, 10, 11]
+        detail_check = QCheckBox("상세 열")
+        detail_check.setAccessibleName(f"{key} 결과 상세 열 표시")
+        for column in detail_columns:
+            table.setColumnHidden(column, True)
+        detail_check.toggled.connect(
+            lambda shown: [table.setColumnHidden(column, not shown) for column in detail_columns]
+        )
+        button_row.addWidget(detail_check)
+        setattr(self, f"{key}_detail_columns_check", detail_check)
         button_row.addStretch(1)
         result_layout.addLayout(button_row)
 
@@ -101,6 +111,8 @@ class ResultDockMixin:
         splitter.addWidget(result_host)
         splitter.addWidget(log_panel)
         splitter.setSizes([480, 160])
+        splitter.hide()
+        table.model().rowsInserted.connect(lambda *_args: splitter.show())
         return splitter
 
     def _detach_result_panel(self, key: str) -> None:

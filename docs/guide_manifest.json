@@ -18,14 +18,21 @@
     {
       "id": "getting-started",
       "parent_id": null,
-      "title": "NetOps Suite 빠른 시작",
+      "title": "시작",
       "locale": "ko",
       "path": "docs/user/ko/getting-started.md",
       "anchor": "overview",
       "route": "getting-started",
       "source_paths": [
         "app/main_window.py",
-        "README.md"
+        "app/ui/tabs/a*_tab.py",
+        "README.md",
+        "app/ui/home.py",
+        "app/ui/common/disclosure.py",
+        "app/guides/*",
+        "app/ui/common/theme.py",
+        "netops_suite/ui/icons.py",
+        "assets/icons/lucide"
       ],
       "keywords": [
         "빠른 시작",
@@ -38,15 +45,20 @@
         "NetOps 사용법",
         "어디서 시작",
         "기능 둘러보기",
-        "NetOps Suite 빠른 시작"
+        "NetOps Suite 빠른 시작",
+        "시작"
       ],
       "risk": "low",
       "qa_capture_ids": [
-        "main_navigation"
+        "main_navigation",
+        "guide_home_overview",
+        "guide_context_help",
+        "card_borders"
       ],
       "capability_ids": [
         "getting-started"
-      ]
+      ],
+      "quick_help_anchor": "quick-getting-started"
     },
     {
       "id": "installation",
@@ -82,12 +94,13 @@
       "qa_capture_ids": [],
       "capability_ids": [
         "installation"
-      ]
+      ],
+      "quick_help_anchor": "quick-installation"
     },
     {
       "id": "interface",
       "parent_id": "getting-started",
-      "title": "네트워크 설정",
+      "title": "내 PC 네트워크",
       "locale": "ko",
       "path": "docs/user/ko/interface.md",
       "anchor": "interface",
@@ -111,7 +124,8 @@
         "게이트웨이 설정",
         "DNS 변경",
         "어댑터 조회",
-        "네트워크 설정"
+        "네트워크 설정",
+        "내 PC 네트워크"
       ],
       "risk": "high",
       "qa_capture_ids": [
@@ -119,7 +133,8 @@
       ],
       "capability_ids": [
         "interface"
-      ]
+      ],
+      "quick_help_anchor": "quick-interface"
     },
     {
       "id": "diagnostics",
@@ -150,7 +165,8 @@
       ],
       "capability_ids": [
         "diagnostics"
-      ]
+      ],
+      "quick_help_anchor": "quick-diagnostics"
     },
     {
       "id": "diagnostics.ping",
@@ -183,7 +199,8 @@
       ],
       "capability_ids": [
         "diagnostics.ping"
-      ]
+      ],
+      "quick_help_anchor": "quick-diagnostics-ping"
     },
     {
       "id": "diagnostics.tcp",
@@ -217,7 +234,8 @@
       ],
       "capability_ids": [
         "diagnostics.tcp"
-      ]
+      ],
+      "quick_help_anchor": "quick-diagnostics-tcp"
     },
     {
       "id": "diagnostics.dns",
@@ -252,7 +270,8 @@
       ],
       "capability_ids": [
         "diagnostics.dns"
-      ]
+      ],
+      "quick_help_anchor": "quick-diagnostics-dns"
     },
     {
       "id": "diagnostics.trace",
@@ -281,7 +300,8 @@
       "qa_capture_ids": [],
       "capability_ids": [
         "diagnostics.trace"
-      ]
+      ],
+      "quick_help_anchor": "quick-diagnostics-trace"
     },
     {
       "id": "diagnostics.iperf",
@@ -314,7 +334,8 @@
       "qa_capture_ids": [],
       "capability_ids": [
         "diagnostics.iperf"
-      ]
+      ],
+      "quick_help_anchor": "quick-diagnostics-iperf"
     },
     {
       "id": "diagnostics.arp",
@@ -343,7 +364,8 @@
       "qa_capture_ids": [],
       "capability_ids": [
         "diagnostics.arp"
-      ]
+      ],
+      "quick_help_anchor": "quick-diagnostics-arp"
     },
     {
       "id": "diagnostics.subnet",
@@ -373,7 +395,8 @@
       ],
       "capability_ids": [
         "diagnostics.subnet"
-      ]
+      ],
+      "quick_help_anchor": "quick-diagnostics-subnet"
     },
     {
       "id": "diagnostics.oui",
@@ -406,11 +429,12 @@
       ],
       "capability_ids": [
         "diagnostics.oui"
-      ]
+      ],
+      "quick_help_anchor": "quick-diagnostics-oui"
     },
     {
       "id": "diagnostics.transfer",
-      "parent_id": "diagnostics",
+      "parent_id": "getting-started",
       "title": "파일 전송",
       "locale": "ko",
       "path": "docs/user/ko/transfer.md",
@@ -419,7 +443,8 @@
       "source_paths": [
         "app/ui/tabs/diagnostics/ftp.py",
         "app/ui/tabs/diagnostics/scp.py",
-        "app/ui/tabs/diagnostics/tftp.py"
+        "app/ui/tabs/diagnostics/tftp.py",
+        "app/ui/tabs/transfer_tab.py"
       ],
       "keywords": [
         "파일 전송",
@@ -435,11 +460,13 @@
       ],
       "risk": "high",
       "qa_capture_ids": [
-        "file_transfer_routing"
+        "file_transfer_routing",
+        "guide_transfer_overview"
       ],
       "capability_ids": [
         "diagnostics.transfer"
-      ]
+      ],
+      "quick_help_anchor": "quick-diagnostics-transfer"
     },
     {
       "id": "diagnostics.transfer.ftp.client",
@@ -470,7 +497,8 @@
       ],
       "capability_ids": [
         "diagnostics.transfer.ftp.client"
-      ]
+      ],
+      "quick_help_anchor": "quick-diagnostics-transfer-ftp-client"
     },
     {
       "id": "diagnostics.transfer.ftp.server",
@@ -501,7 +529,8 @@
       ],
       "capability_ids": [
         "diagnostics.transfer.ftp.server"
-      ]
+      ],
+      "quick_help_anchor": "quick-diagnostics-transfer-ftp-server"
     },
     {
       "id": "diagnostics.transfer.ftps.client",
@@ -532,7 +561,8 @@
       ],
       "capability_ids": [
         "diagnostics.transfer.ftps.client"
-      ]
+      ],
+      "quick_help_anchor": "quick-diagnostics-transfer-ftps-client"
     },
     {
       "id": "diagnostics.transfer.ftps.server",
@@ -561,7 +591,8 @@
       ],
       "capability_ids": [
         "diagnostics.transfer.ftps.server"
-      ]
+      ],
+      "quick_help_anchor": "quick-diagnostics-transfer-ftps-server"
     },
     {
       "id": "diagnostics.transfer.sftp.client",
@@ -594,7 +625,8 @@
       ],
       "capability_ids": [
         "diagnostics.transfer.sftp.client"
-      ]
+      ],
+      "quick_help_anchor": "quick-diagnostics-transfer-sftp-client"
     },
     {
       "id": "diagnostics.transfer.sftp.server",
@@ -623,7 +655,8 @@
       ],
       "capability_ids": [
         "diagnostics.transfer.sftp.server"
-      ]
+      ],
+      "quick_help_anchor": "quick-diagnostics-transfer-sftp-server"
     },
     {
       "id": "diagnostics.transfer.scp.client",
@@ -655,7 +688,8 @@
       ],
       "capability_ids": [
         "diagnostics.transfer.scp.client"
-      ]
+      ],
+      "quick_help_anchor": "quick-diagnostics-transfer-scp-client"
     },
     {
       "id": "diagnostics.transfer.scp.server",
@@ -684,7 +718,8 @@
       ],
       "capability_ids": [
         "diagnostics.transfer.scp.server"
-      ]
+      ],
+      "quick_help_anchor": "quick-diagnostics-transfer-scp-server"
     },
     {
       "id": "diagnostics.transfer.tftp.client",
@@ -715,7 +750,8 @@
       ],
       "capability_ids": [
         "diagnostics.transfer.tftp.client"
-      ]
+      ],
+      "quick_help_anchor": "quick-diagnostics-transfer-tftp-client"
     },
     {
       "id": "diagnostics.transfer.tftp.server",
@@ -744,7 +780,8 @@
       ],
       "capability_ids": [
         "diagnostics.transfer.tftp.server"
-      ]
+      ],
+      "quick_help_anchor": "quick-diagnostics-transfer-tftp-server"
     },
     {
       "id": "diagnostics.commands",
@@ -776,19 +813,22 @@
       ],
       "capability_ids": [
         "diagnostics.commands"
-      ]
+      ],
+      "quick_help_anchor": "quick-diagnostics-commands"
     },
     {
       "id": "wireless",
-      "parent_id": "getting-started",
-      "title": "Wi-Fi 분석",
+      "parent_id": "diagnostics",
+      "title": "Wi-Fi 확인",
       "locale": "ko",
       "path": "docs/user/ko/wireless.md",
       "anchor": "wireless",
       "route": "wireless",
       "source_paths": [
         "app/ui/tabs/wireless_tab.py",
-        "app/services/wireless_service.py"
+        "app/services/wireless_service.py",
+        "app/ui/common/disclosure.py",
+        "app/ui/common/theme.py"
       ],
       "keywords": [
         "Wi-Fi",
@@ -803,31 +843,53 @@
         "무선 신호 확인",
         "주변 와이파이 검색",
         "채널 혼잡 확인",
-        "Wi-Fi 분석"
+        "Wi-Fi 분석",
+        "Wi-Fi 확인"
       ],
       "risk": "low",
       "qa_capture_ids": [
-        "guide_wireless_overview"
+        "guide_wireless_overview",
+        "guide_wireless_expanded",
+        "wireless_expanded_1024",
+        "wireless_expanded_1280",
+        "wireless_expanded_1600",
+        "card_borders",
+        "wireless_signal_86",
+        "wireless_signal_55",
+        "wireless_signal_25"
       ],
       "capability_ids": [
         "wireless"
-      ]
+      ],
+      "quick_help_anchor": "quick-wireless"
     },
     {
       "id": "inspector",
       "parent_id": "getting-started",
-      "title": "장비 점검 및 백업",
+      "title": "장비 점검·백업",
       "locale": "ko",
       "path": "docs/user/ko/inspector.md",
       "anchor": "inspector",
       "route": "inspector",
       "source_paths": [
         "app/ui/tabs/inspector_tab.py",
+        "app/ui/dialogs/inspector_profile_dialog.py",
         "netops_suite/modules/inspector/service.py",
         "netops_suite/modules/inspector/vendor_profiles",
         "netops_suite/modules/inspector_runtime/core/command_patterns.py",
         "netops_suite/modules/inspector_runtime/core/inspector.py",
-        "netops_suite/modules/inspector_runtime/vendors"
+        "netops_suite/modules/inspector_runtime/core/legacy_ssh.py",
+        "netops_suite/modules/inspector_runtime/core/legacy_ssh_worker.py",
+        "netops_suite/modules/inspector_runtime/core/ssh_compat.py",
+        "scripts/setup_legacy_ssh.py",
+        "requirements-legacy-ssh.txt",
+        "requirements-legacy-ssh-lock.txt",
+        "netops_suite/modules/inspector_runtime/core/profile_resolver.py",
+        "netops_suite/modules/inspector_runtime/core/settings.py",
+        "netops_suite/modules/inspector_runtime/core/validator.py",
+        "netops_suite/modules/inspector_runtime/vendors",
+        "app/ui/common/theme.py",
+        "netops_suite/modules/inspector/sample_inventory.py"
       ],
       "keywords": [
         "장비 점검",
@@ -852,22 +914,38 @@
         "장비마다 다른 명령",
         "여러 장비 호스트네임 수정",
         "Excel 값으로 명령 치환",
+        "장비 작업 자동화",
+        "장비 점검/백업",
         "장비 점검 및 백업",
-        "장비 점검 및 백업 · 사용자 명령"
+        "장비 점검 및 백업 · 사용자 명령",
+        "모델 프로파일",
+        "장비 작업 자동화 · 사용자 명령",
+        "장비 점검·백업",
+        "장비 점검·백업 · 사용자 명령"
       ],
       "risk": "high",
       "qa_capture_ids": [
-        "guide_inspector_overview"
+        "guide_inspector_overview",
+        "inspector_profile",
+        "inspector_expanded_1024",
+        "inspector_expanded_1280",
+        "inspector_expanded_1600",
+        "inspector_custom_commands_1024",
+        "inspector_custom_commands_1280",
+        "inspector_custom_commands_1600",
+        "guide_inspector_custom_commands",
+        "card_borders"
       ],
       "capability_ids": [
         "inspector",
         "inspector.user-commands"
-      ]
+      ],
+      "quick_help_anchor": "quick-inspector"
     },
     {
       "id": "config-builder",
-      "parent_id": "getting-started",
-      "title": "CLI 설정 생성",
+      "parent_id": "inspector",
+      "title": "설정 명령 만들기",
       "locale": "ko",
       "path": "docs/user/ko/config-builder.md",
       "anchor": "config-builder",
@@ -875,7 +953,13 @@
       "source_paths": [
         "app/ui/tabs/config_builder_tab.py",
         "netops_suite/modules/config_builder/service.py",
-        "netops_suite/modules/config_builder/switch_configurator/desktop_impl.py"
+        "netops_suite/modules/config_builder/switch_configurator/desktop_impl.py",
+        "netops_suite/modules/config_builder/switch_configurator/profile_builder_dialog.py",
+        "netops_suite/modules/config_builder/switch_configurator/authoring.py",
+        "netops_suite/modules/config_builder/switch_configurator/engine.py",
+        "netops_suite/modules/config_builder/switch_configurator/io_utils.py",
+        "app/ui/common/theme.py",
+        "netops_suite/modules/config_builder/switch_configurator/table_data.py"
       ],
       "keywords": [
         "CLI 설정",
@@ -889,54 +973,20 @@
         "장비 설정 파일 만들기",
         "CSV로 설정 생성",
         "XLSX로 설정 생성",
-        "CLI 설정 생성"
+        "CLI 설정 생성",
+        "장비 설정 생성",
+        "설정 명령 만들기"
       ],
       "risk": "medium",
       "qa_capture_ids": [
-        "guide_config_builder_overview"
+        "guide_config_builder_overview",
+        "config_builder_profile",
+        "card_borders"
       ],
       "capability_ids": [
         "config-builder"
-      ]
-    },
-    {
-      "id": "assistant",
-      "parent_id": "getting-started",
-      "title": "NetOps 어시스턴트",
-      "locale": "ko",
-      "path": "docs/user/ko/assistant.md",
-      "anchor": "assistant",
-      "route": "assistant",
-      "source_paths": [
-        "app/ui/tabs/ai_chat_tab.py",
-        "app/models/ai_models.py",
-        "app/services/ai_agent_service.py",
-        "app/services/ai_model_catalog_service.py",
-        "app/assistant/policy.py",
-        "app/assistant/capabilities.py",
-        "app/assistant/grounding.py"
       ],
-      "keywords": [
-        "NetOps 어시스턴트",
-        "Codex",
-        "Codex CLI",
-        "AI",
-        "권한",
-        "승인",
-        "AI 채팅",
-        "AI 모델",
-        "Codex 연결 설정",
-        "Codex 로그인",
-        "권한 모드",
-        "대화 내보내기"
-      ],
-      "risk": "high",
-      "qa_capture_ids": [
-        "guide_assistant_overview"
-      ],
-      "capability_ids": [
-        "assistant"
-      ]
+      "quick_help_anchor": "quick-config-builder"
     },
     {
       "id": "settings",
@@ -948,8 +998,6 @@
       "route": "settings",
       "source_paths": [
         "app/ui/tabs/settings_tab.py",
-        "app/models/ai_models.py",
-        "app/services/ai_agent_service.py",
         "app/app_state.py",
         "app/utils/file_utils.py"
       ],
@@ -974,7 +1022,8 @@
       ],
       "capability_ids": [
         "settings"
-      ]
+      ],
+      "quick_help_anchor": "quick-settings"
     },
     {
       "id": "data-security",
@@ -986,8 +1035,7 @@
       "route": "data-security",
       "source_paths": [
         "app/utils/file_utils.py",
-        "app/ui/tabs/inspector_tab.py",
-        "app/ui/tabs/ai_chat_tab.py"
+        "app/ui/tabs/inspector_tab.py"
       ],
       "keywords": [
         "보안",
@@ -1006,7 +1054,8 @@
       "qa_capture_ids": [],
       "capability_ids": [
         "data-security"
-      ]
+      ],
+      "quick_help_anchor": "quick-data-security"
     },
     {
       "id": "troubleshooting",
@@ -1038,7 +1087,8 @@
       "qa_capture_ids": [],
       "capability_ids": [
         "troubleshooting"
-      ]
+      ],
+      "quick_help_anchor": "quick-troubleshooting"
     }
   ]
 }

@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QCheckBox, QLabel, QMenu, QMessageBox, QSizePolicy, QStyle, QStyleOptionButton, QToolButton
+from shiboken6 import isValid
 
 
 _STATUS_STYLES = {
-    "info": ("#ffffff", "#344054", "#d0d5dd", "#98a2b3"),
-    "success": ("#ffffff", "#344054", "#d0d5dd", "#16a34a"),
-    "warning": ("#ffffff", "#344054", "#d0d5dd", "#d97706"),
-    "error": ("#ffffff", "#344054", "#d0d5dd", "#dc2626"),
+    "info": ("#eef4ff", "#355d94", "#dce7f8", "#3b82f6"),
+    "success": ("#eef9f3", "#267453", "#d9eee2", "#10b981"),
+    "warning": ("#fff8eb", "#956415", "#f3e6c8", "#e2a52f"),
+    "error": ("#fff1f2", "#b43e4e", "#f5dce0", "#ef6b78"),
 }
 
 _VISIBLE_CHECKBOX_STYLE = """
@@ -107,8 +108,8 @@ def make_empty_state(text: str) -> QLabel:
     label.setAlignment(Qt.AlignmentFlag.AlignCenter)
     label.setWordWrap(True)
     label.setStyleSheet(
-        "background:transparent; color:#667085; padding:10px 8px; "
-        "border:1px dashed #d0d5dd; border-radius:4px;"
+        "background:#f7f9fd; color:#7889a2; padding:14px 12px; "
+        "border:1px dashed #cddbef; border-radius:8px;"
     )
     return label
 
@@ -129,6 +130,40 @@ def polish_dialog(dialog, layout=None) -> None:
         layout.setSpacing(10)
 
 
+class _WrappedHeightFit(QObject):
+    def __init__(self, label: QLabel) -> None:
+        super().__init__(label)
+        self._label = label
+        self._pending = False
+
+    def eventFilter(self, watched, event) -> bool:
+        if not self._pending and event.type() in (
+            QEvent.Type.Resize, QEvent.Type.FontChange, QEvent.Type.StyleChange, QEvent.Type.Show
+        ):
+            # The label refreshes its text layout after this filter runs, so measure afterwards.
+            self._pending = True
+            QTimer.singleShot(0, self._fit)
+        return False
+
+    def _fit(self) -> None:
+        self._pending = False
+        if not isValid(self._label):
+            return
+        height = self._label.heightForWidth(self._label.width())
+        if height > 0 and self._label.height() != height:
+            self._label.setFixedHeight(height)
+
+
+def fit_wrapped_label_height(label: QLabel) -> QLabel:
+    """Keep a word-wrapped hint exactly as tall as its text at the current width."""
+    label.setWordWrap(True)
+    label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+    label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+    fitter = _WrappedHeightFit(label)
+    label.installEventFilter(fitter)
+    return label
+
+
 def make_selectable_wrapped_label(text: str = "") -> QLabel:
     label = QLabel(text)
     label.setWordWrap(True)
@@ -142,6 +177,7 @@ def make_inline_status(kind: str = "info", text: str = "") -> QLabel:
     label = QLabel()
     label.setObjectName("inlineStatus")
     label.setWordWrap(True)
+    label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
     set_inline_status(label, kind, text)
     return label
 
@@ -151,7 +187,7 @@ def set_inline_status(label: QLabel, kind: str, text: str) -> None:
     label.setText(text)
     label.setStyleSheet(
         f"background:{background}; color:{color}; border:1px solid {border}; "
-        f"border-left:3px solid {accent}; border-radius:4px; padding:5px 8px 5px 7px;"
+        f"border-left:3px solid {accent}; border-radius:6px; padding:6px 9px 6px 8px;"
     )
     label.setVisible(bool(text))
 

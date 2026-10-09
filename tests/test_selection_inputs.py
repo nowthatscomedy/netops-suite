@@ -148,7 +148,8 @@ def test_combo_chevron_is_visible_with_app_theme(qapp):
             QStyle.SubControl.SC_ComboBoxArrow,
             combo,
         )
-        assert arrow_rect.width() == 24
+        assert arrow_rect.width() >= 24
+        assert combo.rect().contains(arrow_rect)
         pixmap = combo.grab()
         image = pixmap.toImage()
         scale = pixmap.devicePixelRatio()

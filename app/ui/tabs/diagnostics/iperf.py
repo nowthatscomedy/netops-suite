@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from app.models.network_models import PublicIperfServer
 from app.models.result_models import OperationResult
 from app.utils.validators import ValidationError
+from app.ui.common.disclosure import CollapsibleSection
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
@@ -113,17 +114,23 @@ class IperfDiagnosticsMixin:
         params_row.addSpacing(6)
         params_row.addWidget(QLabel("포트"))
         params_row.addWidget(self.iperf_port_edit)
-        params_row.addSpacing(6)
-        params_row.addWidget(QLabel("스트림"))
-        params_row.addWidget(self.iperf_streams_edit)
-        params_row.addSpacing(6)
-        params_row.addWidget(QLabel("지속 초"))
-        params_row.addWidget(self.iperf_duration_edit)
-        params_row.addSpacing(6)
-        params_row.addWidget(self.iperf_reverse_check)
-        params_row.addWidget(self.iperf_udp_check)
-        params_row.addWidget(self.iperf_ipv6_check)
         group_layout.addLayout(params_row)
+        self.iperf_options_section = CollapsibleSection("실행 옵션")
+        options_row = QHBoxLayout()
+        options_row.addWidget(QLabel("스트림"))
+        options_row.addWidget(self.iperf_streams_edit)
+        options_row.addWidget(QLabel("지속 초"))
+        options_row.addWidget(self.iperf_duration_edit)
+        options_row.addWidget(self.iperf_reverse_check)
+        options_row.addWidget(self.iperf_udp_check)
+        options_row.addWidget(self.iperf_ipv6_check)
+        options_row.addStretch(1)
+        self.iperf_options_section.content_layout.addLayout(options_row)
+        self.iperf_options_section.watch(self.iperf_streams_edit, empty_value="1")
+        self.iperf_options_section.watch(self.iperf_duration_edit, empty_value="10")
+        for option in (self.iperf_reverse_check, self.iperf_udp_check, self.iperf_ipv6_check):
+            self.iperf_options_section.watch(option)
+        group_layout.addWidget(self.iperf_options_section)
 
         action_row = QHBoxLayout()
         action_row.addWidget(self.iperf_run_button)
@@ -548,20 +555,31 @@ class IperfDiagnosticsMixin:
         mode = str(self.iperf_mode_combo.currentData())
         if mode == "client":
             self._sync_public_iperf_target(overwrite_port=False)
+        invalid_field = self.iperf_port_edit
         try:
             port = self._positive_int_or_default(self.iperf_port_edit, "iperf 포트", 5201, minimum=1, maximum=65535)
+            invalid_field = self.iperf_streams_edit
             streams = self._positive_int_or_default(self.iperf_streams_edit, "스트림 수", 1) if mode == "client" else 1
+            invalid_field = self.iperf_duration_edit
             duration = self._positive_int_or_default(self.iperf_duration_edit, "지속 시간", 10) if mode == "client" else 0
         except ValidationError as exc:
-            QMessageBox.warning(self, "입력 확인", str(exc))
+            if invalid_field is not self.iperf_port_edit:
+                self.iperf_options_section.setExpanded(True)
+            self._show_diagnostic_input_error(self.iperf_status_label, invalid_field, str(exc))
             return
 
         server = self.iperf_server_edit.text().strip()
         if mode == "client" and not server:
             if self.iperf_use_public_server_check.isChecked():
-                QMessageBox.warning(self, "입력 확인", "공개 서버 목록을 먼저 불러오거나 직접 서버 주소를 입력해 주세요.")
+                self._show_diagnostic_input_error(
+                    self.iperf_status_label, self.iperf_public_refresh_button,
+                    "목록 갱신 후 공개 서버를 선택하거나, 공개 서버 사용을 끄고 서버 주소를 입력해 주세요.",
+                )
             else:
-                QMessageBox.warning(self, "입력 확인", "클라이언트 모드에서는 서버 주소를 입력해 주세요.")
+                self._show_diagnostic_input_error(
+                    self.iperf_status_label, self.iperf_server_edit,
+                    "측정할 서버 주소를 입력해 주세요. 예: 192.168.0.10",
+                )
             return
 
         self.iperf_output.clear()
@@ -611,6 +629,7 @@ class IperfDiagnosticsMixin:
         self.refresh_iperf_availability()
 
     def _set_iperf_running(self, running: bool) -> None:
+        self._set_diagnostic_running("iperf", running)
         self.iperf_run_button.setEnabled((not running) and self._iperf_available)
         self.iperf_cancel_button.setEnabled(running)
         self.iperf_settings_button.setEnabled(not running)

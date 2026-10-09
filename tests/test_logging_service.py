@@ -9,14 +9,6 @@ from types import SimpleNamespace
 
 from PySide6.QtCore import qDebug, qWarning
 
-from app.assistant import (
-    AuditLogger,
-    PermissionClass,
-    ToolCallRequest,
-    ToolDescriptor,
-    ToolRegistry,
-)
-from app.assistant.executor import ToolExecutor
 from app.services.logging_service import configure_logging, shutdown_logging
 
 
@@ -72,63 +64,6 @@ def test_application_log_has_runtime_source_and_redacts_credentials(tmp_path):
         assert secret not in content
         assert all(secret not in line for line in callback_lines)
     assert "[redacted]" in content
-
-
-def test_assistant_audit_jsonl_uses_common_token_and_url_redaction(tmp_path):
-    audit_path = tmp_path / "netops_assistant_audit.jsonl"
-    audit = AuditLogger(audit_path)
-
-    audit.log_event(
-        "tool_result",
-        {
-            "message": (
-                "provider returned sk-releasecandidate1234567890 and "
-                "eyJabcdefghijk.abcdefghijkl.abcdefghijkl"
-            ),
-            "url": "https://alice:supersecret@example.test/private",
-        },
-    )
-
-    content = audit_path.read_text(encoding="utf-8")
-    for secret in (
-        "sk-releasecandidate1234567890",
-        "eyJabcdefghijk.abcdefghijkl.abcdefghijkl",
-        "alice",
-        "supersecret",
-    ):
-        assert secret not in content
-    assert "[redacted]" in content
-
-
-def test_assistant_tool_failure_logs_traceback_without_exposing_error_to_result(tmp_path):
-    log_path = tmp_path / "app.log"
-    app_logger = configure_logging(log_path)
-    registry = ToolRegistry()
-    registry.register(
-        ToolDescriptor(
-            name="qa_failure",
-            permission_class=PermissionClass.READ_LOCAL,
-        ),
-        lambda _state, _arguments: (_ for _ in ()).throw(
-            RuntimeError("provider failed token=sk-releasecandidate1234567890")
-        ),
-    )
-
-    try:
-        _decision, result = ToolExecutor(object(), registry).execute(
-            ToolCallRequest(tool_name="qa_failure")
-        )
-    finally:
-        shutdown_logging(app_logger)
-
-    assert result is not None
-    assert result.success is False
-    assert "sk-releasecandidate" not in result.error
-    content = log_path.read_text(encoding="utf-8")
-    assert "Assistant tool execution failed. tool=qa_failure" in content
-    assert "Traceback (most recent call last):" in content
-    assert "sk-releasecandidate1234567890" not in content
-    assert "token=[redacted]" in content
 
 
 def test_uncaught_main_and_thread_exceptions_include_tracebacks_and_restore_hooks(

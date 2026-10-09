@@ -6,15 +6,26 @@ import os
 import sys
 import tempfile
 
-from netops_suite import APP_ID, APP_NAME
-from PySide6.QtWidgets import QApplication, QMessageBox
+# Some modules resolve the data folder at import time. Point the release smoke
+# test at a throwaway folder before those imports, or a packaged build would
+# create a "data" folder inside the payload the installer ships.
+_SMOKE_TEST_DATA_ROOT: tempfile.TemporaryDirectory | None = None
+if "--release-smoke-test" in sys.argv[1:]:
+    _SMOKE_TEST_DATA_ROOT = tempfile.TemporaryDirectory(
+        prefix="netops_suite_release_smoke_"
+    )
+    os.environ["NETOPS_SUITE_DATA_ROOT"] = _SMOKE_TEST_DATA_ROOT.name
+    os.environ.pop("NETOPS_SUITE_USE_PROJECT_DATA", None)
 
-from app.app_state import AppState
-from app.main_window import MainWindow
-from app.ui.common.theme import apply_app_theme
-from app.ui.startup_loading import StartupLoadingWindow
-from app.utils.app_icon import load_app_icon
-from app.version import __version__
+from netops_suite import APP_ID, APP_NAME  # noqa: E402
+from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
+
+from app.app_state import AppState  # noqa: E402
+from app.main_window import MainWindow  # noqa: E402
+from app.ui.common.theme import apply_app_theme  # noqa: E402
+from app.ui.startup_loading import StartupLoadingWindow  # noqa: E402
+from app.utils.app_icon import load_app_icon  # noqa: E402
+from app.version import __version__  # noqa: E402
 
 
 def _set_windows_app_id() -> None:
@@ -33,7 +44,9 @@ def _run_release_smoke_test() -> int:
     state = None
     window = None
     try:
-        with tempfile.TemporaryDirectory(prefix="netops_suite_release_smoke_") as data_root:
+        with _SMOKE_TEST_DATA_ROOT or tempfile.TemporaryDirectory(
+            prefix="netops_suite_release_smoke_"
+        ) as data_root:
             os.environ["NETOPS_SUITE_DATA_ROOT"] = data_root
             os.environ.pop("NETOPS_SUITE_USE_PROJECT_DATA", None)
             _set_windows_app_id()

@@ -20,6 +20,7 @@ dist/
 *.key
 *.pem
 
+/data/
 logs/app.log
 logs/exports/*
 !logs/.gitkeep
@@ -44,3 +45,7 @@ iperf3.exe
 cygcrypto-3.dll
 cygwin1.dll
 cygz.dll
+/.runtime/
+
+# Local QA screenshots and review evidence.
+/output/

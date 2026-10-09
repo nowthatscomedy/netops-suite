@@ -14,22 +14,33 @@
         "appShell",
         "mainNavigation",
         "workspacePanel",
-        "stepHint"
+        "pageHeader"
       ],
       "source_paths": [
         "app/main_window.py",
         "app/ui/common/theme.py",
         "app/ui/common/ux.py",
-        "app/ui/tabs/interface_tab.py"
+        "app/ui/tabs/interface_tab.py",
+        "app/ui/common/disclosure.py",
+        "netops_suite/ui/actions.py",
+        "netops_suite/ui/icons.py",
+        "assets/icons/lucide/house.svg",
+        "assets/icons/lucide/network.svg",
+        "assets/icons/lucide/activity.svg",
+        "assets/icons/lucide/wifi.svg",
+        "assets/icons/lucide/server-cog.svg",
+        "assets/icons/lucide/square-terminal.svg",
+        "assets/icons/lucide/folder-sync.svg",
+        "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "3141b17c4e2a334fb1667be45ce25a1b5a3ae7158a8809baed3c3c552ca60bd1",
+      "png_sha256": "2163f243dd0e1cb4107dfd507603c575d25ca320862c2178ef5758667ad44c8c",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "3b1f3fe65fbb3197ef24c69c7ee56a5c1f8c3a981f7015d70bde0f8a040ea593",
-        "contract_sha256": "e0a729727b6fb93a8ca4121625c93dea28885bf90a189ce690e6b822bea969c4",
-        "handler_sha256": "43820e9791846df2859298ecc8ffc868e13e3d021f8a6c8a2892f16ef1a0a1f9",
-        "sources_sha256": "fcac113a4adcc3ad5c1be90d52df3e7b7c0600668f6851f8810e26c14c1060f2",
+        "value": "79f397a8f6dff638b0313244aca24121163c99b7adeb19e8adc3b1093fc43363",
+        "contract_sha256": "28102dc753364702ae7ec90db2abdbfd67eaeb234c2fe000d1f539342640be49",
+        "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
+        "sources_sha256": "c69519f4228812ad3369f46455b44cbe63ca95acf97d857e0e4be05cd9fc583c",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -37,11 +48,11 @@
           "methods": [
             {
               "name": "_run_scenario",
-              "sha256": "8a112fc522584c8371769cdfccfa94e9ba30553ad75fb9ab7031391aa8806391"
+              "sha256": "2e2e07f023176c4fce56e1e4111186abf52b6e0dde38c26ec450d396367bf033"
             },
             {
               "name": "_navigate_main",
-              "sha256": "0d982af5ea7cd97c6e666058f4dd1113633abca124c798a5a217ae94171b1f10"
+              "sha256": "a0d0f34ae36804abfef147bd2e6b1a0b3495766e6ac59223333b5bfaca2f6104"
             },
             {
               "name": "_click_list_row",
@@ -57,7 +68,7 @@
             },
             {
               "name": "_capture_handler_guide_overview",
-              "sha256": "d3fb1f2cdd53063ec8f5209b84b7e006af1f209b32e974d77a8bb09cc585f85e"
+              "sha256": "cedc9829d87dbaae8e39ab5affe2f45357faaa8c80f2c00e39125695c0e7ea32"
             }
           ]
         },
@@ -69,46 +80,112 @@
           "appShell",
           "mainNavigation",
           "workspacePanel",
-          "stepHint"
+          "pageHeader"
         ],
         "source_paths": [
           "app/main_window.py",
           "app/ui/common/theme.py",
           "app/ui/common/ux.py",
-          "app/ui/tabs/interface_tab.py"
+          "app/ui/tabs/interface_tab.py",
+          "app/ui/common/disclosure.py",
+          "netops_suite/ui/actions.py",
+          "netops_suite/ui/icons.py",
+          "assets/icons/lucide/house.svg",
+          "assets/icons/lucide/network.svg",
+          "assets/icons/lucide/activity.svg",
+          "assets/icons/lucide/wifi.svg",
+          "assets/icons/lucide/server-cog.svg",
+          "assets/icons/lucide/square-terminal.svg",
+          "assets/icons/lucide/folder-sync.svg",
+          "assets/icons/lucide/settings-2.svg"
         ],
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 46028,
-            "sha256": "e5ff8a6da53f6589741ee557a1483fdb4609653f9d6fda7327d4da7507922328"
+            "size": 53492,
+            "sha256": "cce9f95013fe46dd25e038ea4cf83bbc95ae245ab6f3fae0eba38a4f8063d0bd"
+          },
+          {
+            "path": "app/ui/common/disclosure.py",
+            "size": 6936,
+            "sha256": "6917ed185f7e1e57c28208ba0858851bef3a4d4745849c0294e0551c1f25101d"
           },
           {
             "path": "app/ui/common/theme.py",
-            "size": 9158,
-            "sha256": "ce2ab34396cc083041ee6cd2324a822ca0bd4561c52ef3c3b0dabc08d77593a1"
+            "size": 10689,
+            "sha256": "813dcc4e905944a67db1e582292152f54e7ac86ed57c2b00cedcc47e3f56c832"
           },
           {
             "path": "app/ui/common/ux.py",
-            "size": 6794,
-            "sha256": "a469823035da87207ba23cb89333dcc7a5cd1971b633db01031204ec0b925e48"
+            "size": 8214,
+            "sha256": "1f03c949729e17d2e195f005bfd047314fc58a76f9c050a2a26e21dd3d2b2c45"
           },
           {
             "path": "app/ui/tabs/interface_tab.py",
-            "size": 33684,
-            "sha256": "91a29219b16be775c0bd5b12768587c0b2b13a6a74ea598931f923643b43acbd"
+            "size": 35800,
+            "sha256": "f9e04b70f3deb411ad473393c427ba0661abe800886d25f0cf8f2767fc7496da"
+          },
+          {
+            "path": "assets/icons/lucide/activity.svg",
+            "size": 346,
+            "sha256": "050fbcda05e13c2051cf857683645e19c6b180861ef4d0cc28a6f09ba1ea1666"
+          },
+          {
+            "path": "assets/icons/lucide/folder-sync.svg",
+            "size": 481,
+            "sha256": "65cf1b56d7e8b0b43a347a83ea4c8b82c9364dc2cf6f816aa2b22dfcaa66407b"
+          },
+          {
+            "path": "assets/icons/lucide/house.svg",
+            "size": 383,
+            "sha256": "28216c479005731ef5e382e7d8627eda2b129b019eb1f3d9de9f5915576d448e"
+          },
+          {
+            "path": "assets/icons/lucide/network.svg",
+            "size": 445,
+            "sha256": "626be730feea1e5ea7539fbf78b4a3fcb927ce5d7dc43364f2216908672ac792"
+          },
+          {
+            "path": "assets/icons/lucide/server-cog.svg",
+            "size": 797,
+            "sha256": "6c48e7bf726c71ced40e79b1961258b24b5a752c6cec158a68a49f6f01a3852a"
+          },
+          {
+            "path": "assets/icons/lucide/settings-2.svg",
+            "size": 324,
+            "sha256": "06d06c191bd7eb28afaf9d40acb5c49ef69448fdeda91801d9823d7c440a4e10"
+          },
+          {
+            "path": "assets/icons/lucide/square-terminal.svg",
+            "size": 321,
+            "sha256": "1fd2b783881ed8b0675995910fe98625789119e390420931eca6ddbc91c17932"
+          },
+          {
+            "path": "assets/icons/lucide/wifi.svg",
+            "size": 357,
+            "sha256": "5c4c795d014fa95d1e1038362df44a0f0f32ded9cb08c833ae72419ebadc9a91"
+          },
+          {
+            "path": "netops_suite/ui/actions.py",
+            "size": 6061,
+            "sha256": "2cee4bdc38270aa4c6610a4a48bd2a18bc05399156b3b3fb6d60d522e22da4dd"
+          },
+          {
+            "path": "netops_suite/ui/icons.py",
+            "size": 1388,
+            "sha256": "fd25c6b6b7c4b1dffe5787f0fab779746a90590a2874a6a59122ca96d96eec95"
           }
         ]
       },
       "checks": [
         "메인 화면 0 이동",
-        "가이드 화면 제목: 네트워크 설정",
-        "가이드 화면 표시: 네트워크 설정",
+        "가이드 화면 제목: 내 PC 네트워크",
+        "가이드 화면 표시: 내 PC 네트워크",
         "가이드 캡처 뷰포트: 1280×800",
         "가이드 캡처 objectName 표시: appShell",
         "가이드 캡처 objectName 표시: mainNavigation",
         "가이드 캡처 objectName 표시: workspacePanel",
-        "가이드 캡처 objectName 표시: stepHint"
+        "가이드 캡처 objectName 표시: pageHeader"
       ]
     },
     {
@@ -123,7 +200,7 @@
         "appShell",
         "mainNavigation",
         "workspacePanel",
-        "stepHint",
+        "pageHeader",
         "diagnosticToolStack"
       ],
       "source_paths": [
@@ -132,16 +209,27 @@
         "app/ui/common/ux.py",
         "app/ui/tabs/diagnostics_tab.py",
         "app/ui/tabs/diagnostics/core.py",
-        "app/ui/tabs/diagnostics/ping.py"
+        "app/ui/tabs/diagnostics/ping.py",
+        "app/ui/common/disclosure.py",
+        "netops_suite/ui/actions.py",
+        "netops_suite/ui/icons.py",
+        "assets/icons/lucide/house.svg",
+        "assets/icons/lucide/network.svg",
+        "assets/icons/lucide/activity.svg",
+        "assets/icons/lucide/wifi.svg",
+        "assets/icons/lucide/server-cog.svg",
+        "assets/icons/lucide/square-terminal.svg",
+        "assets/icons/lucide/folder-sync.svg",
+        "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "6d457065a1f0fb45e2c5829d8cfdc580762defe2945f07e365a55eb6f9db9d49",
+      "png_sha256": "6dba4a4e7684ff616f9c0449012cbbbfbdaf35c1c76035d9030c5bfce04354d4",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "72536f078e40779733b9c5b23a68b660e879bab288b30397f46eba5c40cc000f",
-        "contract_sha256": "e0f65932e5e24508a2045fd8791b754869f71031b805eca00a3110b15d29f8e8",
-        "handler_sha256": "43820e9791846df2859298ecc8ffc868e13e3d021f8a6c8a2892f16ef1a0a1f9",
-        "sources_sha256": "c762ebb98f9aca2ec6bbb576040b16af071c44d3778c887d5ccef39a1f2a3fd7",
+        "value": "18155c53e2fa77aaa54a2fc311c664f26f58f579c2baf6a15f5d8064d2cd5e62",
+        "contract_sha256": "388101f3149abcc937642bbcb3d8949b8ad77d187f62dd1311529f44624c8670",
+        "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
+        "sources_sha256": "265a9ccb1499700d35cdfd18856ebbb679bebd151ca23356af58c9c31f54bfe5",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -149,11 +237,11 @@
           "methods": [
             {
               "name": "_run_scenario",
-              "sha256": "8a112fc522584c8371769cdfccfa94e9ba30553ad75fb9ab7031391aa8806391"
+              "sha256": "2e2e07f023176c4fce56e1e4111186abf52b6e0dde38c26ec450d396367bf033"
             },
             {
               "name": "_navigate_main",
-              "sha256": "0d982af5ea7cd97c6e666058f4dd1113633abca124c798a5a217ae94171b1f10"
+              "sha256": "a0d0f34ae36804abfef147bd2e6b1a0b3495766e6ac59223333b5bfaca2f6104"
             },
             {
               "name": "_click_list_row",
@@ -169,7 +257,7 @@
             },
             {
               "name": "_capture_handler_guide_overview",
-              "sha256": "d3fb1f2cdd53063ec8f5209b84b7e006af1f209b32e974d77a8bb09cc585f85e"
+              "sha256": "cedc9829d87dbaae8e39ab5affe2f45357faaa8c80f2c00e39125695c0e7ea32"
             }
           ]
         },
@@ -181,7 +269,7 @@
           "appShell",
           "mainNavigation",
           "workspacePanel",
-          "stepHint",
+          "pageHeader",
           "diagnosticToolStack"
         ],
         "source_paths": [
@@ -190,38 +278,104 @@
           "app/ui/common/ux.py",
           "app/ui/tabs/diagnostics_tab.py",
           "app/ui/tabs/diagnostics/core.py",
-          "app/ui/tabs/diagnostics/ping.py"
+          "app/ui/tabs/diagnostics/ping.py",
+          "app/ui/common/disclosure.py",
+          "netops_suite/ui/actions.py",
+          "netops_suite/ui/icons.py",
+          "assets/icons/lucide/house.svg",
+          "assets/icons/lucide/network.svg",
+          "assets/icons/lucide/activity.svg",
+          "assets/icons/lucide/wifi.svg",
+          "assets/icons/lucide/server-cog.svg",
+          "assets/icons/lucide/square-terminal.svg",
+          "assets/icons/lucide/folder-sync.svg",
+          "assets/icons/lucide/settings-2.svg"
         ],
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 46028,
-            "sha256": "e5ff8a6da53f6589741ee557a1483fdb4609653f9d6fda7327d4da7507922328"
+            "size": 53492,
+            "sha256": "cce9f95013fe46dd25e038ea4cf83bbc95ae245ab6f3fae0eba38a4f8063d0bd"
+          },
+          {
+            "path": "app/ui/common/disclosure.py",
+            "size": 6936,
+            "sha256": "6917ed185f7e1e57c28208ba0858851bef3a4d4745849c0294e0551c1f25101d"
           },
           {
             "path": "app/ui/common/theme.py",
-            "size": 9158,
-            "sha256": "ce2ab34396cc083041ee6cd2324a822ca0bd4561c52ef3c3b0dabc08d77593a1"
+            "size": 10689,
+            "sha256": "813dcc4e905944a67db1e582292152f54e7ac86ed57c2b00cedcc47e3f56c832"
           },
           {
             "path": "app/ui/common/ux.py",
-            "size": 6794,
-            "sha256": "a469823035da87207ba23cb89333dcc7a5cd1971b633db01031204ec0b925e48"
+            "size": 8214,
+            "sha256": "1f03c949729e17d2e195f005bfd047314fc58a76f9c050a2a26e21dd3d2b2c45"
           },
           {
             "path": "app/ui/tabs/diagnostics/core.py",
-            "size": 52551,
-            "sha256": "02f5f6d65be5a977d926f12c0a0a722c7bef0550184e8e0eec4ed665662dd898"
+            "size": 58315,
+            "sha256": "4003838f751c8726c3436e5583ea1ccd625522adcdb00e3af3993edc21981bd1"
           },
           {
             "path": "app/ui/tabs/diagnostics/ping.py",
-            "size": 15345,
-            "sha256": "e718a5075a4dfc5acd1ead3c9bce049149bc796aedb47616fc2ba0d40237b40f"
+            "size": 16311,
+            "sha256": "2e0a7e937a83fd40709abc3dac28dd8d4d602cc5c23e3e30568416e5af7deac2"
           },
           {
             "path": "app/ui/tabs/diagnostics_tab.py",
             "size": 81,
             "sha256": "e4d56a4221f4fe0fe7ac3f6970ba016af65dc86fbe2c600141ca8e14c2dcc009"
+          },
+          {
+            "path": "assets/icons/lucide/activity.svg",
+            "size": 346,
+            "sha256": "050fbcda05e13c2051cf857683645e19c6b180861ef4d0cc28a6f09ba1ea1666"
+          },
+          {
+            "path": "assets/icons/lucide/folder-sync.svg",
+            "size": 481,
+            "sha256": "65cf1b56d7e8b0b43a347a83ea4c8b82c9364dc2cf6f816aa2b22dfcaa66407b"
+          },
+          {
+            "path": "assets/icons/lucide/house.svg",
+            "size": 383,
+            "sha256": "28216c479005731ef5e382e7d8627eda2b129b019eb1f3d9de9f5915576d448e"
+          },
+          {
+            "path": "assets/icons/lucide/network.svg",
+            "size": 445,
+            "sha256": "626be730feea1e5ea7539fbf78b4a3fcb927ce5d7dc43364f2216908672ac792"
+          },
+          {
+            "path": "assets/icons/lucide/server-cog.svg",
+            "size": 797,
+            "sha256": "6c48e7bf726c71ced40e79b1961258b24b5a752c6cec158a68a49f6f01a3852a"
+          },
+          {
+            "path": "assets/icons/lucide/settings-2.svg",
+            "size": 324,
+            "sha256": "06d06c191bd7eb28afaf9d40acb5c49ef69448fdeda91801d9823d7c440a4e10"
+          },
+          {
+            "path": "assets/icons/lucide/square-terminal.svg",
+            "size": 321,
+            "sha256": "1fd2b783881ed8b0675995910fe98625789119e390420931eca6ddbc91c17932"
+          },
+          {
+            "path": "assets/icons/lucide/wifi.svg",
+            "size": 357,
+            "sha256": "5c4c795d014fa95d1e1038362df44a0f0f32ded9cb08c833ae72419ebadc9a91"
+          },
+          {
+            "path": "netops_suite/ui/actions.py",
+            "size": 6061,
+            "sha256": "2cee4bdc38270aa4c6610a4a48bd2a18bc05399156b3b3fb6d60d522e22da4dd"
+          },
+          {
+            "path": "netops_suite/ui/icons.py",
+            "size": 1388,
+            "sha256": "fd25c6b6b7c4b1dffe5787f0fab779746a90590a2874a6a59122ca96d96eec95"
           }
         ]
       },
@@ -233,7 +387,7 @@
         "가이드 캡처 objectName 표시: appShell",
         "가이드 캡처 objectName 표시: mainNavigation",
         "가이드 캡처 objectName 표시: workspacePanel",
-        "가이드 캡처 objectName 표시: stepHint",
+        "가이드 캡처 objectName 표시: pageHeader",
         "가이드 캡처 objectName 표시: diagnosticToolStack"
       ]
     },
@@ -249,23 +403,34 @@
         "appShell",
         "mainNavigation",
         "workspacePanel",
-        "stepHint",
+        "pageHeader",
         "wirelessStatusCard"
       ],
       "source_paths": [
         "app/main_window.py",
         "app/ui/common/theme.py",
         "app/ui/common/ux.py",
-        "app/ui/tabs/wireless_tab.py"
+        "app/ui/tabs/wireless_tab.py",
+        "app/ui/common/disclosure.py",
+        "netops_suite/ui/actions.py",
+        "netops_suite/ui/icons.py",
+        "assets/icons/lucide/house.svg",
+        "assets/icons/lucide/network.svg",
+        "assets/icons/lucide/activity.svg",
+        "assets/icons/lucide/wifi.svg",
+        "assets/icons/lucide/server-cog.svg",
+        "assets/icons/lucide/square-terminal.svg",
+        "assets/icons/lucide/folder-sync.svg",
+        "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "3fe4435ad6108cd7b778d7f9240281a388f5514d218c09fd4ef7acacf11c2a63",
+      "png_sha256": "2d375b9eb4d01d64835f1efc271f7b98761e3203ac63405a3b4688bb457e0ff3",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "8e73829bc78950482278f92bd6a328c2efb7a08e64427f58b6e9ff32ad8cdd4d",
-        "contract_sha256": "1a61d2900280e7807effe5720a51542ee33788b265a193e98467213dc7bf05ac",
-        "handler_sha256": "43820e9791846df2859298ecc8ffc868e13e3d021f8a6c8a2892f16ef1a0a1f9",
-        "sources_sha256": "45b96b353ca8688929fd9ea7ebf391cec36e9a605b4ee69816cb82fbbc49f7df",
+        "value": "24237f1dea29d3bbea6899d5fe61373701d94a1122bc43756d186377f7a185ff",
+        "contract_sha256": "bc5d527095c6c726a5c385ca1328a8cba381eacb427b32e3a9cc7b1413e1d52e",
+        "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
+        "sources_sha256": "0c8d9b83878c5ec06fe575539d6f25151814b8cdbbd5488498ed7ab0892cf4e0",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -273,11 +438,11 @@
           "methods": [
             {
               "name": "_run_scenario",
-              "sha256": "8a112fc522584c8371769cdfccfa94e9ba30553ad75fb9ab7031391aa8806391"
+              "sha256": "2e2e07f023176c4fce56e1e4111186abf52b6e0dde38c26ec450d396367bf033"
             },
             {
               "name": "_navigate_main",
-              "sha256": "0d982af5ea7cd97c6e666058f4dd1113633abca124c798a5a217ae94171b1f10"
+              "sha256": "a0d0f34ae36804abfef147bd2e6b1a0b3495766e6ac59223333b5bfaca2f6104"
             },
             {
               "name": "_click_list_row",
@@ -293,7 +458,7 @@
             },
             {
               "name": "_capture_handler_guide_overview",
-              "sha256": "d3fb1f2cdd53063ec8f5209b84b7e006af1f209b32e974d77a8bb09cc585f85e"
+              "sha256": "cedc9829d87dbaae8e39ab5affe2f45357faaa8c80f2c00e39125695c0e7ea32"
             }
           ]
         },
@@ -305,48 +470,452 @@
           "appShell",
           "mainNavigation",
           "workspacePanel",
-          "stepHint",
+          "pageHeader",
           "wirelessStatusCard"
         ],
         "source_paths": [
           "app/main_window.py",
           "app/ui/common/theme.py",
           "app/ui/common/ux.py",
-          "app/ui/tabs/wireless_tab.py"
+          "app/ui/tabs/wireless_tab.py",
+          "app/ui/common/disclosure.py",
+          "netops_suite/ui/actions.py",
+          "netops_suite/ui/icons.py",
+          "assets/icons/lucide/house.svg",
+          "assets/icons/lucide/network.svg",
+          "assets/icons/lucide/activity.svg",
+          "assets/icons/lucide/wifi.svg",
+          "assets/icons/lucide/server-cog.svg",
+          "assets/icons/lucide/square-terminal.svg",
+          "assets/icons/lucide/folder-sync.svg",
+          "assets/icons/lucide/settings-2.svg"
         ],
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 46028,
-            "sha256": "e5ff8a6da53f6589741ee557a1483fdb4609653f9d6fda7327d4da7507922328"
+            "size": 53492,
+            "sha256": "cce9f95013fe46dd25e038ea4cf83bbc95ae245ab6f3fae0eba38a4f8063d0bd"
+          },
+          {
+            "path": "app/ui/common/disclosure.py",
+            "size": 6936,
+            "sha256": "6917ed185f7e1e57c28208ba0858851bef3a4d4745849c0294e0551c1f25101d"
           },
           {
             "path": "app/ui/common/theme.py",
-            "size": 9158,
-            "sha256": "ce2ab34396cc083041ee6cd2324a822ca0bd4561c52ef3c3b0dabc08d77593a1"
+            "size": 10689,
+            "sha256": "813dcc4e905944a67db1e582292152f54e7ac86ed57c2b00cedcc47e3f56c832"
           },
           {
             "path": "app/ui/common/ux.py",
-            "size": 6794,
-            "sha256": "a469823035da87207ba23cb89333dcc7a5cd1971b633db01031204ec0b925e48"
+            "size": 8214,
+            "sha256": "1f03c949729e17d2e195f005bfd047314fc58a76f9c050a2a26e21dd3d2b2c45"
           },
           {
             "path": "app/ui/tabs/wireless_tab.py",
-            "size": 41802,
-            "sha256": "261d4f79b153b5893833a9754f6b6f445a1ff6fea6d750026d3ccfd6b415c52e"
+            "size": 47512,
+            "sha256": "58693f660aeb124bb4989b38d4cddccee9f23776d38ab74a673bfc9853af25e1"
+          },
+          {
+            "path": "assets/icons/lucide/activity.svg",
+            "size": 346,
+            "sha256": "050fbcda05e13c2051cf857683645e19c6b180861ef4d0cc28a6f09ba1ea1666"
+          },
+          {
+            "path": "assets/icons/lucide/folder-sync.svg",
+            "size": 481,
+            "sha256": "65cf1b56d7e8b0b43a347a83ea4c8b82c9364dc2cf6f816aa2b22dfcaa66407b"
+          },
+          {
+            "path": "assets/icons/lucide/house.svg",
+            "size": 383,
+            "sha256": "28216c479005731ef5e382e7d8627eda2b129b019eb1f3d9de9f5915576d448e"
+          },
+          {
+            "path": "assets/icons/lucide/network.svg",
+            "size": 445,
+            "sha256": "626be730feea1e5ea7539fbf78b4a3fcb927ce5d7dc43364f2216908672ac792"
+          },
+          {
+            "path": "assets/icons/lucide/server-cog.svg",
+            "size": 797,
+            "sha256": "6c48e7bf726c71ced40e79b1961258b24b5a752c6cec158a68a49f6f01a3852a"
+          },
+          {
+            "path": "assets/icons/lucide/settings-2.svg",
+            "size": 324,
+            "sha256": "06d06c191bd7eb28afaf9d40acb5c49ef69448fdeda91801d9823d7c440a4e10"
+          },
+          {
+            "path": "assets/icons/lucide/square-terminal.svg",
+            "size": 321,
+            "sha256": "1fd2b783881ed8b0675995910fe98625789119e390420931eca6ddbc91c17932"
+          },
+          {
+            "path": "assets/icons/lucide/wifi.svg",
+            "size": 357,
+            "sha256": "5c4c795d014fa95d1e1038362df44a0f0f32ded9cb08c833ae72419ebadc9a91"
+          },
+          {
+            "path": "netops_suite/ui/actions.py",
+            "size": 6061,
+            "sha256": "2cee4bdc38270aa4c6610a4a48bd2a18bc05399156b3b3fb6d60d522e22da4dd"
+          },
+          {
+            "path": "netops_suite/ui/icons.py",
+            "size": 1388,
+            "sha256": "fd25c6b6b7c4b1dffe5787f0fab779746a90590a2874a6a59122ca96d96eec95"
           }
         ]
       },
       "checks": [
         "메인 화면 2 이동",
-        "가이드 화면 제목: Wi-Fi 분석",
-        "가이드 화면 표시: Wi-Fi 분석",
+        "가이드 화면 제목: Wi-Fi 확인",
+        "가이드 화면 표시: Wi-Fi 확인",
         "가이드 캡처 뷰포트: 1280×800",
         "가이드 캡처 objectName 표시: appShell",
         "가이드 캡처 objectName 표시: mainNavigation",
         "가이드 캡처 objectName 표시: workspacePanel",
-        "가이드 캡처 objectName 표시: stepHint",
+        "가이드 캡처 objectName 표시: pageHeader",
         "가이드 캡처 objectName 표시: wirelessStatusCard"
+      ]
+    },
+    {
+      "scenario_id": "guide_wireless_expanded",
+      "file": "wireless-expanded.png",
+      "viewport": [
+        1280,
+        800
+      ],
+      "capture_handler": "wireless_expanded",
+      "expected_object_names": [
+        "wirelessWorkspaceScroll",
+        "wirelessWorkspaceContent",
+        "wirelessStatusCard",
+        "wirelessChangeLog",
+        "wirelessNearbyTable"
+      ],
+      "source_paths": [
+        "app/main_window.py",
+        "app/ui/tabs/wireless_tab.py",
+        "app/ui/common/disclosure.py",
+        "app/ui/common/theme.py",
+        "netops_suite/ui/actions.py",
+        "netops_suite/ui/icons.py",
+        "assets/icons/lucide/house.svg",
+        "assets/icons/lucide/network.svg",
+        "assets/icons/lucide/activity.svg",
+        "assets/icons/lucide/wifi.svg",
+        "assets/icons/lucide/server-cog.svg",
+        "assets/icons/lucide/square-terminal.svg",
+        "assets/icons/lucide/folder-sync.svg",
+        "assets/icons/lucide/settings-2.svg"
+      ],
+      "png_sha256": "7905879d7d22db1e90ff3b97ec799a62e3933b82cc11cf9e929031a7176e029a",
+      "fingerprint": {
+        "schema_version": 1,
+        "algorithm": "sha256",
+        "value": "65cc450902540d088a5392e9e2b1ee3cf3e8f5f41108f28e15291074770c3f6e",
+        "contract_sha256": "dba6c52901a70cfa06450c59f649d6aa1613d0473012c8f97c10615883b387a7",
+        "handler_sha256": "3931fc613d6ce32d77017938cbfe72541cb4c2d195b7a86f687e550284dedec2",
+        "sources_sha256": "f23973d3d0227664767bef3785d5c2cba1a032010bce1be246e21b62d63c5fbb",
+        "capture_handler": {
+          "name": "wireless_expanded",
+          "source": "qa/offscreen/harness.py",
+          "class": "OffscreenQaHarness",
+          "methods": [
+            {
+              "name": "_run_scenario",
+              "sha256": "2e2e07f023176c4fce56e1e4111186abf52b6e0dde38c26ec450d396367bf033"
+            },
+            {
+              "name": "_navigate_main",
+              "sha256": "a0d0f34ae36804abfef147bd2e6b1a0b3495766e6ac59223333b5bfaca2f6104"
+            },
+            {
+              "name": "_click_list_row",
+              "sha256": "fce7fa43f62fc7711910e023b0aa7504394e6bb641172e06bbfedcf9b8b29c52"
+            },
+            {
+              "name": "_flush",
+              "sha256": "bcd282c4e94affd1369c8101f75cc94d4d3cb34a12b33290f5fd30b7a3d7140c"
+            },
+            {
+              "name": "_capture",
+              "sha256": "cce82fd5c9e929eac3d0dada4bacaefad09e16b5e9d6712e86c24415516ca3bc"
+            },
+            {
+              "name": "_capture_handler_wireless_expanded",
+              "sha256": "2286ef70e8e9f17e67eec2340c91785c9317afd1c909ef2d4cac1b8b82c4afa7"
+            }
+          ]
+        },
+        "viewport": [
+          1280,
+          800
+        ],
+        "expected_object_names": [
+          "wirelessWorkspaceScroll",
+          "wirelessWorkspaceContent",
+          "wirelessStatusCard",
+          "wirelessChangeLog",
+          "wirelessNearbyTable"
+        ],
+        "source_paths": [
+          "app/main_window.py",
+          "app/ui/tabs/wireless_tab.py",
+          "app/ui/common/disclosure.py",
+          "app/ui/common/theme.py",
+          "netops_suite/ui/actions.py",
+          "netops_suite/ui/icons.py",
+          "assets/icons/lucide/house.svg",
+          "assets/icons/lucide/network.svg",
+          "assets/icons/lucide/activity.svg",
+          "assets/icons/lucide/wifi.svg",
+          "assets/icons/lucide/server-cog.svg",
+          "assets/icons/lucide/square-terminal.svg",
+          "assets/icons/lucide/folder-sync.svg",
+          "assets/icons/lucide/settings-2.svg"
+        ],
+        "source_files": [
+          {
+            "path": "app/main_window.py",
+            "size": 53492,
+            "sha256": "cce9f95013fe46dd25e038ea4cf83bbc95ae245ab6f3fae0eba38a4f8063d0bd"
+          },
+          {
+            "path": "app/ui/common/disclosure.py",
+            "size": 6936,
+            "sha256": "6917ed185f7e1e57c28208ba0858851bef3a4d4745849c0294e0551c1f25101d"
+          },
+          {
+            "path": "app/ui/common/theme.py",
+            "size": 10689,
+            "sha256": "813dcc4e905944a67db1e582292152f54e7ac86ed57c2b00cedcc47e3f56c832"
+          },
+          {
+            "path": "app/ui/tabs/wireless_tab.py",
+            "size": 47512,
+            "sha256": "58693f660aeb124bb4989b38d4cddccee9f23776d38ab74a673bfc9853af25e1"
+          },
+          {
+            "path": "assets/icons/lucide/activity.svg",
+            "size": 346,
+            "sha256": "050fbcda05e13c2051cf857683645e19c6b180861ef4d0cc28a6f09ba1ea1666"
+          },
+          {
+            "path": "assets/icons/lucide/folder-sync.svg",
+            "size": 481,
+            "sha256": "65cf1b56d7e8b0b43a347a83ea4c8b82c9364dc2cf6f816aa2b22dfcaa66407b"
+          },
+          {
+            "path": "assets/icons/lucide/house.svg",
+            "size": 383,
+            "sha256": "28216c479005731ef5e382e7d8627eda2b129b019eb1f3d9de9f5915576d448e"
+          },
+          {
+            "path": "assets/icons/lucide/network.svg",
+            "size": 445,
+            "sha256": "626be730feea1e5ea7539fbf78b4a3fcb927ce5d7dc43364f2216908672ac792"
+          },
+          {
+            "path": "assets/icons/lucide/server-cog.svg",
+            "size": 797,
+            "sha256": "6c48e7bf726c71ced40e79b1961258b24b5a752c6cec158a68a49f6f01a3852a"
+          },
+          {
+            "path": "assets/icons/lucide/settings-2.svg",
+            "size": 324,
+            "sha256": "06d06c191bd7eb28afaf9d40acb5c49ef69448fdeda91801d9823d7c440a4e10"
+          },
+          {
+            "path": "assets/icons/lucide/square-terminal.svg",
+            "size": 321,
+            "sha256": "1fd2b783881ed8b0675995910fe98625789119e390420931eca6ddbc91c17932"
+          },
+          {
+            "path": "assets/icons/lucide/wifi.svg",
+            "size": 357,
+            "sha256": "5c4c795d014fa95d1e1038362df44a0f0f32ded9cb08c833ae72419ebadc9a91"
+          },
+          {
+            "path": "netops_suite/ui/actions.py",
+            "size": 6061,
+            "sha256": "2cee4bdc38270aa4c6610a4a48bd2a18bc05399156b3b3fb6d60d522e22da4dd"
+          },
+          {
+            "path": "netops_suite/ui/icons.py",
+            "size": 1388,
+            "sha256": "fd25c6b6b7c4b1dffe5787f0fab779746a90590a2874a6a59122ca96d96eec95"
+          }
+        ]
+      },
+      "checks": [
+        "메인 화면 2 이동",
+        "확대 검사에 주변 AP 3개 준비",
+        "Wi-Fi 1회 펼치기: 연결 상세 정보",
+        "Wi-Fi 1회 펼치기: 연결 변화 로그",
+        "Wi-Fi 1회 펼치기: 필터 및 스캔 옵션",
+        "Wi-Fi interface_name 텍스트 높이와 카드 내부 배치: 어댑터",
+        "Wi-Fi interface_name 텍스트 높이와 카드 내부 배치: Wi-Fi QA",
+        "Wi-Fi interface_name 제목·값 영역 비중첩",
+        "Wi-Fi state 텍스트 높이와 카드 내부 배치: 상태",
+        "Wi-Fi state 텍스트 높이와 카드 내부 배치: 연결됨",
+        "Wi-Fi state 제목·값 영역 비중첩",
+        "Wi-Fi ssid 텍스트 높이와 카드 내부 배치: SSID",
+        "Wi-Fi ssid 텍스트 높이와 카드 내부 배치: QA-Lab-5G",
+        "Wi-Fi ssid 제목·값 영역 비중첩",
+        "Wi-Fi bssid 텍스트 높이와 카드 내부 배치: BSSID",
+        "Wi-Fi bssid 텍스트 높이와 카드 내부 배치: 00:11:22:33:44:55",
+        "Wi-Fi bssid 제목·값 영역 비중첩",
+        "Wi-Fi signal 텍스트 높이와 카드 내부 배치: 신호",
+        "Wi-Fi signal 텍스트 높이와 카드 내부 배치: 86% / -48 dBm · 좋음",
+        "Wi-Fi signal 제목·값 영역 비중첩",
+        "Wi-Fi channel 텍스트 높이와 카드 내부 배치: 채널",
+        "Wi-Fi channel 텍스트 높이와 카드 내부 배치: 36",
+        "Wi-Fi channel 제목·값 영역 비중첩",
+        "Wi-Fi band 텍스트 높이와 카드 내부 배치: 대역",
+        "Wi-Fi band 텍스트 높이와 카드 내부 배치: 5 GHz",
+        "Wi-Fi band 제목·값 영역 비중첩",
+        "Wi-Fi radio_type 텍스트 높이와 카드 내부 배치: 무선 규격",
+        "Wi-Fi radio_type 텍스트 높이와 카드 내부 배치: 802.11ax",
+        "Wi-Fi radio_type 제목·값 영역 비중첩",
+        "Wi-Fi receive_rate 텍스트 높이와 카드 내부 배치: 수신 속도",
+        "Wi-Fi receive_rate 텍스트 높이와 카드 내부 배치: 1200 Mbps",
+        "Wi-Fi receive_rate 제목·값 영역 비중첩",
+        "Wi-Fi transmit_rate 텍스트 높이와 카드 내부 배치: 송신 속도",
+        "Wi-Fi transmit_rate 텍스트 높이와 카드 내부 배치: 1200 Mbps",
+        "Wi-Fi transmit_rate 제목·값 영역 비중첩",
+        "Wi-Fi 상태 카드 영역 비중첩",
+        "조작부 전체 높이 및 클릭 영역: 자동 새로고침 (위젯 104×17, 가시 104×17)",
+        "조작부 전체 높이 및 클릭 영역: 2 (위젯 45×33, 가시 45×33)",
+        "조작부 전체 높이 및 클릭 영역: 주변 AP 검색 (위젯 960×30, 가시 960×30)",
+        "조작부 전체 높이 및 클릭 영역: NoWheelComboBox (위젯 458×30, 가시 458×30)",
+        "조작부 전체 높이 및 클릭 영역: NoWheelComboBox (위젯 458×30, 가시 458×30)",
+        "조작부 전체 높이 및 클릭 영역: NoWheelComboBox (위젯 958×30, 가시 958×30)",
+        "조작부 전체 높이 및 클릭 영역: 현재 연결 AP만 (위젯 492×17, 가시 492×17)",
+        "조작부 전체 높이 및 클릭 영역: 컬럼 (위젯 55×32, 가시 55×32)",
+        "조작부 전체 높이 및 클릭 영역: 자동 새로고침 (위젯 104×17, 가시 104×17)",
+        "조작부 전체 높이 및 클릭 영역: 30 (위젯 52×32, 가시 52×32)",
+        "조작부 전체 높이 및 클릭 영역: OUI 갱신 (위젯 94×32, 가시 94×32)",
+        "Wi-Fi 연결 변화 로그 viewport 최소 120px (실제 190px)",
+        "Wi-Fi 로그 마지막 항목까지 스크롤 접근",
+        "Wi-Fi 주변 AP 표 viewport 최소 180px (실제 242px)",
+        "Wi-Fi AP 표 마지막 행·열까지 스크롤 접근",
+        "Wi-Fi 반복 펼치기 후 현재 연결 값 보존",
+        "Wi-Fi 1회 접기",
+        "Wi-Fi 1회 접기",
+        "Wi-Fi 1회 접기",
+        "Wi-Fi 2회 펼치기: 연결 상세 정보",
+        "Wi-Fi 2회 펼치기: 연결 변화 로그",
+        "Wi-Fi 2회 펼치기: 필터 및 스캔 옵션",
+        "Wi-Fi interface_name 텍스트 높이와 카드 내부 배치: 어댑터",
+        "Wi-Fi interface_name 텍스트 높이와 카드 내부 배치: Wi-Fi QA",
+        "Wi-Fi interface_name 제목·값 영역 비중첩",
+        "Wi-Fi state 텍스트 높이와 카드 내부 배치: 상태",
+        "Wi-Fi state 텍스트 높이와 카드 내부 배치: 연결됨",
+        "Wi-Fi state 제목·값 영역 비중첩",
+        "Wi-Fi ssid 텍스트 높이와 카드 내부 배치: SSID",
+        "Wi-Fi ssid 텍스트 높이와 카드 내부 배치: QA-Lab-5G",
+        "Wi-Fi ssid 제목·값 영역 비중첩",
+        "Wi-Fi bssid 텍스트 높이와 카드 내부 배치: BSSID",
+        "Wi-Fi bssid 텍스트 높이와 카드 내부 배치: 00:11:22:33:44:55",
+        "Wi-Fi bssid 제목·값 영역 비중첩",
+        "Wi-Fi signal 텍스트 높이와 카드 내부 배치: 신호",
+        "Wi-Fi signal 텍스트 높이와 카드 내부 배치: 86% / -48 dBm · 좋음",
+        "Wi-Fi signal 제목·값 영역 비중첩",
+        "Wi-Fi channel 텍스트 높이와 카드 내부 배치: 채널",
+        "Wi-Fi channel 텍스트 높이와 카드 내부 배치: 36",
+        "Wi-Fi channel 제목·값 영역 비중첩",
+        "Wi-Fi band 텍스트 높이와 카드 내부 배치: 대역",
+        "Wi-Fi band 텍스트 높이와 카드 내부 배치: 5 GHz",
+        "Wi-Fi band 제목·값 영역 비중첩",
+        "Wi-Fi radio_type 텍스트 높이와 카드 내부 배치: 무선 규격",
+        "Wi-Fi radio_type 텍스트 높이와 카드 내부 배치: 802.11ax",
+        "Wi-Fi radio_type 제목·값 영역 비중첩",
+        "Wi-Fi receive_rate 텍스트 높이와 카드 내부 배치: 수신 속도",
+        "Wi-Fi receive_rate 텍스트 높이와 카드 내부 배치: 1200 Mbps",
+        "Wi-Fi receive_rate 제목·값 영역 비중첩",
+        "Wi-Fi transmit_rate 텍스트 높이와 카드 내부 배치: 송신 속도",
+        "Wi-Fi transmit_rate 텍스트 높이와 카드 내부 배치: 1200 Mbps",
+        "Wi-Fi transmit_rate 제목·값 영역 비중첩",
+        "Wi-Fi 상태 카드 영역 비중첩",
+        "조작부 전체 높이 및 클릭 영역: 자동 새로고침 (위젯 104×17, 가시 104×17)",
+        "조작부 전체 높이 및 클릭 영역: 2 (위젯 45×33, 가시 45×33)",
+        "조작부 전체 높이 및 클릭 영역: 주변 AP 검색 (위젯 960×30, 가시 960×30)",
+        "조작부 전체 높이 및 클릭 영역: NoWheelComboBox (위젯 458×30, 가시 458×30)",
+        "조작부 전체 높이 및 클릭 영역: NoWheelComboBox (위젯 458×30, 가시 458×30)",
+        "조작부 전체 높이 및 클릭 영역: NoWheelComboBox (위젯 958×30, 가시 958×30)",
+        "조작부 전체 높이 및 클릭 영역: 현재 연결 AP만 (위젯 492×17, 가시 492×17)",
+        "조작부 전체 높이 및 클릭 영역: 컬럼 (위젯 55×32, 가시 55×32)",
+        "조작부 전체 높이 및 클릭 영역: 자동 새로고침 (위젯 104×17, 가시 104×17)",
+        "조작부 전체 높이 및 클릭 영역: 30 (위젯 52×32, 가시 52×32)",
+        "조작부 전체 높이 및 클릭 영역: OUI 갱신 (위젯 94×32, 가시 94×32)",
+        "Wi-Fi 연결 변화 로그 viewport 최소 120px (실제 190px)",
+        "Wi-Fi 로그 마지막 항목까지 스크롤 접근",
+        "Wi-Fi 주변 AP 표 viewport 최소 180px (실제 242px)",
+        "Wi-Fi AP 표 마지막 행·열까지 스크롤 접근",
+        "Wi-Fi 반복 펼치기 후 현재 연결 값 보존",
+        "Wi-Fi 2회 접기",
+        "Wi-Fi 2회 접기",
+        "Wi-Fi 2회 접기",
+        "Wi-Fi 3회 펼치기: 연결 상세 정보",
+        "Wi-Fi 3회 펼치기: 연결 변화 로그",
+        "Wi-Fi 3회 펼치기: 필터 및 스캔 옵션",
+        "Wi-Fi interface_name 텍스트 높이와 카드 내부 배치: 어댑터",
+        "Wi-Fi interface_name 텍스트 높이와 카드 내부 배치: Wi-Fi QA",
+        "Wi-Fi interface_name 제목·값 영역 비중첩",
+        "Wi-Fi state 텍스트 높이와 카드 내부 배치: 상태",
+        "Wi-Fi state 텍스트 높이와 카드 내부 배치: 연결됨",
+        "Wi-Fi state 제목·값 영역 비중첩",
+        "Wi-Fi ssid 텍스트 높이와 카드 내부 배치: SSID",
+        "Wi-Fi ssid 텍스트 높이와 카드 내부 배치: QA-Lab-5G",
+        "Wi-Fi ssid 제목·값 영역 비중첩",
+        "Wi-Fi bssid 텍스트 높이와 카드 내부 배치: BSSID",
+        "Wi-Fi bssid 텍스트 높이와 카드 내부 배치: 00:11:22:33:44:55",
+        "Wi-Fi bssid 제목·값 영역 비중첩",
+        "Wi-Fi signal 텍스트 높이와 카드 내부 배치: 신호",
+        "Wi-Fi signal 텍스트 높이와 카드 내부 배치: 86% / -48 dBm · 좋음",
+        "Wi-Fi signal 제목·값 영역 비중첩",
+        "Wi-Fi channel 텍스트 높이와 카드 내부 배치: 채널",
+        "Wi-Fi channel 텍스트 높이와 카드 내부 배치: 36",
+        "Wi-Fi channel 제목·값 영역 비중첩",
+        "Wi-Fi band 텍스트 높이와 카드 내부 배치: 대역",
+        "Wi-Fi band 텍스트 높이와 카드 내부 배치: 5 GHz",
+        "Wi-Fi band 제목·값 영역 비중첩",
+        "Wi-Fi radio_type 텍스트 높이와 카드 내부 배치: 무선 규격",
+        "Wi-Fi radio_type 텍스트 높이와 카드 내부 배치: 802.11ax",
+        "Wi-Fi radio_type 제목·값 영역 비중첩",
+        "Wi-Fi receive_rate 텍스트 높이와 카드 내부 배치: 수신 속도",
+        "Wi-Fi receive_rate 텍스트 높이와 카드 내부 배치: 1200 Mbps",
+        "Wi-Fi receive_rate 제목·값 영역 비중첩",
+        "Wi-Fi transmit_rate 텍스트 높이와 카드 내부 배치: 송신 속도",
+        "Wi-Fi transmit_rate 텍스트 높이와 카드 내부 배치: 1200 Mbps",
+        "Wi-Fi transmit_rate 제목·값 영역 비중첩",
+        "Wi-Fi 상태 카드 영역 비중첩",
+        "조작부 전체 높이 및 클릭 영역: 자동 새로고침 (위젯 104×17, 가시 104×17)",
+        "조작부 전체 높이 및 클릭 영역: 2 (위젯 45×33, 가시 45×33)",
+        "조작부 전체 높이 및 클릭 영역: 주변 AP 검색 (위젯 960×30, 가시 960×30)",
+        "조작부 전체 높이 및 클릭 영역: NoWheelComboBox (위젯 458×30, 가시 458×30)",
+        "조작부 전체 높이 및 클릭 영역: NoWheelComboBox (위젯 458×30, 가시 458×30)",
+        "조작부 전체 높이 및 클릭 영역: NoWheelComboBox (위젯 958×30, 가시 958×30)",
+        "조작부 전체 높이 및 클릭 영역: 현재 연결 AP만 (위젯 492×17, 가시 492×17)",
+        "조작부 전체 높이 및 클릭 영역: 컬럼 (위젯 55×32, 가시 55×32)",
+        "조작부 전체 높이 및 클릭 영역: 자동 새로고침 (위젯 104×17, 가시 104×17)",
+        "조작부 전체 높이 및 클릭 영역: 30 (위젯 52×32, 가시 52×32)",
+        "조작부 전체 높이 및 클릭 영역: OUI 갱신 (위젯 94×32, 가시 94×32)",
+        "Wi-Fi 연결 변화 로그 viewport 최소 120px (실제 190px)",
+        "Wi-Fi 로그 마지막 항목까지 스크롤 접근",
+        "Wi-Fi 주변 AP 표 viewport 최소 180px (실제 242px)",
+        "Wi-Fi AP 표 마지막 행·열까지 스크롤 접근",
+        "Wi-Fi 반복 펼치기 후 현재 연결 값 보존",
+        "Wi-Fi 작업영역 가로 잘림 없음",
+        "가이드 캡처 objectName 표시: wirelessWorkspaceScroll",
+        "가이드 캡처 objectName 표시: wirelessWorkspaceContent",
+        "가이드 캡처 objectName 표시: wirelessStatusCard",
+        "가이드 캡처 objectName 표시: wirelessChangeLog",
+        "가이드 캡처 objectName 표시: wirelessNearbyTable",
+        "Wi-Fi 펼침 후 창 크기 유지"
       ]
     },
     {
@@ -361,23 +930,37 @@
         "appShell",
         "mainNavigation",
         "workspacePanel",
-        "stepHint",
-        "inspectorTopPanel"
+        "pageHeader",
+        "inspectorTopPanel",
+        "inspectorSupportingTools"
       ],
       "source_paths": [
         "app/main_window.py",
         "app/ui/common/theme.py",
         "app/ui/common/ux.py",
-        "app/ui/tabs/inspector_tab.py"
+        "app/ui/tabs/inspector_tab.py",
+        "app/ui/common/disclosure.py",
+        "netops_suite/ui/actions.py",
+        "netops_suite/ui/icons.py",
+        "assets/icons/lucide/house.svg",
+        "assets/icons/lucide/network.svg",
+        "assets/icons/lucide/activity.svg",
+        "assets/icons/lucide/wifi.svg",
+        "assets/icons/lucide/server-cog.svg",
+        "assets/icons/lucide/square-terminal.svg",
+        "assets/icons/lucide/folder-sync.svg",
+        "assets/icons/lucide/settings-2.svg",
+        "assets/icons/lucide/book-open.svg",
+        "assets/icons/lucide/server.svg"
       ],
-      "png_sha256": "1912302bfcef46966be602acea5cdaa4161c042d87086493ed840ba251556153",
+      "png_sha256": "aa23777c63e5edf4afd6e0848c21edd260ad76ad5fd764115fecdde42467e46c",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "26b64a99035d64e8ff23a597727efaa51c3a894226176934f8046a8b284a2d4a",
-        "contract_sha256": "935efeb970b9eb0f08b32011f98b399186d177c07f73ff91c968729f3ff2bb4d",
-        "handler_sha256": "43820e9791846df2859298ecc8ffc868e13e3d021f8a6c8a2892f16ef1a0a1f9",
-        "sources_sha256": "deed7561598236e7b037e22905a54de7536cdf2ac71d1e3ba77263fb94168413",
+        "value": "1f1bc1b84d32f756adbda1166315adfa36dfa468565061b38c14752002e33032",
+        "contract_sha256": "cd7b3b4e6f4ddfe69ffe2f007c7f69a67136c0050134f0e6b5ac9556c6ec82ed",
+        "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
+        "sources_sha256": "497ebb202233d6eb22e30f282bd1bd4335aabead9abac5713e5b60ccb769a007",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -385,11 +968,11 @@
           "methods": [
             {
               "name": "_run_scenario",
-              "sha256": "8a112fc522584c8371769cdfccfa94e9ba30553ad75fb9ab7031391aa8806391"
+              "sha256": "2e2e07f023176c4fce56e1e4111186abf52b6e0dde38c26ec450d396367bf033"
             },
             {
               "name": "_navigate_main",
-              "sha256": "0d982af5ea7cd97c6e666058f4dd1113633abca124c798a5a217ae94171b1f10"
+              "sha256": "a0d0f34ae36804abfef147bd2e6b1a0b3495766e6ac59223333b5bfaca2f6104"
             },
             {
               "name": "_click_list_row",
@@ -405,7 +988,7 @@
             },
             {
               "name": "_capture_handler_guide_overview",
-              "sha256": "d3fb1f2cdd53063ec8f5209b84b7e006af1f209b32e974d77a8bb09cc585f85e"
+              "sha256": "cedc9829d87dbaae8e39ab5affe2f45357faaa8c80f2c00e39125695c0e7ea32"
             }
           ]
         },
@@ -417,48 +1000,128 @@
           "appShell",
           "mainNavigation",
           "workspacePanel",
-          "stepHint",
-          "inspectorTopPanel"
+          "pageHeader",
+          "inspectorTopPanel",
+          "inspectorSupportingTools"
         ],
         "source_paths": [
           "app/main_window.py",
           "app/ui/common/theme.py",
           "app/ui/common/ux.py",
-          "app/ui/tabs/inspector_tab.py"
+          "app/ui/tabs/inspector_tab.py",
+          "app/ui/common/disclosure.py",
+          "netops_suite/ui/actions.py",
+          "netops_suite/ui/icons.py",
+          "assets/icons/lucide/house.svg",
+          "assets/icons/lucide/network.svg",
+          "assets/icons/lucide/activity.svg",
+          "assets/icons/lucide/wifi.svg",
+          "assets/icons/lucide/server-cog.svg",
+          "assets/icons/lucide/square-terminal.svg",
+          "assets/icons/lucide/folder-sync.svg",
+          "assets/icons/lucide/settings-2.svg",
+          "assets/icons/lucide/book-open.svg",
+          "assets/icons/lucide/server.svg"
         ],
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 46028,
-            "sha256": "e5ff8a6da53f6589741ee557a1483fdb4609653f9d6fda7327d4da7507922328"
+            "size": 53492,
+            "sha256": "cce9f95013fe46dd25e038ea4cf83bbc95ae245ab6f3fae0eba38a4f8063d0bd"
+          },
+          {
+            "path": "app/ui/common/disclosure.py",
+            "size": 6936,
+            "sha256": "6917ed185f7e1e57c28208ba0858851bef3a4d4745849c0294e0551c1f25101d"
           },
           {
             "path": "app/ui/common/theme.py",
-            "size": 9158,
-            "sha256": "ce2ab34396cc083041ee6cd2324a822ca0bd4561c52ef3c3b0dabc08d77593a1"
+            "size": 10689,
+            "sha256": "813dcc4e905944a67db1e582292152f54e7ac86ed57c2b00cedcc47e3f56c832"
           },
           {
             "path": "app/ui/common/ux.py",
-            "size": 6794,
-            "sha256": "a469823035da87207ba23cb89333dcc7a5cd1971b633db01031204ec0b925e48"
+            "size": 8214,
+            "sha256": "1f03c949729e17d2e195f005bfd047314fc58a76f9c050a2a26e21dd3d2b2c45"
           },
           {
             "path": "app/ui/tabs/inspector_tab.py",
-            "size": 39676,
-            "sha256": "8e9f29e301ed22839097a40646bf17a8c3b444c4ee27279010a4bad631ddde1a"
+            "size": 62783,
+            "sha256": "0f830a7882d48a87d5ed04b0ef85bc49a834eecebfa5f5cd7895802a9b3d12b2"
+          },
+          {
+            "path": "assets/icons/lucide/activity.svg",
+            "size": 346,
+            "sha256": "050fbcda05e13c2051cf857683645e19c6b180861ef4d0cc28a6f09ba1ea1666"
+          },
+          {
+            "path": "assets/icons/lucide/book-open.svg",
+            "size": 387,
+            "sha256": "9b9bed0ff057283d5c5c5a1c71f8d3e927db26a56639603a92fdf7b25961510e"
+          },
+          {
+            "path": "assets/icons/lucide/folder-sync.svg",
+            "size": 481,
+            "sha256": "65cf1b56d7e8b0b43a347a83ea4c8b82c9364dc2cf6f816aa2b22dfcaa66407b"
+          },
+          {
+            "path": "assets/icons/lucide/house.svg",
+            "size": 383,
+            "sha256": "28216c479005731ef5e382e7d8627eda2b129b019eb1f3d9de9f5915576d448e"
+          },
+          {
+            "path": "assets/icons/lucide/network.svg",
+            "size": 445,
+            "sha256": "626be730feea1e5ea7539fbf78b4a3fcb927ce5d7dc43364f2216908672ac792"
+          },
+          {
+            "path": "assets/icons/lucide/server-cog.svg",
+            "size": 797,
+            "sha256": "6c48e7bf726c71ced40e79b1961258b24b5a752c6cec158a68a49f6f01a3852a"
+          },
+          {
+            "path": "assets/icons/lucide/server.svg",
+            "size": 413,
+            "sha256": "f7bea54b609dc488f3b848995014041846b2443fd2a880653e9e583d7a034f61"
+          },
+          {
+            "path": "assets/icons/lucide/settings-2.svg",
+            "size": 324,
+            "sha256": "06d06c191bd7eb28afaf9d40acb5c49ef69448fdeda91801d9823d7c440a4e10"
+          },
+          {
+            "path": "assets/icons/lucide/square-terminal.svg",
+            "size": 321,
+            "sha256": "1fd2b783881ed8b0675995910fe98625789119e390420931eca6ddbc91c17932"
+          },
+          {
+            "path": "assets/icons/lucide/wifi.svg",
+            "size": 357,
+            "sha256": "5c4c795d014fa95d1e1038362df44a0f0f32ded9cb08c833ae72419ebadc9a91"
+          },
+          {
+            "path": "netops_suite/ui/actions.py",
+            "size": 6061,
+            "sha256": "2cee4bdc38270aa4c6610a4a48bd2a18bc05399156b3b3fb6d60d522e22da4dd"
+          },
+          {
+            "path": "netops_suite/ui/icons.py",
+            "size": 1388,
+            "sha256": "fd25c6b6b7c4b1dffe5787f0fab779746a90590a2874a6a59122ca96d96eec95"
           }
         ]
       },
       "checks": [
         "메인 화면 3 이동",
-        "가이드 화면 제목: 장비 점검/백업",
-        "가이드 화면 표시: 장비 점검/백업",
+        "가이드 화면 제목: 장비 점검·백업",
+        "가이드 화면 표시: 장비 점검·백업",
         "가이드 캡처 뷰포트: 1280×800",
         "가이드 캡처 objectName 표시: appShell",
         "가이드 캡처 objectName 표시: mainNavigation",
         "가이드 캡처 objectName 표시: workspacePanel",
-        "가이드 캡처 objectName 표시: stepHint",
-        "가이드 캡처 objectName 표시: inspectorTopPanel"
+        "가이드 캡처 objectName 표시: pageHeader",
+        "가이드 캡처 objectName 표시: inspectorTopPanel",
+        "가이드 캡처 objectName 표시: inspectorSupportingTools"
       ]
     },
     {
@@ -473,24 +1136,36 @@
         "appShell",
         "mainNavigation",
         "workspacePanel",
-        "stepHint",
-        "configBuilderEmbeddedBuilder"
+        "pageHeader",
+        "configBuilderEmbeddedBuilder",
+        "configBuilderProfileManagementButton"
       ],
       "source_paths": [
         "app/main_window.py",
         "app/ui/common/theme.py",
         "app/ui/common/ux.py",
         "app/ui/tabs/config_builder_tab.py",
-        "netops_suite/modules/config_builder/switch_configurator/desktop_impl.py"
+        "netops_suite/modules/config_builder/switch_configurator/desktop_impl.py",
+        "app/ui/common/disclosure.py",
+        "netops_suite/ui/actions.py",
+        "netops_suite/ui/icons.py",
+        "assets/icons/lucide/house.svg",
+        "assets/icons/lucide/network.svg",
+        "assets/icons/lucide/activity.svg",
+        "assets/icons/lucide/wifi.svg",
+        "assets/icons/lucide/server-cog.svg",
+        "assets/icons/lucide/square-terminal.svg",
+        "assets/icons/lucide/folder-sync.svg",
+        "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "90dee74addda56b859e835721e55ef6d47c62d302e4918777d61267914cc8f6c",
+      "png_sha256": "7ac05639d58e694a8c9d0c33fe59ad8492e56fc7b6e81175ce3cd9f042f48f90",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "4f0db036860ae78ca518b57f376010ef004edcde8aee499536db049b98153aed",
-        "contract_sha256": "0e973ca2ac3791641d14e5fb0352fd0d63131001ad6f0fa2942dd81a463445d5",
-        "handler_sha256": "43820e9791846df2859298ecc8ffc868e13e3d021f8a6c8a2892f16ef1a0a1f9",
-        "sources_sha256": "9c73b790a38ee10ef9348075d907877dc8edc11c97cf95a18104640d9ad9b9cf",
+        "value": "a15f068fde18dbf4bb5cb30f8c417339dcca7dafe647954a34a5f982fc231cf4",
+        "contract_sha256": "28e2ab76d4fd3f5292572ae4a801c59131e79e58c0b93bf77a47448306f85485",
+        "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
+        "sources_sha256": "e5a6bed4ceb69a9d496cfd985b04ed76d1b5413c20102edfc2388af6609a76d0",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -498,11 +1173,11 @@
           "methods": [
             {
               "name": "_run_scenario",
-              "sha256": "8a112fc522584c8371769cdfccfa94e9ba30553ad75fb9ab7031391aa8806391"
+              "sha256": "2e2e07f023176c4fce56e1e4111186abf52b6e0dde38c26ec450d396367bf033"
             },
             {
               "name": "_navigate_main",
-              "sha256": "0d982af5ea7cd97c6e666058f4dd1113633abca124c798a5a217ae94171b1f10"
+              "sha256": "a0d0f34ae36804abfef147bd2e6b1a0b3495766e6ac59223333b5bfaca2f6104"
             },
             {
               "name": "_click_list_row",
@@ -518,7 +1193,7 @@
             },
             {
               "name": "_capture_handler_guide_overview",
-              "sha256": "d3fb1f2cdd53063ec8f5209b84b7e006af1f209b32e974d77a8bb09cc585f85e"
+              "sha256": "cedc9829d87dbaae8e39ab5affe2f45357faaa8c80f2c00e39125695c0e7ea32"
             }
           ]
         },
@@ -530,195 +1205,122 @@
           "appShell",
           "mainNavigation",
           "workspacePanel",
-          "stepHint",
-          "configBuilderEmbeddedBuilder"
+          "pageHeader",
+          "configBuilderEmbeddedBuilder",
+          "configBuilderProfileManagementButton"
         ],
         "source_paths": [
           "app/main_window.py",
           "app/ui/common/theme.py",
           "app/ui/common/ux.py",
           "app/ui/tabs/config_builder_tab.py",
-          "netops_suite/modules/config_builder/switch_configurator/desktop_impl.py"
+          "netops_suite/modules/config_builder/switch_configurator/desktop_impl.py",
+          "app/ui/common/disclosure.py",
+          "netops_suite/ui/actions.py",
+          "netops_suite/ui/icons.py",
+          "assets/icons/lucide/house.svg",
+          "assets/icons/lucide/network.svg",
+          "assets/icons/lucide/activity.svg",
+          "assets/icons/lucide/wifi.svg",
+          "assets/icons/lucide/server-cog.svg",
+          "assets/icons/lucide/square-terminal.svg",
+          "assets/icons/lucide/folder-sync.svg",
+          "assets/icons/lucide/settings-2.svg"
         ],
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 46028,
-            "sha256": "e5ff8a6da53f6589741ee557a1483fdb4609653f9d6fda7327d4da7507922328"
+            "size": 53492,
+            "sha256": "cce9f95013fe46dd25e038ea4cf83bbc95ae245ab6f3fae0eba38a4f8063d0bd"
+          },
+          {
+            "path": "app/ui/common/disclosure.py",
+            "size": 6936,
+            "sha256": "6917ed185f7e1e57c28208ba0858851bef3a4d4745849c0294e0551c1f25101d"
           },
           {
             "path": "app/ui/common/theme.py",
-            "size": 9158,
-            "sha256": "ce2ab34396cc083041ee6cd2324a822ca0bd4561c52ef3c3b0dabc08d77593a1"
+            "size": 10689,
+            "sha256": "813dcc4e905944a67db1e582292152f54e7ac86ed57c2b00cedcc47e3f56c832"
           },
           {
             "path": "app/ui/common/ux.py",
-            "size": 6794,
-            "sha256": "a469823035da87207ba23cb89333dcc7a5cd1971b633db01031204ec0b925e48"
+            "size": 8214,
+            "sha256": "1f03c949729e17d2e195f005bfd047314fc58a76f9c050a2a26e21dd3d2b2c45"
           },
           {
             "path": "app/ui/tabs/config_builder_tab.py",
-            "size": 4302,
-            "sha256": "84128509b1575a095053210f46b82ea28ef12cdd18df5b9a625a5bbb864cbb95"
+            "size": 5047,
+            "sha256": "f6bbcd59d071810d16b2282fbf6f2fc5990e36afb4f30010e440f26e3050a9ba"
+          },
+          {
+            "path": "assets/icons/lucide/activity.svg",
+            "size": 346,
+            "sha256": "050fbcda05e13c2051cf857683645e19c6b180861ef4d0cc28a6f09ba1ea1666"
+          },
+          {
+            "path": "assets/icons/lucide/folder-sync.svg",
+            "size": 481,
+            "sha256": "65cf1b56d7e8b0b43a347a83ea4c8b82c9364dc2cf6f816aa2b22dfcaa66407b"
+          },
+          {
+            "path": "assets/icons/lucide/house.svg",
+            "size": 383,
+            "sha256": "28216c479005731ef5e382e7d8627eda2b129b019eb1f3d9de9f5915576d448e"
+          },
+          {
+            "path": "assets/icons/lucide/network.svg",
+            "size": 445,
+            "sha256": "626be730feea1e5ea7539fbf78b4a3fcb927ce5d7dc43364f2216908672ac792"
+          },
+          {
+            "path": "assets/icons/lucide/server-cog.svg",
+            "size": 797,
+            "sha256": "6c48e7bf726c71ced40e79b1961258b24b5a752c6cec158a68a49f6f01a3852a"
+          },
+          {
+            "path": "assets/icons/lucide/settings-2.svg",
+            "size": 324,
+            "sha256": "06d06c191bd7eb28afaf9d40acb5c49ef69448fdeda91801d9823d7c440a4e10"
+          },
+          {
+            "path": "assets/icons/lucide/square-terminal.svg",
+            "size": 321,
+            "sha256": "1fd2b783881ed8b0675995910fe98625789119e390420931eca6ddbc91c17932"
+          },
+          {
+            "path": "assets/icons/lucide/wifi.svg",
+            "size": 357,
+            "sha256": "5c4c795d014fa95d1e1038362df44a0f0f32ded9cb08c833ae72419ebadc9a91"
           },
           {
             "path": "netops_suite/modules/config_builder/switch_configurator/desktop_impl.py",
-            "size": 230686,
-            "sha256": "b94a82dc5613a3f1ab5d903cb79a7f7c6a3bcd47987923cf9de304754d9633ba"
+            "size": 214792,
+            "sha256": "45f21cac5467910955fce9ee0ea2c4a4d435d852d8db08c417fa17421c07c609"
+          },
+          {
+            "path": "netops_suite/ui/actions.py",
+            "size": 6061,
+            "sha256": "2cee4bdc38270aa4c6610a4a48bd2a18bc05399156b3b3fb6d60d522e22da4dd"
+          },
+          {
+            "path": "netops_suite/ui/icons.py",
+            "size": 1388,
+            "sha256": "fd25c6b6b7c4b1dffe5787f0fab779746a90590a2874a6a59122ca96d96eec95"
           }
         ]
       },
       "checks": [
         "메인 화면 4 이동",
-        "가이드 화면 제목: CLI 설정 생성",
-        "가이드 화면 표시: CLI 설정 생성",
+        "가이드 화면 제목: 설정 명령 만들기",
+        "가이드 화면 표시: 설정 명령 만들기",
         "가이드 캡처 뷰포트: 1280×800",
         "가이드 캡처 objectName 표시: appShell",
         "가이드 캡처 objectName 표시: mainNavigation",
         "가이드 캡처 objectName 표시: workspacePanel",
-        "가이드 캡처 objectName 표시: stepHint",
-        "가이드 캡처 objectName 표시: configBuilderEmbeddedBuilder"
-      ]
-    },
-    {
-      "scenario_id": "guide_assistant_overview",
-      "file": "assistant-overview.png",
-      "viewport": [
-        1280,
-        800
-      ],
-      "capture_handler": "guide_overview",
-      "expected_object_names": [
-        "appShell",
-        "mainNavigation",
-        "workspacePanel",
-        "stepHint",
-        "aiProviderSettingsGroup",
-        "aiProviderSetupButton"
-      ],
-      "source_paths": [
-        "app/main_window.py",
-        "app/ui/common/theme.py",
-        "app/ui/common/ux.py",
-        "app/ui/tabs/ai_chat_tab.py",
-        "app/models/ai_models.py",
-        "app/services/ai_agent_service.py",
-        "app/services/ai_model_catalog_service.py"
-      ],
-      "png_sha256": "0cbe77d2682e461f9e696173c7dd0b68e03f58e4e25a83ef6b186f0d04000c75",
-      "fingerprint": {
-        "schema_version": 1,
-        "algorithm": "sha256",
-        "value": "bd814454b9ee07f26f5c0903d119c3bd7033e7a1c88bbc9e4b380407dd4fe062",
-        "contract_sha256": "d80b8b3cd32a560f86d7b947bd3ade3f3ac3921249ea780a7f5fd1043639660e",
-        "handler_sha256": "43820e9791846df2859298ecc8ffc868e13e3d021f8a6c8a2892f16ef1a0a1f9",
-        "sources_sha256": "623a9423eb74285dede11c4e896a1b0529eed916b5970e330d07837022349c7a",
-        "capture_handler": {
-          "name": "guide_overview",
-          "source": "qa/offscreen/harness.py",
-          "class": "OffscreenQaHarness",
-          "methods": [
-            {
-              "name": "_run_scenario",
-              "sha256": "8a112fc522584c8371769cdfccfa94e9ba30553ad75fb9ab7031391aa8806391"
-            },
-            {
-              "name": "_navigate_main",
-              "sha256": "0d982af5ea7cd97c6e666058f4dd1113633abca124c798a5a217ae94171b1f10"
-            },
-            {
-              "name": "_click_list_row",
-              "sha256": "fce7fa43f62fc7711910e023b0aa7504394e6bb641172e06bbfedcf9b8b29c52"
-            },
-            {
-              "name": "_flush",
-              "sha256": "bcd282c4e94affd1369c8101f75cc94d4d3cb34a12b33290f5fd30b7a3d7140c"
-            },
-            {
-              "name": "_capture",
-              "sha256": "cce82fd5c9e929eac3d0dada4bacaefad09e16b5e9d6712e86c24415516ca3bc"
-            },
-            {
-              "name": "_capture_handler_guide_overview",
-              "sha256": "d3fb1f2cdd53063ec8f5209b84b7e006af1f209b32e974d77a8bb09cc585f85e"
-            }
-          ]
-        },
-        "viewport": [
-          1280,
-          800
-        ],
-        "expected_object_names": [
-          "appShell",
-          "mainNavigation",
-          "workspacePanel",
-          "stepHint",
-          "aiProviderSettingsGroup",
-          "aiProviderSetupButton"
-        ],
-        "source_paths": [
-          "app/main_window.py",
-          "app/ui/common/theme.py",
-          "app/ui/common/ux.py",
-          "app/ui/tabs/ai_chat_tab.py",
-          "app/models/ai_models.py",
-          "app/services/ai_agent_service.py",
-          "app/services/ai_model_catalog_service.py"
-        ],
-        "source_files": [
-          {
-            "path": "app/main_window.py",
-            "size": 46028,
-            "sha256": "e5ff8a6da53f6589741ee557a1483fdb4609653f9d6fda7327d4da7507922328"
-          },
-          {
-            "path": "app/models/ai_models.py",
-            "size": 13202,
-            "sha256": "7ff10abdc6e7f8ef6ccd9170590c0463112e295ffc27ed9782f8251c3dacf1a6"
-          },
-          {
-            "path": "app/services/ai_agent_service.py",
-            "size": 69118,
-            "sha256": "96e07a6913822cb0ab9b8d8d4d15e825c269704f521243afea46cc8efd333f48"
-          },
-          {
-            "path": "app/services/ai_model_catalog_service.py",
-            "size": 34260,
-            "sha256": "f136700cffb49310618371458864503f2e87fffabfc173d850c4774455a6bfc3"
-          },
-          {
-            "path": "app/ui/common/theme.py",
-            "size": 9158,
-            "sha256": "ce2ab34396cc083041ee6cd2324a822ca0bd4561c52ef3c3b0dabc08d77593a1"
-          },
-          {
-            "path": "app/ui/common/ux.py",
-            "size": 6794,
-            "sha256": "a469823035da87207ba23cb89333dcc7a5cd1971b633db01031204ec0b925e48"
-          },
-          {
-            "path": "app/ui/tabs/ai_chat_tab.py",
-            "size": 225226,
-            "sha256": "2cb7fac59eeb12abe566bd2fe7562d2b3521bb921c078dc853a11af1cd824f64"
-          }
-        ]
-      },
-      "checks": [
-        "메인 화면 5 이동",
-        "Codex 단일 제공자 계약",
-        "AI 서비스 항목 한 개",
-        "Codex 제공자 선택",
-        "ChatGPT Codex 표시",
-        "Codex 단일 제공자 선택 잠금",
-        "가이드 화면 제목: NetOps 어시스턴트",
-        "가이드 화면 표시: NetOps 어시스턴트",
-        "가이드 캡처 뷰포트: 1280×800",
-        "가이드 캡처 objectName 표시: appShell",
-        "가이드 캡처 objectName 표시: mainNavigation",
-        "가이드 캡처 objectName 표시: workspacePanel",
-        "가이드 캡처 objectName 표시: stepHint",
-        "가이드 캡처 objectName 표시: aiProviderSettingsGroup",
-        "가이드 캡처 objectName 표시: aiProviderSetupButton"
+        "가이드 캡처 objectName 표시: pageHeader",
+        "가이드 캡처 objectName 표시: configBuilderEmbeddedBuilder",
+        "가이드 캡처 objectName 표시: configBuilderProfileManagementButton"
       ]
     },
     {
@@ -728,12 +1330,12 @@
         1280,
         800
       ],
-      "capture_handler": "guide_overview",
+      "capture_handler": "settings_storage",
       "expected_object_names": [
         "appShell",
         "mainNavigation",
         "workspacePanel",
-        "stepHint",
+        "pageHeader",
         "settingsSectionTabs"
       ],
       "source_paths": [
@@ -741,17 +1343,215 @@
         "app/ui/common/theme.py",
         "app/ui/common/ux.py",
         "app/ui/tabs/settings_tab.py",
-        "app/models/ai_models.py",
-        "app/services/ai_agent_service.py"
+        "app/ui/common/disclosure.py",
+        "netops_suite/ui/actions.py",
+        "netops_suite/ui/icons.py",
+        "assets/icons/lucide/house.svg",
+        "assets/icons/lucide/network.svg",
+        "assets/icons/lucide/activity.svg",
+        "assets/icons/lucide/wifi.svg",
+        "assets/icons/lucide/server-cog.svg",
+        "assets/icons/lucide/square-terminal.svg",
+        "assets/icons/lucide/folder-sync.svg",
+        "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "b5b47d054fe6b865ff417300f67ac7c430bcd4bd869de7ac4e101c97d7d39559",
+      "png_sha256": "68ac2dcf6f34c5e654b80a69c33f5cd494fc2b42b823e7ef9f6396c14d798783",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "a655d0ee148b1225302ae7dcde2774f8e5c29ee44ca52204cad83a08f256f7a8",
-        "contract_sha256": "2bdd406bdabdd464b4189d49bfc6340b320947ac0abc46e55f1d534695d656c0",
-        "handler_sha256": "43820e9791846df2859298ecc8ffc868e13e3d021f8a6c8a2892f16ef1a0a1f9",
-        "sources_sha256": "f30ba4113907c24a9f832151d152df77981c5d2580afd77b1c56f4365abaeaae",
+        "value": "4e57095954effa1c13e533dd0bbd066f82770afd3edf705b61282257cde66f12",
+        "contract_sha256": "c4bb5c84a454a4f2f74835c7718fa4ee387042f3cbcb38744c21b33d72601c43",
+        "handler_sha256": "322c3562ccd21e0f326bf8c1f1f8e9d6856807351b3557142aa1dffbe4ca40de",
+        "sources_sha256": "d45a8273dc2482ec0c16bec640373f4f7a4fc51fcd62455f261920d006c38a87",
+        "capture_handler": {
+          "name": "settings_storage",
+          "source": "qa/offscreen/harness.py",
+          "class": "OffscreenQaHarness",
+          "methods": [
+            {
+              "name": "_run_scenario",
+              "sha256": "2e2e07f023176c4fce56e1e4111186abf52b6e0dde38c26ec450d396367bf033"
+            },
+            {
+              "name": "_navigate_main",
+              "sha256": "a0d0f34ae36804abfef147bd2e6b1a0b3495766e6ac59223333b5bfaca2f6104"
+            },
+            {
+              "name": "_click_list_row",
+              "sha256": "fce7fa43f62fc7711910e023b0aa7504394e6bb641172e06bbfedcf9b8b29c52"
+            },
+            {
+              "name": "_flush",
+              "sha256": "bcd282c4e94affd1369c8101f75cc94d4d3cb34a12b33290f5fd30b7a3d7140c"
+            },
+            {
+              "name": "_capture",
+              "sha256": "cce82fd5c9e929eac3d0dada4bacaefad09e16b5e9d6712e86c24415516ca3bc"
+            },
+            {
+              "name": "_capture_handler_settings_storage",
+              "sha256": "57c7939b71063b5b2dd5e9710d3ed330c5a93a55ddad87d8f483be816410b379"
+            }
+          ]
+        },
+        "viewport": [
+          1280,
+          800
+        ],
+        "expected_object_names": [
+          "appShell",
+          "mainNavigation",
+          "workspacePanel",
+          "pageHeader",
+          "settingsSectionTabs"
+        ],
+        "source_paths": [
+          "app/main_window.py",
+          "app/ui/common/theme.py",
+          "app/ui/common/ux.py",
+          "app/ui/tabs/settings_tab.py",
+          "app/ui/common/disclosure.py",
+          "netops_suite/ui/actions.py",
+          "netops_suite/ui/icons.py",
+          "assets/icons/lucide/house.svg",
+          "assets/icons/lucide/network.svg",
+          "assets/icons/lucide/activity.svg",
+          "assets/icons/lucide/wifi.svg",
+          "assets/icons/lucide/server-cog.svg",
+          "assets/icons/lucide/square-terminal.svg",
+          "assets/icons/lucide/folder-sync.svg",
+          "assets/icons/lucide/settings-2.svg"
+        ],
+        "source_files": [
+          {
+            "path": "app/main_window.py",
+            "size": 53492,
+            "sha256": "cce9f95013fe46dd25e038ea4cf83bbc95ae245ab6f3fae0eba38a4f8063d0bd"
+          },
+          {
+            "path": "app/ui/common/disclosure.py",
+            "size": 6936,
+            "sha256": "6917ed185f7e1e57c28208ba0858851bef3a4d4745849c0294e0551c1f25101d"
+          },
+          {
+            "path": "app/ui/common/theme.py",
+            "size": 10689,
+            "sha256": "813dcc4e905944a67db1e582292152f54e7ac86ed57c2b00cedcc47e3f56c832"
+          },
+          {
+            "path": "app/ui/common/ux.py",
+            "size": 8214,
+            "sha256": "1f03c949729e17d2e195f005bfd047314fc58a76f9c050a2a26e21dd3d2b2c45"
+          },
+          {
+            "path": "app/ui/tabs/settings_tab.py",
+            "size": 51761,
+            "sha256": "9842fbcfd0c9a2f54991cf8acdd878f29517cb820d09c88b164b580f7e0401ed"
+          },
+          {
+            "path": "assets/icons/lucide/activity.svg",
+            "size": 346,
+            "sha256": "050fbcda05e13c2051cf857683645e19c6b180861ef4d0cc28a6f09ba1ea1666"
+          },
+          {
+            "path": "assets/icons/lucide/folder-sync.svg",
+            "size": 481,
+            "sha256": "65cf1b56d7e8b0b43a347a83ea4c8b82c9364dc2cf6f816aa2b22dfcaa66407b"
+          },
+          {
+            "path": "assets/icons/lucide/house.svg",
+            "size": 383,
+            "sha256": "28216c479005731ef5e382e7d8627eda2b129b019eb1f3d9de9f5915576d448e"
+          },
+          {
+            "path": "assets/icons/lucide/network.svg",
+            "size": 445,
+            "sha256": "626be730feea1e5ea7539fbf78b4a3fcb927ce5d7dc43364f2216908672ac792"
+          },
+          {
+            "path": "assets/icons/lucide/server-cog.svg",
+            "size": 797,
+            "sha256": "6c48e7bf726c71ced40e79b1961258b24b5a752c6cec158a68a49f6f01a3852a"
+          },
+          {
+            "path": "assets/icons/lucide/settings-2.svg",
+            "size": 324,
+            "sha256": "06d06c191bd7eb28afaf9d40acb5c49ef69448fdeda91801d9823d7c440a4e10"
+          },
+          {
+            "path": "assets/icons/lucide/square-terminal.svg",
+            "size": 321,
+            "sha256": "1fd2b783881ed8b0675995910fe98625789119e390420931eca6ddbc91c17932"
+          },
+          {
+            "path": "assets/icons/lucide/wifi.svg",
+            "size": 357,
+            "sha256": "5c4c795d014fa95d1e1038362df44a0f0f32ded9cb08c833ae72419ebadc9a91"
+          },
+          {
+            "path": "netops_suite/ui/actions.py",
+            "size": 6061,
+            "sha256": "2cee4bdc38270aa4c6610a4a48bd2a18bc05399156b3b3fb6d60d522e22da4dd"
+          },
+          {
+            "path": "netops_suite/ui/icons.py",
+            "size": 1388,
+            "sha256": "fd25c6b6b7c4b1dffe5787f0fab779746a90590a2874a6a59122ca96d96eec95"
+          }
+        ]
+      },
+      "checks": [
+        "메인 화면 5 이동",
+        "가이드 화면 제목: 설정",
+        "가이드 화면 표시: 설정",
+        "가이드 캡처 뷰포트: 1280×800",
+        "가이드 캡처 objectName 표시: appShell",
+        "가이드 캡처 objectName 표시: mainNavigation",
+        "가이드 캡처 objectName 표시: workspacePanel",
+        "가이드 캡처 objectName 표시: pageHeader",
+        "가이드 캡처 objectName 표시: settingsSectionTabs",
+        "중복 경로는 기본 접힘",
+        "실제 적용 경로 상세 보기",
+        "저장 위치 세 항목 표시"
+      ]
+    },
+    {
+      "scenario_id": "guide_home_overview",
+      "file": "home-overview.png",
+      "viewport": [
+        1280,
+        800
+      ],
+      "capture_handler": "guide_overview",
+      "expected_object_names": [
+        "appShell",
+        "mainNavigation",
+        "homePage",
+        "pageHeader"
+      ],
+      "source_paths": [
+        "app/main_window.py",
+        "app/ui/home.py",
+        "app/ui/common/theme.py",
+        "app/ui/common/disclosure.py",
+        "netops_suite/ui/icons.py",
+        "assets/icons/lucide/house.svg",
+        "assets/icons/lucide/network.svg",
+        "assets/icons/lucide/activity.svg",
+        "assets/icons/lucide/wifi.svg",
+        "assets/icons/lucide/server-cog.svg",
+        "assets/icons/lucide/square-terminal.svg",
+        "assets/icons/lucide/folder-sync.svg",
+        "assets/icons/lucide/settings-2.svg"
+      ],
+      "png_sha256": "050f78d0dd68d73634e3c0ca96c447b516108ff45f949cb346e22c06145017e8",
+      "fingerprint": {
+        "schema_version": 1,
+        "algorithm": "sha256",
+        "value": "8829e4517095da55b278803d21dcdb90fdab4e6a455d859eb2fc5bae636448de",
+        "contract_sha256": "2a96152ccd67b615179630c8b5ba7b4ed6c26984cc9c457b8bc607d93ef6d3ef",
+        "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
+        "sources_sha256": "e74562bf04b3a7c78aa1832b8af44950c1047a7e14220b7d999cb96878bd63db",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -759,11 +1559,11 @@
           "methods": [
             {
               "name": "_run_scenario",
-              "sha256": "8a112fc522584c8371769cdfccfa94e9ba30553ad75fb9ab7031391aa8806391"
+              "sha256": "2e2e07f023176c4fce56e1e4111186abf52b6e0dde38c26ec450d396367bf033"
             },
             {
               "name": "_navigate_main",
-              "sha256": "0d982af5ea7cd97c6e666058f4dd1113633abca124c798a5a217ae94171b1f10"
+              "sha256": "a0d0f34ae36804abfef147bd2e6b1a0b3495766e6ac59223333b5bfaca2f6104"
             },
             {
               "name": "_click_list_row",
@@ -779,7 +1579,7 @@
             },
             {
               "name": "_capture_handler_guide_overview",
-              "sha256": "d3fb1f2cdd53063ec8f5209b84b7e006af1f209b32e974d77a8bb09cc585f85e"
+              "sha256": "cedc9829d87dbaae8e39ab5affe2f45357faaa8c80f2c00e39125695c0e7ea32"
             }
           ]
         },
@@ -790,61 +1590,591 @@
         "expected_object_names": [
           "appShell",
           "mainNavigation",
-          "workspacePanel",
-          "stepHint",
-          "settingsSectionTabs"
+          "homePage",
+          "pageHeader"
         ],
         "source_paths": [
           "app/main_window.py",
+          "app/ui/home.py",
           "app/ui/common/theme.py",
-          "app/ui/common/ux.py",
-          "app/ui/tabs/settings_tab.py",
-          "app/models/ai_models.py",
-          "app/services/ai_agent_service.py"
+          "app/ui/common/disclosure.py",
+          "netops_suite/ui/icons.py",
+          "assets/icons/lucide/house.svg",
+          "assets/icons/lucide/network.svg",
+          "assets/icons/lucide/activity.svg",
+          "assets/icons/lucide/wifi.svg",
+          "assets/icons/lucide/server-cog.svg",
+          "assets/icons/lucide/square-terminal.svg",
+          "assets/icons/lucide/folder-sync.svg",
+          "assets/icons/lucide/settings-2.svg"
         ],
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 46028,
-            "sha256": "e5ff8a6da53f6589741ee557a1483fdb4609653f9d6fda7327d4da7507922328"
+            "size": 53492,
+            "sha256": "cce9f95013fe46dd25e038ea4cf83bbc95ae245ab6f3fae0eba38a4f8063d0bd"
           },
           {
-            "path": "app/models/ai_models.py",
-            "size": 13202,
-            "sha256": "7ff10abdc6e7f8ef6ccd9170590c0463112e295ffc27ed9782f8251c3dacf1a6"
-          },
-          {
-            "path": "app/services/ai_agent_service.py",
-            "size": 69118,
-            "sha256": "96e07a6913822cb0ab9b8d8d4d15e825c269704f521243afea46cc8efd333f48"
+            "path": "app/ui/common/disclosure.py",
+            "size": 6936,
+            "sha256": "6917ed185f7e1e57c28208ba0858851bef3a4d4745849c0294e0551c1f25101d"
           },
           {
             "path": "app/ui/common/theme.py",
-            "size": 9158,
-            "sha256": "ce2ab34396cc083041ee6cd2324a822ca0bd4561c52ef3c3b0dabc08d77593a1"
+            "size": 10689,
+            "sha256": "813dcc4e905944a67db1e582292152f54e7ac86ed57c2b00cedcc47e3f56c832"
           },
           {
-            "path": "app/ui/common/ux.py",
-            "size": 6794,
-            "sha256": "a469823035da87207ba23cb89333dcc7a5cd1971b633db01031204ec0b925e48"
+            "path": "app/ui/home.py",
+            "size": 6841,
+            "sha256": "1c560751114dd5e558d8face2d7209bf876da9d43f6914126f885c8919c287bf"
           },
           {
-            "path": "app/ui/tabs/settings_tab.py",
-            "size": 58162,
-            "sha256": "d4978f127f2d3f26c697888188cdc899ef979638b62edf38634b707e8410beb3"
+            "path": "assets/icons/lucide/activity.svg",
+            "size": 346,
+            "sha256": "050fbcda05e13c2051cf857683645e19c6b180861ef4d0cc28a6f09ba1ea1666"
+          },
+          {
+            "path": "assets/icons/lucide/folder-sync.svg",
+            "size": 481,
+            "sha256": "65cf1b56d7e8b0b43a347a83ea4c8b82c9364dc2cf6f816aa2b22dfcaa66407b"
+          },
+          {
+            "path": "assets/icons/lucide/house.svg",
+            "size": 383,
+            "sha256": "28216c479005731ef5e382e7d8627eda2b129b019eb1f3d9de9f5915576d448e"
+          },
+          {
+            "path": "assets/icons/lucide/network.svg",
+            "size": 445,
+            "sha256": "626be730feea1e5ea7539fbf78b4a3fcb927ce5d7dc43364f2216908672ac792"
+          },
+          {
+            "path": "assets/icons/lucide/server-cog.svg",
+            "size": 797,
+            "sha256": "6c48e7bf726c71ced40e79b1961258b24b5a752c6cec158a68a49f6f01a3852a"
+          },
+          {
+            "path": "assets/icons/lucide/settings-2.svg",
+            "size": 324,
+            "sha256": "06d06c191bd7eb28afaf9d40acb5c49ef69448fdeda91801d9823d7c440a4e10"
+          },
+          {
+            "path": "assets/icons/lucide/square-terminal.svg",
+            "size": 321,
+            "sha256": "1fd2b783881ed8b0675995910fe98625789119e390420931eca6ddbc91c17932"
+          },
+          {
+            "path": "assets/icons/lucide/wifi.svg",
+            "size": 357,
+            "sha256": "5c4c795d014fa95d1e1038362df44a0f0f32ded9cb08c833ae72419ebadc9a91"
+          },
+          {
+            "path": "netops_suite/ui/icons.py",
+            "size": 1388,
+            "sha256": "fd25c6b6b7c4b1dffe5787f0fab779746a90590a2874a6a59122ca96d96eec95"
           }
         ]
       },
       "checks": [
         "메인 화면 6 이동",
-        "가이드 화면 제목: 설정",
-        "가이드 화면 표시: 설정",
+        "가이드 화면 제목: 시작",
+        "가이드 화면 표시: 시작",
         "가이드 캡처 뷰포트: 1280×800",
         "가이드 캡처 objectName 표시: appShell",
         "가이드 캡처 objectName 표시: mainNavigation",
-        "가이드 캡처 objectName 표시: workspacePanel",
-        "가이드 캡처 objectName 표시: stepHint",
-        "가이드 캡처 objectName 표시: settingsSectionTabs"
+        "가이드 캡처 objectName 표시: homePage",
+        "가이드 캡처 objectName 표시: pageHeader"
+      ]
+    },
+    {
+      "scenario_id": "guide_transfer_overview",
+      "file": "transfer-overview.png",
+      "viewport": [
+        1280,
+        800
+      ],
+      "capture_handler": "guide_overview",
+      "expected_object_names": [
+        "appShell",
+        "mainNavigation",
+        "workspacePanel"
+      ],
+      "source_paths": [
+        "app/main_window.py",
+        "app/ui/tabs/transfer_tab.py",
+        "app/ui/tabs/diagnostics/ftp.py",
+        "app/ui/tabs/diagnostics/scp.py",
+        "app/ui/tabs/diagnostics/tftp.py",
+        "app/ui/common/disclosure.py",
+        "app/ui/common/theme.py",
+        "netops_suite/ui/actions.py",
+        "netops_suite/ui/icons.py",
+        "assets/icons/lucide/house.svg",
+        "assets/icons/lucide/network.svg",
+        "assets/icons/lucide/activity.svg",
+        "assets/icons/lucide/wifi.svg",
+        "assets/icons/lucide/server-cog.svg",
+        "assets/icons/lucide/square-terminal.svg",
+        "assets/icons/lucide/folder-sync.svg",
+        "assets/icons/lucide/settings-2.svg"
+      ],
+      "png_sha256": "d1cfd2a0d179dfa06f833c7b58adb62183e3d20830d1cc09c201ae79699b9e5d",
+      "fingerprint": {
+        "schema_version": 1,
+        "algorithm": "sha256",
+        "value": "70e1b51384bb080247e4c7f23f1fda347af43f2f8b5dfa8f900dbe1b63cd00dd",
+        "contract_sha256": "d340b6de95a717639cf573a7bdf9d129101a67157c37acf0521e2a58f5ece03c",
+        "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
+        "sources_sha256": "92996d533602aa7c8cc4cbc98c9f2704ecebb0e80a8985ed380bc7baf7860e90",
+        "capture_handler": {
+          "name": "guide_overview",
+          "source": "qa/offscreen/harness.py",
+          "class": "OffscreenQaHarness",
+          "methods": [
+            {
+              "name": "_run_scenario",
+              "sha256": "2e2e07f023176c4fce56e1e4111186abf52b6e0dde38c26ec450d396367bf033"
+            },
+            {
+              "name": "_navigate_main",
+              "sha256": "a0d0f34ae36804abfef147bd2e6b1a0b3495766e6ac59223333b5bfaca2f6104"
+            },
+            {
+              "name": "_click_list_row",
+              "sha256": "fce7fa43f62fc7711910e023b0aa7504394e6bb641172e06bbfedcf9b8b29c52"
+            },
+            {
+              "name": "_flush",
+              "sha256": "bcd282c4e94affd1369c8101f75cc94d4d3cb34a12b33290f5fd30b7a3d7140c"
+            },
+            {
+              "name": "_capture",
+              "sha256": "cce82fd5c9e929eac3d0dada4bacaefad09e16b5e9d6712e86c24415516ca3bc"
+            },
+            {
+              "name": "_capture_handler_guide_overview",
+              "sha256": "cedc9829d87dbaae8e39ab5affe2f45357faaa8c80f2c00e39125695c0e7ea32"
+            }
+          ]
+        },
+        "viewport": [
+          1280,
+          800
+        ],
+        "expected_object_names": [
+          "appShell",
+          "mainNavigation",
+          "workspacePanel"
+        ],
+        "source_paths": [
+          "app/main_window.py",
+          "app/ui/tabs/transfer_tab.py",
+          "app/ui/tabs/diagnostics/ftp.py",
+          "app/ui/tabs/diagnostics/scp.py",
+          "app/ui/tabs/diagnostics/tftp.py",
+          "app/ui/common/disclosure.py",
+          "app/ui/common/theme.py",
+          "netops_suite/ui/actions.py",
+          "netops_suite/ui/icons.py",
+          "assets/icons/lucide/house.svg",
+          "assets/icons/lucide/network.svg",
+          "assets/icons/lucide/activity.svg",
+          "assets/icons/lucide/wifi.svg",
+          "assets/icons/lucide/server-cog.svg",
+          "assets/icons/lucide/square-terminal.svg",
+          "assets/icons/lucide/folder-sync.svg",
+          "assets/icons/lucide/settings-2.svg"
+        ],
+        "source_files": [
+          {
+            "path": "app/main_window.py",
+            "size": 53492,
+            "sha256": "cce9f95013fe46dd25e038ea4cf83bbc95ae245ab6f3fae0eba38a4f8063d0bd"
+          },
+          {
+            "path": "app/ui/common/disclosure.py",
+            "size": 6936,
+            "sha256": "6917ed185f7e1e57c28208ba0858851bef3a4d4745849c0294e0551c1f25101d"
+          },
+          {
+            "path": "app/ui/common/theme.py",
+            "size": 10689,
+            "sha256": "813dcc4e905944a67db1e582292152f54e7ac86ed57c2b00cedcc47e3f56c832"
+          },
+          {
+            "path": "app/ui/tabs/diagnostics/ftp.py",
+            "size": 74977,
+            "sha256": "2a5a8d487c1242f491f26cf68f6789d0253da4db9654336c4c563398da48b7f3"
+          },
+          {
+            "path": "app/ui/tabs/diagnostics/scp.py",
+            "size": 40958,
+            "sha256": "00c1b3a8595c5de98feb2ab7238572aea00c293dea3979a97f1583e76f934a92"
+          },
+          {
+            "path": "app/ui/tabs/diagnostics/tftp.py",
+            "size": 33538,
+            "sha256": "8ab3860776c309b860bfc8f5751a1663cf358b337054b470f49a9cde787d2d45"
+          },
+          {
+            "path": "app/ui/tabs/transfer_tab.py",
+            "size": 1015,
+            "sha256": "a153a429503fdd0b3532ce204a41d81cf60796576440159fbce8d42896ded657"
+          },
+          {
+            "path": "assets/icons/lucide/activity.svg",
+            "size": 346,
+            "sha256": "050fbcda05e13c2051cf857683645e19c6b180861ef4d0cc28a6f09ba1ea1666"
+          },
+          {
+            "path": "assets/icons/lucide/folder-sync.svg",
+            "size": 481,
+            "sha256": "65cf1b56d7e8b0b43a347a83ea4c8b82c9364dc2cf6f816aa2b22dfcaa66407b"
+          },
+          {
+            "path": "assets/icons/lucide/house.svg",
+            "size": 383,
+            "sha256": "28216c479005731ef5e382e7d8627eda2b129b019eb1f3d9de9f5915576d448e"
+          },
+          {
+            "path": "assets/icons/lucide/network.svg",
+            "size": 445,
+            "sha256": "626be730feea1e5ea7539fbf78b4a3fcb927ce5d7dc43364f2216908672ac792"
+          },
+          {
+            "path": "assets/icons/lucide/server-cog.svg",
+            "size": 797,
+            "sha256": "6c48e7bf726c71ced40e79b1961258b24b5a752c6cec158a68a49f6f01a3852a"
+          },
+          {
+            "path": "assets/icons/lucide/settings-2.svg",
+            "size": 324,
+            "sha256": "06d06c191bd7eb28afaf9d40acb5c49ef69448fdeda91801d9823d7c440a4e10"
+          },
+          {
+            "path": "assets/icons/lucide/square-terminal.svg",
+            "size": 321,
+            "sha256": "1fd2b783881ed8b0675995910fe98625789119e390420931eca6ddbc91c17932"
+          },
+          {
+            "path": "assets/icons/lucide/wifi.svg",
+            "size": 357,
+            "sha256": "5c4c795d014fa95d1e1038362df44a0f0f32ded9cb08c833ae72419ebadc9a91"
+          },
+          {
+            "path": "netops_suite/ui/actions.py",
+            "size": 6061,
+            "sha256": "2cee4bdc38270aa4c6610a4a48bd2a18bc05399156b3b3fb6d60d522e22da4dd"
+          },
+          {
+            "path": "netops_suite/ui/icons.py",
+            "size": 1388,
+            "sha256": "fd25c6b6b7c4b1dffe5787f0fab779746a90590a2874a6a59122ca96d96eec95"
+          }
+        ]
+      },
+      "checks": [
+        "메인 화면 7 이동",
+        "가이드 화면 제목: 파일 전송",
+        "가이드 화면 표시: 파일 전송",
+        "가이드 캡처 뷰포트: 1280×800",
+        "가이드 캡처 objectName 표시: appShell",
+        "가이드 캡처 objectName 표시: mainNavigation",
+        "가이드 캡처 objectName 표시: workspacePanel"
+      ]
+    },
+    {
+      "scenario_id": "guide_context_help",
+      "file": "context-help.png",
+      "viewport": [
+        1280,
+        800
+      ],
+      "capture_handler": "context_help",
+      "expected_object_names": [
+        "contextHelpDock"
+      ],
+      "source_paths": [
+        "app/main_window.py",
+        "app/guides/quick_help.py",
+        "app/guides/catalog.py",
+        "app/ui/common/theme.py",
+        "netops_suite/ui/icons.py",
+        "assets/icons/lucide/house.svg",
+        "assets/icons/lucide/network.svg",
+        "assets/icons/lucide/activity.svg",
+        "assets/icons/lucide/wifi.svg",
+        "assets/icons/lucide/server-cog.svg",
+        "assets/icons/lucide/square-terminal.svg",
+        "assets/icons/lucide/folder-sync.svg",
+        "assets/icons/lucide/settings-2.svg"
+      ],
+      "png_sha256": "2a00065ed93839f193d2c3dce63b5d3556bcec15f4a99330262618e10969cfd4",
+      "fingerprint": {
+        "schema_version": 1,
+        "algorithm": "sha256",
+        "value": "6ff079baeea4e2f6754a5abaebe292374cccbd96ca6390c7698b19f2c774b6a8",
+        "contract_sha256": "d49b374db76ae18b79ff948a911719ad50b4b5835fefd803c7315da3544b0eb8",
+        "handler_sha256": "5cddeb00bd5a88316a63d18fc1fd736cc15471ce83146b4f703ea2eb2bb568de",
+        "sources_sha256": "5a5f6b53d8aeb263e1ea6b1f66b5a4ce6d24087ba13afba049ad38fc36bb6b78",
+        "capture_handler": {
+          "name": "context_help",
+          "source": "qa/offscreen/harness.py",
+          "class": "OffscreenQaHarness",
+          "methods": [
+            {
+              "name": "_run_scenario",
+              "sha256": "2e2e07f023176c4fce56e1e4111186abf52b6e0dde38c26ec450d396367bf033"
+            },
+            {
+              "name": "_navigate_main",
+              "sha256": "a0d0f34ae36804abfef147bd2e6b1a0b3495766e6ac59223333b5bfaca2f6104"
+            },
+            {
+              "name": "_click_list_row",
+              "sha256": "fce7fa43f62fc7711910e023b0aa7504394e6bb641172e06bbfedcf9b8b29c52"
+            },
+            {
+              "name": "_flush",
+              "sha256": "bcd282c4e94affd1369c8101f75cc94d4d3cb34a12b33290f5fd30b7a3d7140c"
+            },
+            {
+              "name": "_capture",
+              "sha256": "cce82fd5c9e929eac3d0dada4bacaefad09e16b5e9d6712e86c24415516ca3bc"
+            },
+            {
+              "name": "_capture_handler_context_help",
+              "sha256": "5bafdc23dce53040804ff52c6ccaa73c1c0198d22ee0227342a70d13075b58fb"
+            }
+          ]
+        },
+        "viewport": [
+          1280,
+          800
+        ],
+        "expected_object_names": [
+          "contextHelpDock"
+        ],
+        "source_paths": [
+          "app/main_window.py",
+          "app/guides/quick_help.py",
+          "app/guides/catalog.py",
+          "app/ui/common/theme.py",
+          "netops_suite/ui/icons.py",
+          "assets/icons/lucide/house.svg",
+          "assets/icons/lucide/network.svg",
+          "assets/icons/lucide/activity.svg",
+          "assets/icons/lucide/wifi.svg",
+          "assets/icons/lucide/server-cog.svg",
+          "assets/icons/lucide/square-terminal.svg",
+          "assets/icons/lucide/folder-sync.svg",
+          "assets/icons/lucide/settings-2.svg"
+        ],
+        "source_files": [
+          {
+            "path": "app/guides/catalog.py",
+            "size": 17490,
+            "sha256": "c8f33f99313fddd849984fb8f5388cb9db1081b96abfdc995388ae776db20e20"
+          },
+          {
+            "path": "app/guides/quick_help.py",
+            "size": 4993,
+            "sha256": "c8f3376c9afb538e22abfae6e75d4ecc6f35d19335ef15b6da8584c24df1af36"
+          },
+          {
+            "path": "app/main_window.py",
+            "size": 53492,
+            "sha256": "cce9f95013fe46dd25e038ea4cf83bbc95ae245ab6f3fae0eba38a4f8063d0bd"
+          },
+          {
+            "path": "app/ui/common/theme.py",
+            "size": 10689,
+            "sha256": "813dcc4e905944a67db1e582292152f54e7ac86ed57c2b00cedcc47e3f56c832"
+          },
+          {
+            "path": "assets/icons/lucide/activity.svg",
+            "size": 346,
+            "sha256": "050fbcda05e13c2051cf857683645e19c6b180861ef4d0cc28a6f09ba1ea1666"
+          },
+          {
+            "path": "assets/icons/lucide/folder-sync.svg",
+            "size": 481,
+            "sha256": "65cf1b56d7e8b0b43a347a83ea4c8b82c9364dc2cf6f816aa2b22dfcaa66407b"
+          },
+          {
+            "path": "assets/icons/lucide/house.svg",
+            "size": 383,
+            "sha256": "28216c479005731ef5e382e7d8627eda2b129b019eb1f3d9de9f5915576d448e"
+          },
+          {
+            "path": "assets/icons/lucide/network.svg",
+            "size": 445,
+            "sha256": "626be730feea1e5ea7539fbf78b4a3fcb927ce5d7dc43364f2216908672ac792"
+          },
+          {
+            "path": "assets/icons/lucide/server-cog.svg",
+            "size": 797,
+            "sha256": "6c48e7bf726c71ced40e79b1961258b24b5a752c6cec158a68a49f6f01a3852a"
+          },
+          {
+            "path": "assets/icons/lucide/settings-2.svg",
+            "size": 324,
+            "sha256": "06d06c191bd7eb28afaf9d40acb5c49ef69448fdeda91801d9823d7c440a4e10"
+          },
+          {
+            "path": "assets/icons/lucide/square-terminal.svg",
+            "size": 321,
+            "sha256": "1fd2b783881ed8b0675995910fe98625789119e390420931eca6ddbc91c17932"
+          },
+          {
+            "path": "assets/icons/lucide/wifi.svg",
+            "size": 357,
+            "sha256": "5c4c795d014fa95d1e1038362df44a0f0f32ded9cb08c833ae72419ebadc9a91"
+          },
+          {
+            "path": "netops_suite/ui/icons.py",
+            "size": 1388,
+            "sha256": "fd25c6b6b7c4b1dffe5787f0fab779746a90590a2874a6a59122ca96d96eec95"
+          }
+        ]
+      },
+      "checks": [
+        "현재 작업 도움말 표시",
+        "Ping 전용 도움말 연결",
+        "가이드 도움말 캡처 크기 유지",
+        "가이드 캡처 objectName 표시: contextHelpDock"
+      ]
+    },
+    {
+      "scenario_id": "guide_inspector_custom_commands",
+      "file": "inspector-custom-commands.png",
+      "viewport": [
+        1280,
+        800
+      ],
+      "capture_handler": "inspector_custom_commands",
+      "expected_object_names": [
+        "pageHeader",
+        "inspectorCustomCommandEditor",
+        "inspectorCustomCommandCheck",
+        "inspectorCustomCommandPreview"
+      ],
+      "source_paths": [
+        "app/ui/tabs/inspector_tab.py",
+        "app/ui/common/ux.py",
+        "app/ui/common/theme.py",
+        "netops_suite/modules/inspector/service.py",
+        "netops_suite/modules/inspector_runtime/core/command_patterns.py"
+      ],
+      "png_sha256": "ccabe432544b8e5ad7e9286f743b42203e2a7c28455a63c06a94570281eefb53",
+      "fingerprint": {
+        "schema_version": 1,
+        "algorithm": "sha256",
+        "value": "1eb72d06dbb6a9fbc2def1fe7c87d826357222cf4aa3ed357a0c7ac2fb7a40d1",
+        "contract_sha256": "dd8fd8ba67eb5660d4f57b20cd3aced0b293d41b4dac24f9496ebf07636846a7",
+        "handler_sha256": "6577bde7b9deb61303ec28e3e8d82c7b4363a29551155ef50f1198f3a270d7f7",
+        "sources_sha256": "f1beaa35342d0bbe452b258f2e84664fd58708d47d4397a392e86f7012df4c8e",
+        "capture_handler": {
+          "name": "inspector_custom_commands",
+          "source": "qa/offscreen/harness.py",
+          "class": "OffscreenQaHarness",
+          "methods": [
+            {
+              "name": "_run_scenario",
+              "sha256": "2e2e07f023176c4fce56e1e4111186abf52b6e0dde38c26ec450d396367bf033"
+            },
+            {
+              "name": "_navigate_main",
+              "sha256": "a0d0f34ae36804abfef147bd2e6b1a0b3495766e6ac59223333b5bfaca2f6104"
+            },
+            {
+              "name": "_click_list_row",
+              "sha256": "fce7fa43f62fc7711910e023b0aa7504394e6bb641172e06bbfedcf9b8b29c52"
+            },
+            {
+              "name": "_flush",
+              "sha256": "bcd282c4e94affd1369c8101f75cc94d4d3cb34a12b33290f5fd30b7a3d7140c"
+            },
+            {
+              "name": "_capture",
+              "sha256": "cce82fd5c9e929eac3d0dada4bacaefad09e16b5e9d6712e86c24415516ca3bc"
+            },
+            {
+              "name": "_capture_handler_inspector_custom_commands",
+              "sha256": "4a583b4b846ef48c1399bbac3051892705f9e9a08ade341f7199273cdecd30b4"
+            }
+          ]
+        },
+        "viewport": [
+          1280,
+          800
+        ],
+        "expected_object_names": [
+          "pageHeader",
+          "inspectorCustomCommandEditor",
+          "inspectorCustomCommandCheck",
+          "inspectorCustomCommandPreview"
+        ],
+        "source_paths": [
+          "app/ui/tabs/inspector_tab.py",
+          "app/ui/common/ux.py",
+          "app/ui/common/theme.py",
+          "netops_suite/modules/inspector/service.py",
+          "netops_suite/modules/inspector_runtime/core/command_patterns.py"
+        ],
+        "source_files": [
+          {
+            "path": "app/ui/common/theme.py",
+            "size": 10689,
+            "sha256": "813dcc4e905944a67db1e582292152f54e7ac86ed57c2b00cedcc47e3f56c832"
+          },
+          {
+            "path": "app/ui/common/ux.py",
+            "size": 8214,
+            "sha256": "1f03c949729e17d2e195f005bfd047314fc58a76f9c050a2a26e21dd3d2b2c45"
+          },
+          {
+            "path": "app/ui/tabs/inspector_tab.py",
+            "size": 62783,
+            "sha256": "0f830a7882d48a87d5ed04b0ef85bc49a834eecebfa5f5cd7895802a9b3d12b2"
+          },
+          {
+            "path": "netops_suite/modules/inspector/service.py",
+            "size": 54963,
+            "sha256": "c066b63092f8274fb75aa6998d36b4122a9e71ac4c3939439c35875a6de9e218"
+          },
+          {
+            "path": "netops_suite/modules/inspector_runtime/core/command_patterns.py",
+            "size": 9413,
+            "sha256": "4fae1453192ba9473f9f073f14b3850575c7633448d7224188d1045dc487d487"
+          }
+        ]
+      },
+      "checks": [
+        "메인 화면 3 이동",
+        "사용자 명령 기본 입력 방식은 직접 입력",
+        "직접 입력에서는 명령 파일 선택 숨김",
+        "명령 파일 방식 전환",
+        "직접 입력 방식 복귀",
+        "입력 즉시 변수 문법 오류 표시",
+        "입력 즉시 명령 수와 변수 표시",
+        "직접 입력 명령과 장비 목록 검증",
+        "검증 후 실행 미리보기 표시",
+        "첫 장비 기준 변수 치환 미리보기",
+        "미리보기 대상 장비 표시",
+        "조작부 전체 높이 및 클릭 영역: 직접 입력 (위젯 78×17, 가시 78×17)",
+        "조작부 전체 높이 및 클릭 영역: 명령 파일 (위젯 78×17, 가시 78×17)",
+        "조작부 전체 높이 및 클릭 영역: 실행할 명령 (위젯 904×104, 가시 904×104)",
+        "조작부 전체 높이 및 클릭 영역: 실행 미리보기 (위젯 904×84, 가시 904×84)",
+        "조작부 전체 높이 및 클릭 영역: 먼저 검증 (위젯 76×32, 가시 76×32)",
+        "조작부 전체 높이 및 클릭 영역: 실행 (위젯 68×32, 가시 68×32)",
+        "사용자 명령 영역 가로 잘림 없음",
+        "사용자 명령 검증 후 창 크기 유지",
+        "가이드 캡처 objectName 표시: pageHeader",
+        "가이드 캡처 objectName 표시: inspectorCustomCommandEditor",
+        "가이드 캡처 objectName 표시: inspectorCustomCommandCheck",
+        "가이드 캡처 objectName 표시: inspectorCustomCommandPreview"
       ]
     }
   ]
