@@ -26,14 +26,20 @@ publishing source archives or Windows installer builds.
 | rich | MIT |
 | Pygments | BSD-2-Clause |
 
-## Optional Legacy SSH Runtime
+## Legacy SSH Compatibility Component
 
-The Inspector SSH compatibility helper uses an independently installed Paramiko 3.5.1
-(LGPL-2.1-or-later) environment. Its exact dependencies and artifact hashes are
-recorded in `requirements-legacy-ssh-lock.txt`. It is not installed into the main
-application environment or automatically bundled in the Windows installer.
-Package license files are retained by the isolated pip installation. Include this
-runtime in dependency review and SBOM generation if distributing it separately.
+The Inspector SSH compatibility helper uses Paramiko 3.5.1 (LGPL-2.1-or-later),
+whose hash is pinned in `requirements-legacy-ssh-lock.txt`. The Windows installer
+and portable zip ship it unmodified in `_internal\legacy_ssh`, with its license
+in the bundled `paramiko-3.5.1.dist-info` folder. It runs only in a separate
+worker process for devices that offer nothing but SHA-1 or DSS SSH algorithms;
+the application itself uses Paramiko 5. Its other dependencies are the same
+pinned packages listed above. Development checkouts install it into an isolated
+environment with `scripts/setup_legacy_ssh.py`.
+
+Paramiko 3.5.1 is listed as PYSEC-2026-2858 because it accepts SHA-1 RSA
+signatures. Accepting those algorithms is the reason this component exists, so
+the advisory is expected for it and does not apply to the main application.
 
 ## Binary Release Notes
 

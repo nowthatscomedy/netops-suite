@@ -6,7 +6,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QTimer
+from threading import Event
+
+from PySide6.QtCore import QThreadPool, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -25,9 +27,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.ui.common import make_dialog_intro, polish_dialog
+from app.ui.common import (
+    JobRunner,
+    confirm_risky_action,
+    make_dialog_intro,
+    make_inline_status,
+    make_visible_checkbox,
+    polish_dialog,
+    set_inline_status,
+)
 from app.utils.file_utils import timestamped_export_path
 from netops_suite.modules.inspector import InspectorService
+from netops_suite.modules.inspector.service import ProfileTrialResult
 from netops_suite.ui.actions import ActionKind, make_action_button
 from netops_suite.ui.numeric_inputs import NoWheelSpinBox
 from netops_suite.ui.selection_inputs import NoWheelComboBox
@@ -35,6 +46,7 @@ from netops_suite.ui.selection_inputs import NoWheelComboBox
 ERROR_BG = QColor("#fff1ed")
 OK_BG = QColor("#eef8eb")
 _DEVICE_TYPE_RE = re.compile(r"[a-z0-9][a-z0-9_]{0,63}\Z")
+_TRIAL_OUTPUT_PREVIEW_LINES = 12
 
 
 @lru_cache(maxsize=1)
@@ -184,6 +196,12 @@ class InspectorProfileDialog(QDialog):
         self._dirty = False
         self._last_profile_index = 0
         self._parser_dialog: PythonParserDialog | None = None
+        self._trial_runner = JobRunner(
+            QThreadPool.globalInstance(), self, default_error_title="장비 시험 실패"
+        )
+        self._trial_cancel: Event | None = None
+        self._trial_running = False
+        self._trial_session_dir: str | None = None
         self.preview_timer = QTimer(self)
         self.preview_timer.setInterval(180)
         self.preview_timer.setSingleShot(True)
@@ -260,10 +278,21 @@ class InspectorProfileDialog(QDialog):
         self._build_command_tab()
         self._build_backup_tab()
         self._build_column_tab()
+        self._build_trial_tab()
         self._build_review_tab()
         self._build_advanced_tab()
 
         actions = QHBoxLayout()
+        self.trial_shortcut_button = make_action_button(
+            "장비로 시험",
+            ActionKind.SECONDARY,
+            tooltip="저장하기 전에 실제 장비 한 대에서 명령을 실행해 확인합니다.",
+        )
+        self.trial_shortcut_button.setObjectName("profileTrialShortcutButton")
+        self.trial_shortcut_button.clicked.connect(
+            lambda: self.tabs.setCurrentWidget(self.trial_tab)
+        )
+        actions.addWidget(self.trial_shortcut_button)
         refresh_button = make_action_button(
             "갱신", ActionKind.REFRESH, tooltip="YAML 미리보기를 갱신합니다."
         )
@@ -328,6 +357,7 @@ class InspectorProfileDialog(QDialog):
         ):
             widget.textChanged.connect(self._schedule_preview)
         self.connection_combo.currentIndexChanged.connect(self._schedule_preview)
+        self.connection_combo.currentIndexChanged.connect(self._sync_trial_port)
         self.profile_scope_combo.currentIndexChanged.connect(
             self._on_profile_scope_changed
         )
@@ -532,8 +562,317 @@ class InspectorProfileDialog(QDialog):
         self.python_parser_combo.currentTextChanged.connect(self._on_column_changed)
         self._update_extraction_method_fields()
 
+    def _build_trial_tab(self) -> None:
+        tab = QWidget()
+        tab.setObjectName("profileTrialTab")
+        self.trial_tab = tab
+        layout = QVBoxLayout(tab)
+        layout.addWidget(
+            make_dialog_intro(
+                "저장하기 전에 장비 한 대에 접속해 이 프로파일의 명령을 한 번 실행합니다. "
+                "가져온 출력은 출력 예시에 채워지고, Excel 컬럼에 들어갈 값을 바로 보여 줍니다. "
+                "계정과 비밀번호는 저장하지 않습니다."
+            )
+        )
+        form = QFormLayout()
+        form.setVerticalSpacing(8)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        self.trial_ip_edit = QLineEdit()
+        self.trial_ip_edit.setObjectName("profileTrialIpEdit")
+        self.trial_ip_edit.setPlaceholderText("예: 192.168.0.10")
+        self.trial_port_spin = NoWheelSpinBox()
+        self.trial_port_spin.setRange(1, 65535)
+        self.trial_port_spin.setValue(22)
+        self.trial_username_edit = QLineEdit()
+        self.trial_username_edit.setPlaceholderText("예: admin")
+        self.trial_password_edit = QLineEdit()
+        self.trial_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.trial_enable_edit = QLineEdit()
+        self.trial_enable_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.trial_enable_edit.setPlaceholderText("필요한 장비만 입력")
+        form.addRow("장비 IP", self.trial_ip_edit)
+        form.addRow("포트", self.trial_port_spin)
+        form.addRow("계정", self.trial_username_edit)
+        form.addRow("비밀번호", self.trial_password_edit)
+        form.addRow("enable 비밀번호", self.trial_enable_edit)
+        layout.addLayout(form)
+
+        self.trial_include_backup_check = make_visible_checkbox("백업 명령도 함께 실행")
+        self.trial_include_backup_check.setChecked(True)
+        self.trial_fill_samples_check = make_visible_checkbox(
+            "가져온 출력으로 출력 예시 바꾸기"
+        )
+        self.trial_fill_samples_check.setChecked(True)
+        options = QHBoxLayout()
+        options.addWidget(self.trial_include_backup_check)
+        options.addWidget(self.trial_fill_samples_check)
+        options.addStretch(1)
+        layout.addLayout(options)
+
+        buttons = QHBoxLayout()
+        self.trial_probe_button = make_action_button(
+            "SSH 방식 확인",
+            ActionKind.SECONDARY,
+            tooltip="로그인하지 않고 장비가 지원하는 SSH 방식만 확인합니다.",
+        )
+        self.trial_probe_button.setObjectName("profileTrialProbeButton")
+        self.trial_probe_button.clicked.connect(self._start_ssh_probe)
+        self.trial_run_button = make_action_button(
+            "시험 실행",
+            ActionKind.PRIMARY,
+            tooltip="장비에 로그인해 이 프로파일의 명령을 한 번 실행합니다.",
+        )
+        self.trial_run_button.setObjectName("profileTrialRunButton")
+        self.trial_run_button.clicked.connect(self._start_profile_trial)
+        self.trial_stop_button = make_action_button("중지", ActionKind.STOP)
+        self.trial_stop_button.setEnabled(False)
+        self.trial_stop_button.clicked.connect(self._stop_profile_trial)
+        self.trial_log_button = make_action_button(
+            "세션 로그 열기",
+            ActionKind.OPEN,
+            tooltip="장비와 주고받은 내용을 기록한 폴더를 엽니다.",
+        )
+        self.trial_log_button.setEnabled(False)
+        self.trial_log_button.clicked.connect(self._open_trial_session_logs)
+        buttons.addWidget(self.trial_probe_button)
+        buttons.addWidget(self.trial_run_button)
+        buttons.addWidget(self.trial_stop_button)
+        buttons.addStretch(1)
+        buttons.addWidget(self.trial_log_button)
+        layout.addLayout(buttons)
+
+        self.trial_status_label = make_inline_status(
+            "info", "장비 IP와 계정을 입력한 뒤 시험 실행을 누르세요."
+        )
+        self.trial_status_label.setObjectName("profileTrialStatus")
+        layout.addWidget(self.trial_status_label)
+        self.trial_result_view = QPlainTextEdit()
+        self.trial_result_view.setObjectName("profileTrialResult")
+        self.trial_result_view.setReadOnly(True)
+        self.trial_result_view.setAccessibleName("장비 시험 결과")
+        layout.addWidget(self.trial_result_view, 1)
+        self.tabs.addTab(tab, "장비로 시험")
+
+    def _sync_trial_port(self, _index: int | None = None) -> None:
+        defaults = {"ssh": 22, "telnet": 23}
+        current = self.trial_port_spin.value()
+        if current in defaults.values():
+            self.trial_port_spin.setValue(
+                defaults.get(self.connection_combo.currentData(), current)
+            )
+        self.trial_probe_button.setEnabled(
+            not self._trial_running and self.connection_combo.currentData() == "ssh"
+        )
+
+    def _trial_commands(self) -> list[str]:
+        commands = self._commands()
+        backup = self.state["backup_command"]
+        if (
+            self.trial_include_backup_check.isChecked()
+            and self.state["backup_enabled"]
+            and backup
+            and backup.casefold() not in {command.casefold() for command in commands}
+        ):
+            commands.append(backup)
+        return commands
+
+    def _set_trial_running(self, running: bool) -> None:
+        self._trial_running = running
+        self.trial_run_button.setEnabled(not running)
+        self.trial_stop_button.setEnabled(running)
+        self.trial_probe_button.setEnabled(
+            not running and self.connection_combo.currentData() == "ssh"
+        )
+        for widget in (
+            self.trial_ip_edit,
+            self.trial_port_spin,
+            self.trial_username_edit,
+            self.trial_password_edit,
+            self.trial_enable_edit,
+        ):
+            widget.setEnabled(not running)
+
+    def _start_ssh_probe(self) -> None:
+        host = self.trial_ip_edit.text().strip()
+        if not host:
+            set_inline_status(self.trial_status_label, "warning", "장비 IP를 입력하세요.")
+            self.trial_ip_edit.setFocus()
+            return
+        self._set_trial_running(True)
+        self.trial_stop_button.setEnabled(False)
+        set_inline_status(
+            self.trial_status_label, "info", f"{host}의 SSH 방식을 확인하는 중입니다..."
+        )
+        self.trial_result_view.clear()
+        self._trial_runner.start(
+            self.service.probe_ssh_device,
+            host,
+            self.trial_port_spin.value(),
+            on_result=self._show_probe_result,
+            on_error=self._show_probe_error,
+            on_finished=lambda: self._set_trial_running(False),
+        )
+
+    def _show_probe_result(self, probe: object) -> None:
+        mode = getattr(probe, "mode", "")
+        kind = {"modern": "success", "legacy": "warning"}.get(mode, "error")
+        set_inline_status(self.trial_status_label, kind, probe.summary())
+        self.trial_result_view.setPlainText(probe.details())
+
+    def _show_probe_error(self, text: str) -> None:
+        set_inline_status(self.trial_status_label, "error", text)
+
+    def _start_profile_trial(self) -> None:
+        self._collect_state()
+        host = self.trial_ip_edit.text().strip()
+        problems = []
+        if not self.state["vendor"] or not self.state["os"]:
+            problems.append("장비 정보 탭에서 벤더와 OS를 입력하세요.")
+        if not host:
+            problems.append("장비 IP를 입력하세요.")
+        commands = self._trial_commands()
+        if not commands:
+            problems.append("점검 명령을 하나 이상 입력하세요.")
+        if problems:
+            set_inline_status(self.trial_status_label, "warning", " ".join(problems))
+            return
+        command_lines = "\n".join(f"  {command}" for command in commands)
+        if not confirm_risky_action(
+            self,
+            "장비로 시험",
+            f"{host}에 로그인해 다음 명령을 한 번씩 실행합니다.\n{command_lines}",
+            "조회 명령만 넣었다면 장비 설정은 바뀌지 않습니다. 설정을 바꾸는 명령은 넣지 마세요.",
+            "세션 로그는 결과 폴더의 session_logs에 저장됩니다.",
+            confirm_text="시험 실행",
+        ):
+            return
+        device = {
+            "ip": host,
+            "port": self.trial_port_spin.value(),
+            "vendor": self.state["vendor"],
+            "os": self.state["os"],
+            "model": self.state["model"],
+            "username": self.trial_username_edit.text(),
+            "password": self.trial_password_edit.text(),
+            "enable_password": self.trial_enable_edit.text(),
+            "connection_type": self.connection_combo.currentData(),
+        }
+        self._trial_cancel = Event()
+        self._trial_session_dir = None
+        self.trial_log_button.setEnabled(False)
+        self._set_trial_running(True)
+        self.trial_result_view.clear()
+        set_inline_status(
+            self.trial_status_label, "info", f"{host}에 접속하는 중입니다..."
+        )
+        self._trial_runner.start(
+            self.service.run_profile_trial,
+            device,
+            commands=commands,
+            ssh_device_type=self.state["ssh_device_type"],
+            telnet_device_type=self.state["telnet_device_type"],
+            cancel_event=self._trial_cancel,
+            on_progress=self._show_trial_progress,
+            on_result=self._show_trial_result,
+            on_error=self._show_trial_error,
+            on_finished=self._finish_profile_trial,
+        )
+
+    def _show_trial_progress(self, event: object) -> None:
+        message = event.get("message", "") if isinstance(event, dict) else str(event)
+        if message:
+            set_inline_status(self.trial_status_label, "info", message)
+
+    def _stop_profile_trial(self) -> None:
+        if self._trial_cancel is not None:
+            self._trial_cancel.set()
+            self.trial_stop_button.setEnabled(False)
+            set_inline_status(
+                self.trial_status_label, "warning", "시험을 중지하는 중입니다..."
+            )
+
+    def _finish_profile_trial(self) -> None:
+        self._set_trial_running(False)
+        self._trial_cancel = None
+
+    def _show_trial_error(self, text: str) -> None:
+        set_inline_status(self.trial_status_label, "error", text)
+
+    def _show_trial_result(self, result: ProfileTrialResult) -> None:
+        self._trial_session_dir = result.session_log_dir
+        self.trial_log_button.setEnabled(bool(result.session_log_dir))
+        lines: list[str] = []
+        if result.probe_summary:
+            lines.extend(["[SSH 방식]", result.probe_summary])
+            if result.probe_details:
+                lines.append(result.probe_details)
+            lines.append("")
+        if not result.success:
+            set_inline_status(self.trial_status_label, "error", result.error)
+            lines.extend(["[실패]", result.error])
+            self.trial_result_view.setPlainText("\n".join(lines))
+            return
+
+        filled = 0
+        if self.trial_fill_samples_check.isChecked():
+            filled = self._apply_trial_outputs(result.outputs)
+        outputs = {item["command"]: item["output"] for item in result.outputs}
+        missing: list[str] = []
+        lines.append("[Excel 컬럼에 들어갈 값]")
+        for column in self.state["columns"]:
+            name = column.get("name") or "이름 없는 컬럼"
+            if column.get("method") == "python":
+                lines.append(f"- {name}: (Python 함수는 저장 후 점검에서 확인)")
+                continue
+            value = self._extract_column_value(
+                column, outputs.get(column.get("command", ""), "")
+            )
+            if not value:
+                missing.append(name)
+            lines.append(f"- {name}: {value or '(값을 찾지 못함)'}")
+        lines.append("")
+        for item in result.outputs:
+            output_lines = item["output"].splitlines()
+            lines.append(f"[{item['command']}] {len(output_lines)}줄")
+            lines.extend(output_lines[:_TRIAL_OUTPUT_PREVIEW_LINES])
+            if len(output_lines) > _TRIAL_OUTPUT_PREVIEW_LINES:
+                lines.append("…")
+            lines.append("")
+        self.trial_result_view.setPlainText("\n".join(lines).rstrip())
+        message = f"명령 {len(result.outputs)}개를 실행했습니다."
+        if filled:
+            message += f" 출력 예시 {filled}개를 장비 출력으로 바꿨습니다."
+        if missing:
+            message += (
+                f" 값을 찾지 못한 컬럼: {', '.join(missing)}. "
+                "Excel 컬럼 탭에서 추출 방식을 고치세요."
+            )
+        set_inline_status(
+            self.trial_status_label, "warning" if missing else "success", message
+        )
+
+    def _apply_trial_outputs(self, outputs: list[dict[str, str]]) -> int:
+        self._persist_command()
+        by_command = {item["command"].casefold(): item["output"] for item in outputs}
+        filled = 0
+        for row in self.state["commands"]:
+            output = by_command.get(str(row.get("command", "")).strip().casefold())
+            if output is None:
+                continue
+            row["sample"] = output[:20_000]
+            filled += 1
+        self._load_command(self._selected_command_row)
+        self._refresh_extraction_preview()
+        self._schedule_preview()
+        return filled
+
+    def _open_trial_session_logs(self) -> None:
+        if self._trial_session_dir:
+            os.startfile(self._trial_session_dir)
+
     def _build_review_tab(self) -> None:
         tab = QWidget()
+        self.review_tab = tab
         layout = QVBoxLayout(tab)
         layout.addWidget(QLabel("입력 확인"))
         self.issue_list = QListWidget()
@@ -921,20 +1260,34 @@ class InspectorProfileDialog(QDialog):
         self.preview_label.setText(f"추출 결과: {result or '-'}")
 
     def _preview_value(self, sample: str) -> str:
-        method = self.extract_method_combo.currentData()
+        return self._extract_column_value(
+            {
+                "method": self.extract_method_combo.currentData(),
+                "line_number": self.line_number_spin.value(),
+                "start_field": self.start_field_spin.value(),
+                "end_field": self.end_field_spin.value(),
+                "keyword": self.keyword_edit.text(),
+                "regex": self.regex_edit.text(),
+            },
+            sample,
+        )
+
+    @staticmethod
+    def _extract_column_value(column: dict[str, Any], sample: str) -> str:
+        method = column.get("method", "split_fields")
         lines = sample.splitlines()
-        line_number = self.line_number_spin.value()
+        line_number = int(column.get("line_number", 1) or 1)
         if method == "split_fields":
             if not (1 <= line_number <= len(lines)):
                 return ""
             fields = lines[line_number - 1].split()
-            start = self.start_field_spin.value()
-            end = self.end_field_spin.value()
+            start = int(column.get("start_field", 1) or 1)
+            end = int(column.get("end_field", start) or start)
             if not (1 <= start <= len(fields)):
                 return ""
             return " ".join(fields[start - 1 : min(max(end, start), len(fields))])
         if method == "keyword_after":
-            keyword = self.keyword_edit.text().strip()
+            keyword = str(column.get("keyword", "")).strip()
             if not keyword:
                 return ""
             for line in lines:
@@ -944,7 +1297,7 @@ class InspectorProfileDialog(QDialog):
             if 1 <= line_number <= len(lines):
                 return lines[line_number - 1].strip()
         if method == "regex":
-            pattern = self.regex_edit.text().strip()
+            pattern = str(column.get("regex", "")).strip()
             if not pattern:
                 return ""
             try:
@@ -1255,7 +1608,7 @@ class InspectorProfileDialog(QDialog):
     def _save_profile(self) -> None:
         self.refresh_preview()
         if not self.save_button.isEnabled():
-            self.tabs.setCurrentIndex(4)
+            self.tabs.setCurrentWidget(self.review_tab)
             return
         vendor = self.state["vendor"]
         os_name = self.state["os"]
@@ -1350,8 +1703,21 @@ class InspectorProfileDialog(QDialog):
         self.preview_timer.start()
 
     def _request_close(self) -> None:
+        if self._trial_still_running():
+            return
         if self._confirm_discard_changes():
             self.accept()
+
+    def _trial_still_running(self) -> bool:
+        if not self._trial_running:
+            return False
+        self._stop_profile_trial()
+        QMessageBox.information(
+            self,
+            "장비 시험 중",
+            "장비 시험을 중지하고 있습니다. 끝난 뒤 다시 닫아 주세요.",
+        )
+        return True
 
     def _confirm_discard_changes(self) -> bool:
         if not self._dirty:
@@ -1366,6 +1732,9 @@ class InspectorProfileDialog(QDialog):
         return answer == QMessageBox.StandardButton.Yes
 
     def closeEvent(self, event) -> None:
+        if self.isVisible() and self._trial_still_running():
+            event.ignore()
+            return
         if not self.isVisible() or self._confirm_discard_changes():
             event.accept()
             return

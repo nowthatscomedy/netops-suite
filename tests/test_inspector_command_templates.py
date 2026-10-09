@@ -499,3 +499,31 @@ def test_inspector_confirmation_preview_truncates_long_command_lists():
     assert InspectorTab._confirmation_command_preview(
         SimpleNamespace(command_count=1, variable_names=())
     ) == ""
+
+
+def test_service_first_device_only_runs_one_device(tmp_path: Path, monkeypatch):
+    inventory_path = tmp_path / "inventory.xlsx"
+    _write_inventory(inventory_path, [_device(), _device("192.0.2.20")])
+    service = InspectorService(work_dir=tmp_path / "runs", user_data_dir=tmp_path / "inspector")
+    service._ensure_runtime_modules_current()
+    with service._runtime_import_path():
+        from core.inspector import NetworkInspector
+
+    visited: list[str] = []
+
+    def fake_run_device(self, device, commands, session_log_suffix=None):
+        visited.append(str(device["ip"]))
+        return {"ip": device["ip"], "vendor": device["vendor"], "os": device["os"],
+                "status": "success", "error_message": "", "inspection_results": {}}
+
+    monkeypatch.setattr(NetworkInspector, "_run_custom_commands_device", fake_run_device)
+    result = service.run(
+        InspectorRunRequest(
+            inventory_path=str(inventory_path),
+            mode="custom_commands",
+            commands=["show version"],
+            device_limit=1,
+        )
+    )
+    assert visited == [_device()["ip"]]
+    assert result.devices_total == 1

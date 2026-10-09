@@ -98,6 +98,41 @@ function Copy-InspectorRuntimePayload {
     }
 }
 
+function Install-LegacySshPayload {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$LockPath,
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationDir,
+        [Parameter(Mandatory = $true)]
+        [string]$RequirementPath,
+        [Parameter(Mandatory = $true)]
+        [string]$RepositoryRoot
+    )
+
+    # Only Paramiko itself is bundled here. Its binary dependencies are the same
+    # pinned versions the app already ships, so the worker shares those.
+    $lockText = Get-Content -LiteralPath $LockPath -Raw
+    if ($lockText -notmatch '(?m)^paramiko==3\.5\.1 --hash=sha256:([0-9a-f]{64})\s*$') {
+        throw "Pinned legacy Paramiko 3.5.1 hash was not found in $LockPath"
+    }
+    Set-Content -LiteralPath $RequirementPath -Value "paramiko==3.5.1 --hash=sha256:$($Matches[1])" -Encoding ASCII
+
+    Assert-PathInsideRepository -Path $DestinationDir -RepositoryRoot $RepositoryRoot
+    if (Test-Path -LiteralPath $DestinationDir) {
+        Remove-Item -LiteralPath $DestinationDir -Recurse -Force
+    }
+    & python -m pip install --disable-pip-version-check --no-deps --require-hashes --only-binary=:all: --no-compile --target $DestinationDir -r $RequirementPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "Legacy SSH payload install failed."
+    }
+    Get-ChildItem -LiteralPath $DestinationDir -Recurse -Directory -Filter "__pycache__" |
+        Remove-Item -Recurse -Force
+    if (-not (Test-Path -LiteralPath (Join-Path $DestinationDir "paramiko\__init__.py") -PathType Leaf)) {
+        throw "Legacy SSH payload is missing paramiko: $DestinationDir"
+    }
+}
+
 function Resolve-IsccPath {
     $candidates = @(
         (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe"),
@@ -354,6 +389,12 @@ Copy-InspectorRuntimePayload `
     -SourceDir (Join-Path $repoRoot "netops_suite\modules\inspector_runtime") `
     -DestinationDir $stagingInspectorRuntimeDir `
     -RepositoryRoot $repoRoot
+$stagingLegacySshDir = Join-Path $stagingDir "legacy_ssh"
+Install-LegacySshPayload `
+    -LockPath (Join-Path $repoRoot "requirements-legacy-ssh-lock.txt") `
+    -DestinationDir $stagingLegacySshDir `
+    -RequirementPath (Join-Path $stagingDir "legacy-ssh-paramiko.txt") `
+    -RepositoryRoot $repoRoot
 
 
 $pyInstallerArgs = @(
@@ -370,6 +411,11 @@ $pyInstallerArgs = @(
     "--collect-all=ntc_templates",
     "--hidden-import=msoffcrypto",
     "--hidden-import=xlrd",
+    # The legacy SSH worker imports parts of these that Paramiko 5 no longer uses.
+    "--collect-submodules=cryptography",
+    "--collect-submodules=nacl",
+    "--collect-submodules=bcrypt",
+    "--add-data=$(Format-PyInstallerBundleArg -Source $stagingLegacySshDir -Destination 'legacy_ssh')",
     "--add-data=$(Format-PyInstallerBundleArg -Source $stagingConfigDir -Destination 'config')",
     "--add-data=$(Format-PyInstallerBundleArg -Source (Join-Path $repoRoot 'assets\icons') -Destination 'assets/icons')",
     "--add-data=$(Format-PyInstallerBundleArg -Source $guideBundleDir -Destination 'app/resources/guides')",
@@ -434,6 +480,27 @@ $smokeProcess = Start-Process `
     -PassThru
 if ($smokeProcess.ExitCode -ne 0) {
     throw "Packaged executable smoke test failed with exit code $($smokeProcess.ExitCode)."
+}
+
+Write-Host "Checking packaged legacy SSH worker..."
+$legacyCheckPath = Join-Path $stagingDir "legacy-ssh-self-check.json"
+$legacyCheckProcess = Start-Process `
+    -FilePath $appExePath `
+    -ArgumentList "--legacy-ssh-worker", "--self-check" `
+    -WindowStyle Hidden `
+    -RedirectStandardOutput $legacyCheckPath `
+    -Wait `
+    -PassThru
+$legacyCheck = Get-Content -LiteralPath $legacyCheckPath -Raw -ErrorAction SilentlyContinue
+if ($legacyCheckProcess.ExitCode -ne 0) {
+    throw "Packaged legacy SSH worker self-check failed with exit code $($legacyCheckProcess.ExitCode): $legacyCheck"
+}
+Write-Host $legacyCheck
+$leakedLegacyCaches = @(
+    Get-ChildItem -LiteralPath (Join-Path $sourceDir "_internal\legacy_ssh") -Recurse -Directory -Filter "__pycache__"
+)
+if ($leakedLegacyCaches.Count -gt 0) {
+    throw "Legacy SSH worker wrote a cache into the packaged application: $($leakedLegacyCaches[0].FullName)"
 }
 
 Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE") -Destination $sourceDir -Force

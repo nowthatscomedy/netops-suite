@@ -9,7 +9,7 @@ import re
 import shutil
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from threading import Event, RLock
@@ -45,6 +45,8 @@ class InspectorRunRequest:
     max_retries: int = 3
     timeout: int = 10
     max_workers: int = 10
+    # Run only the first N devices, to try a job before the whole list.
+    device_limit: int | None = None
 
 
 @dataclass(slots=True)
@@ -56,6 +58,23 @@ class InspectorRunResult:
     backup_dir: str | None
     session_log_dir: str | None
     results: list[dict[str, Any]]
+
+
+@dataclass(slots=True)
+class ProfileTrialResult:
+    """One device trial of a profile that may not be saved yet."""
+
+    connection_type: str
+    probe_mode: str = ""
+    probe_summary: str = ""
+    probe_details: str = ""
+    outputs: list[dict[str, str]] = field(default_factory=list)
+    error: str = ""
+    session_log_dir: str | None = None
+
+    @property
+    def success(self) -> bool:
+        return not self.error
 
 
 @dataclass(frozen=True, slots=True)
@@ -802,6 +821,131 @@ class InspectorService:
     ) -> CustomCommandValidationSummary:
         return self.validate_custom_commands(self.read_command_file(path), devices)
 
+    def probe_ssh_device(self, host: str, port: int = 22, timeout: float = 5.0):
+        """Read the algorithms an SSH server offers, without logging in."""
+        with self._runtime_import_path():
+            from core.ssh_diagnostics import probe_ssh
+
+            return probe_ssh(host, port, timeout)
+
+    def run_profile_trial(
+        self,
+        device: dict[str, Any],
+        *,
+        commands: list[str],
+        ssh_device_type: str = "",
+        telnet_device_type: str = "",
+        timeout: int = 15,
+        progress_callback: Any | None = None,
+        cancel_event: Event | None = None,
+    ) -> ProfileTrialResult:
+        """Log in to one device and run a draft profile's commands once.
+
+        Connection selection mirrors what the profile does once saved, so a
+        passing trial means the saved profile reaches the device the same way.
+        """
+
+        def emit(message: str) -> None:
+            if progress_callback is None:
+                return
+            event = {"type": "progress", "message": message}
+            if hasattr(progress_callback, "emit"):
+                progress_callback.emit(event)
+            else:
+                progress_callback(event)
+
+        cleaned = [command.strip() for command in commands if command.strip()]
+        if not cleaned:
+            raise ValueError("시험할 명령이 없습니다. 점검 명령을 먼저 입력하세요.")
+        connection_type = str(device.get("connection_type") or "ssh").strip().lower()
+        target = {
+            "ip": str(device.get("ip", "")).strip(),
+            "port": int(device.get("port") or (23 if connection_type == "telnet" else 22)),
+            "vendor": str(device.get("vendor", "")).strip(),
+            "os": str(device.get("os", "")).strip(),
+            "model": str(device.get("model", "") or "").strip(),
+            "username": str(device.get("username", "") or ""),
+            "password": str(device.get("password", "") or ""),
+            "enable_password": str(device.get("enable_password", "") or ""),
+            "connection_type": connection_type,
+            "device_index": 1,
+        }
+        if not target["ip"]:
+            raise ValueError("시험할 장비 IP를 입력하세요.")
+        if not target["vendor"] or not target["os"]:
+            raise ValueError("장비 정보 탭에서 벤더와 OS를 먼저 입력하세요.")
+
+        self._raise_if_cancelled(cancel_event)
+        self._ensure_runtime_modules_current()
+        result = ProfileTrialResult(connection_type=connection_type)
+        with self._runtime_import_path(), self._working_directory():
+            from core.inspector import NetworkInspector
+            from core.profile_resolver import (
+                ResolvedDeviceProfile,
+                normalize_profile_part,
+            )
+            from core.ssh_compat import remember_legacy_endpoint
+            from core.ssh_diagnostics import SSHProbeError, probe_ssh, with_action_hint
+
+            if connection_type == "ssh":
+                emit(f"{target['ip']}:{target['port']} SSH 방식 확인 중")
+                try:
+                    probe = probe_ssh(target["ip"], target["port"], min(timeout, 10))
+                except SSHProbeError as exc:
+                    result.probe_summary = str(exc)
+                else:
+                    result.probe_mode = probe.mode
+                    result.probe_summary = probe.summary()
+                    result.probe_details = probe.details()
+                    if probe.mode == "legacy":
+                        remember_legacy_endpoint(target)
+
+            overrides: dict[str, str] = {}
+            if ssh_device_type.strip():
+                overrides["default"] = overrides["ssh"] = ssh_device_type.strip()
+            if telnet_device_type.strip():
+                overrides["telnet"] = telnet_device_type.strip()
+            trial_profile = ResolvedDeviceProfile(
+                vendor=normalize_profile_part(target["vendor"]),
+                os_name=normalize_profile_part(target["os"]),
+                model=normalize_profile_part(target["model"]),
+                inspection_commands=tuple(cleaned),
+                backup_command="",
+                parsing_rules={},
+                connection_overrides=overrides,
+                handler_overrides={"handler_type": "netmiko"} if overrides else {},
+            )
+            inspector = NetworkInspector(
+                "profile_trial.xlsx",
+                inspection_only=True,
+                max_retries=1,
+                timeout=timeout,
+                max_workers=1,
+                status_callback=lambda event: emit(str(event.get("message", ""))),
+                cancel_event=cancel_event,
+            )
+            inspector.trial_profile = trial_profile
+            inspector.keep_command_outputs = True
+            emit(f"{target['ip']}에 로그인해 명령 {len(cleaned)}개 실행 중")
+            _device, outcome = inspector._connect_to_device(
+                target,
+                inspection_mode=False,
+                backup_mode=False,
+                session_log_suffix="profile_test",
+                custom_commands=cleaned,
+            )
+            session_dir = Path(inspector.session_log_dir)
+            if session_dir.is_dir():
+                result.session_log_dir = str(session_dir.resolve())
+            if "error" in outcome:
+                result.error = with_action_hint(str(outcome["error"]))
+            else:
+                result.outputs = [
+                    {"command": item["command"], "output": item.get("output", "")}
+                    for item in outcome.get("command_outputs", [])
+                ]
+        return result
+
     def run(
         self,
         request: InspectorRunRequest,
@@ -830,6 +974,8 @@ class InspectorService:
             devices = self.load_inventory(
                 request.inventory_path, request.inventory_password
             )
+            if request.device_limit:
+                devices = devices[: request.device_limit]
             self._raise_if_cancelled(cancel_event)
             for device in devices:
                 device.setdefault("username", "")

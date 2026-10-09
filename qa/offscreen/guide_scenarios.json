@@ -215,6 +215,30 @@
       "capture_target": "page"
     },
     {
+      "id": "guide_inspector_profile_trial",
+      "title": "가이드 이미지 - 프로파일 장비로 시험",
+      "viewport": [
+        1280,
+        800
+      ],
+      "guide_asset": "inspector-profile-trial.png",
+      "capture_handler": "inspector_profile_trial",
+      "expected_object_names": [
+        "profileTrialTab",
+        "profileTrialIpEdit",
+        "profileTrialRunButton",
+        "profileTrialStatus",
+        "profileTrialResult"
+      ],
+      "source_paths": [
+        "app/ui/dialogs/inspector_profile_dialog.py",
+        "app/ui/common/ux.py",
+        "app/ui/common/theme.py",
+        "netops_suite/modules/inspector/service.py",
+        "netops_suite/modules/inspector_runtime/core/ssh_diagnostics.py"
+      ]
+    },
+    {
       "id": "guide_config_builder_overview",
       "title": "가이드 이미지 - 설정 명령 만들기",
       "viewport": [

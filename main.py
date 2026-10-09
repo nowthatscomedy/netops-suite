@@ -6,6 +6,30 @@ import os
 import sys
 import tempfile
 
+def _run_legacy_ssh_worker() -> None:
+    """Serve one isolated legacy SSH session for the packaged app, then exit.
+
+    The app itself uses Paramiko 5, which no longer speaks SHA-1 key exchange,
+    ssh-rsa or ssh-dss. Old devices are reached through this second process,
+    which loads the pinned Paramiko 3.5.1 bundled in ``legacy_ssh``.
+    """
+    import runpy
+    from pathlib import Path
+
+    bundle = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    worker = (
+        bundle / "netops_suite" / "modules" / "inspector_runtime" / "core"
+        / "legacy_ssh_worker.py"
+    )
+    sys.dont_write_bytecode = True
+    sys.argv = [str(worker), "--paramiko-path", str(bundle / "legacy_ssh"), *sys.argv[2:]]
+    runpy.run_path(str(worker), run_name="__main__")
+
+
+if sys.argv[1:2] == ["--legacy-ssh-worker"]:
+    _run_legacy_ssh_worker()
+    sys.exit(0)
+
 # Some modules resolve the data folder at import time. Point the release smoke
 # test at a throwaway folder before those imports, or a packaged build would
 # create a "data" folder inside the payload the installer ships.

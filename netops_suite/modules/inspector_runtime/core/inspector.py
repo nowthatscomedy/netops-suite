@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import sys
 from paramiko.ssh_exception import IncompatiblePeer
 from core.legacy_ssh import LegacySSHError, validate_legacy_device
+from core.ssh_diagnostics import with_action_hint
 
 from core.settings import canonicalize_column_name, make_profile_key
 from core.profile_resolver import ResolvedDeviceProfile, resolve_device_profile
@@ -68,6 +69,10 @@ class NetworkInspector:
         self.column_aliases = dict(column_aliases or {})
         self.status_callback = status_callback
         self.cancel_event = cancel_event
+        # Set only by the profile trial run: an unsaved profile to apply, and
+        # whether to hand back full command outputs instead of file previews.
+        self.trial_profile: ResolvedDeviceProfile | None = None
+        self.keep_command_outputs = False
 
     def _is_cancelled(self) -> bool:
         return self.cancel_event is not None and self.cancel_event.is_set()
@@ -623,6 +628,8 @@ class NetworkInspector:
             summary[f"command_{index}"] = item["command"]
             output = item.get("output", "")
             summary[f"command_{index}_output_preview"] = output[:500]
+        if self.keep_command_outputs:
+            summary["command_outputs"] = list(command_outputs)
         return summary
     
     def _test_tcping(self, ip: str, port: int, timeout: int = 5) -> bool:
@@ -652,7 +659,7 @@ class NetworkInspector:
             validate_legacy_device(device)
         except LegacySSHError as exc:
             return device, {"error": str(exc)}
-        resolved_profile = self._resolve_device_profile(device)
+        resolved_profile = self.trial_profile or self._resolve_device_profile(device)
         if resolved_profile.model_requested and not resolved_profile.model_matched:
             warning = (
                 f"[{device['ip']}] 모델 전용 프로파일이 없어 벤더/OS 프로파일을 "
@@ -698,6 +705,7 @@ class NetworkInspector:
                 )
                 use_generic_handler = (
                     resolved_profile.model_handler_overridden
+                    or self.trial_profile is not None
                     or is_custom_rule_pair(
                         device.get("vendor", ""), device.get("os", "")
                     )
@@ -1442,7 +1450,7 @@ class NetworkInspector:
 
             if 'error' in connection_results:
                 result['status'] = 'error'
-                result['error_message'] = connection_results['error']
+                result['error_message'] = with_action_hint(connection_results['error'])
                 if not inspection_reported and on_inspection_done:
                     on_inspection_done(ip, False)
                 return result
@@ -1505,7 +1513,7 @@ class NetworkInspector:
             
             if 'error' in inspection_results:
                 result['status'] = 'error'
-                result['error_message'] = inspection_results['error']
+                result['error_message'] = with_action_hint(inspection_results['error'])
                 return result
                 
             result['inspection_results'] = inspection_results
@@ -1554,7 +1562,7 @@ class NetworkInspector:
 
             if 'error' in command_results:
                 result['status'] = 'error'
-                result['error_message'] = command_results['error']
+                result['error_message'] = with_action_hint(command_results['error'])
                 return result
 
             result['inspection_results'] = command_results
@@ -1597,7 +1605,7 @@ class NetworkInspector:
             
             if 'error' in connection_results:
                 result['status'] = 'error'
-                result['error_message'] = connection_results['error']
+                result['error_message'] = with_action_hint(connection_results['error'])
                 return result
             
             if 'backup_error' in connection_results:

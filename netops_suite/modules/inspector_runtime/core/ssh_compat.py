@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import logging
+import threading
 import time
 
 import paramiko
@@ -14,6 +15,31 @@ from core.legacy_ssh import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Endpoints already known to need the legacy runtime in this app session.
+# Old devices often limit how fast they accept new sessions, so skipping the
+# doomed modern attempt avoids tripping their rate limit on the next login.
+_LEGACY_ENDPOINTS: set[tuple[str, int]] = set()
+_LEGACY_ENDPOINTS_LOCK = threading.Lock()
+
+
+def _endpoint(device) -> tuple[str, int]:
+    return str(device.get("ip", "")).strip(), int(device.get("port") or 22)
+
+
+def remember_legacy_endpoint(device) -> None:
+    with _LEGACY_ENDPOINTS_LOCK:
+        _LEGACY_ENDPOINTS.add(_endpoint(device))
+
+
+def forget_legacy_endpoint(device) -> None:
+    with _LEGACY_ENDPOINTS_LOCK:
+        _LEGACY_ENDPOINTS.discard(_endpoint(device))
+
+
+def known_legacy_endpoint(device) -> bool:
+    with _LEGACY_ENDPOINTS_LOCK:
+        return _endpoint(device) in _LEGACY_ENDPOINTS
 
 
 class OptionalHostKeyPolicy(paramiko.MissingHostKeyPolicy):
@@ -70,6 +96,14 @@ class CompatibleSSHClient:
             if explicit:
                 self.client = LegacySSHClient(self.device, automatic=True)
                 self.client.connect(**kwargs)
+            elif allowed and known_legacy_endpoint(self.device):
+                self._record("이전 접속에서 확인된 구형 SSH 장비: 호환 모드로 바로 연결")
+                self.client = LegacySSHClient(self.device, automatic=True)
+                try:
+                    self.client.connect(**kwargs)
+                except LegacySSHError:
+                    forget_legacy_endpoint(self.device)
+                    raise
             else:
                 self.client = self.native_factory()
                 self.client.set_missing_host_key_policy(OptionalHostKeyPolicy(self.device))
@@ -90,6 +124,7 @@ class CompatibleSSHClient:
                     self._record("SSH 알고리즘 협상 실패: 격리된 레거시 SSH로 한 번 전환")
                     self.client = LegacySSHClient(self.device, automatic=True)
                     self.client.connect(**kwargs)
+                    remember_legacy_endpoint(self.device)
             if self.is_legacy:
                 self._record("레거시 SSH 연결: " + self.client.host_key_type)
         except Exception:

@@ -756,6 +756,87 @@ class OffscreenQaHarness:
         tab.top_scroll.verticalScrollBar().setValue(0)
         self._flush()
 
+    def _capture_handler_inspector_profile_trial(self, scenario: dict) -> None:
+        from netops_suite.modules.inspector.service import ProfileTrialResult
+
+        window = self._require_window()
+        self._navigate_main(3)
+        dialog = InspectorProfileDialog(window.inspector_tab.service, window)
+        width, height = scenario["viewport"]
+        dialog.resize(width, height)
+        dialog.show()
+        self._active_capture_widget = dialog
+
+        def close_dialog() -> None:
+            dialog._dirty = False
+            dialog.close()
+
+        self._post_capture = close_dialog
+        self._flush()
+        self._paste(dialog.vendor_edit, "Cisco")
+        self._paste(dialog.os_edit, "IOS-XE")
+        dialog.tabs.setCurrentWidget(dialog.trial_tab)
+        self._flush()
+        self._paste(dialog.trial_ip_edit, "192.0.2.10")
+        self._paste(dialog.trial_username_edit, "admin")
+        self._paste(dialog.trial_password_edit, "CHANGE_ME_PASSWORD")
+        # The trial result is injected: offscreen QA never logs in to a device.
+        dialog._show_trial_result(
+            ProfileTrialResult(
+                connection_type="ssh",
+                probe_mode="legacy",
+                probe_summary=(
+                    "오래된 SSH 방식(키 교환, 호스트 키)만 지원하는 장비입니다. "
+                    "구형 장비 호환 모드로 자동 전환해 접속합니다."
+                ),
+                probe_details=(
+                    "SSH 버전 정보: SSH-2.0-OpenSSH_5.2\n"
+                    "키 교환: diffie-hellman-group14-sha1, diffie-hellman-group1-sha1\n"
+                    "호스트 키: ssh-rsa\n"
+                    "암호화: aes128-cbc, 3des-cbc\n"
+                    "무결성(MAC): hmac-sha1"
+                ),
+                outputs=[
+                    {
+                        "command": "show version",
+                        "output": (
+                            "Cisco IOS XE Software, Version 17.09.04\n"
+                            "cisco C9300-24T processor\n"
+                            "Processor board ID FOC1234ABCD"
+                        ),
+                    },
+                    {"command": "show inventory", "output": 'NAME: "Chassis", DESCR: "C9300-24T"'},
+                ],
+                session_log_dir=str(self.runtime_root or ""),
+            )
+        )
+        self._flush()
+        self._check(
+            dialog.state["commands"][0]["sample"].startswith("Cisco IOS XE Software"),
+            "장비 시험 출력으로 출력 예시 채움",
+        )
+        self._check(
+            "- OS버전: 17.09.04" in dialog.trial_result_view.toPlainText(),
+            "장비 시험 결과에 Excel 컬럼 값 표시",
+        )
+        self._check(
+            dialog.trial_password_edit.echoMode() == QLineEdit.EchoMode.Password,
+            "장비 시험 비밀번호 가림",
+        )
+        for control in (
+            dialog.trial_ip_edit,
+            dialog.trial_probe_button,
+            dialog.trial_run_button,
+            dialog.trial_result_view,
+        ):
+            self._assert_control_accessible(control)
+        for object_name in scenario.get("expected_object_names", []):
+            candidates = dialog.findChildren(QWidget, object_name)
+            self._check(
+                any(candidate.isVisibleTo(dialog) for candidate in candidates),
+                f"가이드 캡처 objectName 표시: {object_name}",
+            )
+
     def _capture_handler_context_help(self, scenario: dict) -> None:
         window = self._require_window()
         window.navigate_to("diagnostics", "ping")
@@ -1374,6 +1455,21 @@ class OffscreenQaHarness:
         )
 
         self._click_tab(dialog, 4)
+        self._check(
+            dialog.tabs.currentWidget() is dialog.trial_tab,
+            "저장 전 장비로 시험 탭 제공",
+        )
+        self._check(
+            dialog.trial_run_button.isEnabled()
+            and dialog.trial_probe_button.isEnabled()
+            and not dialog.trial_stop_button.isEnabled(),
+            "장비 시험 실행·SSH 방식 확인 버튼 사용 가능",
+        )
+        self._check(
+            dialog.trial_password_edit.echoMode() == QLineEdit.EchoMode.Password,
+            "장비 시험 비밀번호 가림",
+        )
+        self._click_tab(dialog, 5)
         refresh_button = self._find_button(dialog, "갱신")
         self._click(refresh_button)
         self._check(dialog.save_button.isEnabled(), "유효한 프로파일 저장 가능")

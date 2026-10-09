@@ -53,6 +53,10 @@ def automatic_legacy_allowed(device: dict) -> bool:
     return str(device.get("connection_type", "")).strip().lower() == "ssh" and value not in {"false", "0", "0.0", "no"}
 
 
+LEGACY_WORKER_FLAG = "--legacy-ssh-worker"
+WORKER_SCRIPT = Path(__file__).with_name("legacy_ssh_worker.py")
+
+
 def legacy_python() -> Path:
     configured = os.environ.get("NETOPS_LEGACY_SSH_PYTHON")
     if configured:
@@ -65,6 +69,22 @@ def legacy_python() -> Path:
     if not path.is_file():
         raise LegacySSHError("레거시 SSH 런타임이 없습니다. scripts/setup_legacy_ssh.py를 실행하세요.")
     return path
+
+
+def bundled_legacy_paramiko_dir() -> Path:
+    """Folder holding the pinned Paramiko 3.5.1 inside a packaged build."""
+    return Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "legacy_ssh"
+
+
+def legacy_worker_command() -> list[str]:
+    """Command line starting the isolated worker for this installation."""
+    if os.environ.get("NETOPS_LEGACY_SSH_PYTHON") or not getattr(sys, "frozen", False):
+        return [str(legacy_python()), "-I", "-u", str(WORKER_SCRIPT)]
+    if not (bundled_legacy_paramiko_dir() / "paramiko" / "__init__.py").is_file():
+        raise LegacySSHError(
+            "구형 장비용 SSH 구성 요소가 설치 폴더에 없습니다. NetOps Suite를 다시 설치하세요."
+        )
+    return [sys.executable, LEGACY_WORKER_FLAG]
 
 
 class LegacySSHClient:
@@ -110,7 +130,7 @@ class LegacySSHClient:
             raise LegacySSHError("레거시 SSH는 외부 소켓 또는 메모리 개인 키 연결을 지원하지 않습니다.")
         self.timeout = float(kwargs.get("timeout", 30))
         self.process = subprocess.Popen(
-            [str(legacy_python()), "-I", "-u", str(Path(__file__).with_name("legacy_ssh_worker.py"))],
+            legacy_worker_command(),
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             text=True, encoding="utf-8", bufsize=1,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,

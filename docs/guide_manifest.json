@@ -880,6 +880,7 @@
         "netops_suite/modules/inspector_runtime/core/legacy_ssh.py",
         "netops_suite/modules/inspector_runtime/core/legacy_ssh_worker.py",
         "netops_suite/modules/inspector_runtime/core/ssh_compat.py",
+        "netops_suite/modules/inspector_runtime/core/ssh_diagnostics.py",
         "scripts/setup_legacy_ssh.py",
         "requirements-legacy-ssh.txt",
         "requirements-legacy-ssh-lock.txt",
@@ -926,6 +927,7 @@
       "qa_capture_ids": [
         "guide_inspector_overview",
         "inspector_profile",
+        "guide_inspector_profile_trial",
         "inspector_expanded_1024",
         "inspector_expanded_1280",
         "inspector_expanded_1600",

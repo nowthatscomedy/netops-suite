@@ -39,6 +39,20 @@ class Server(paramiko.ServerInterface):
         return True
 
 
+def restrict_algorithms(transport, kind):
+    """Mimic old firmware that only speaks SHA-1 era algorithms."""
+    options = transport.get_security_options()
+    if kind == "rsa-sha1":
+        # Old OpenSSH builds: ssh-rsa host key signatures and SHA-1 key exchange.
+        options.key_types = ("ssh-rsa",)
+        options.kex = ("diffie-hellman-group14-sha1",)
+    elif kind == "kex-sha1":
+        # Common on old L2 switches: group1/group14 SHA-1 with CBC ciphers.
+        options.kex = ("diffie-hellman-group1-sha1", "diffie-hellman-group14-sha1")
+        options.ciphers = ("aes128-cbc", "3des-cbc")
+        options.digests = ("hmac-sha1",)
+
+
 def main():
     key = paramiko.DSSKey.generate() if sys.argv[1] == "dss" else paramiko.RSAKey.generate(2048)
     fingerprint = "SHA256:" + base64.b64encode(hashlib.sha256(key.asbytes()).digest()).decode().rstrip("=")
@@ -53,6 +67,7 @@ def main():
             transport.add_server_key(key)
             if sys.argv[1] == "both":
                 transport.add_server_key(paramiko.DSSKey.generate())
+            restrict_algorithms(transport, sys.argv[1])
             server = Server(Path(sys.argv[2]))
             try:
                 transport.start_server(server=server)

@@ -222,7 +222,7 @@
         "assets/icons/lucide/folder-sync.svg",
         "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "6dba4a4e7684ff616f9c0449012cbbbfbdaf35c1c76035d9030c5bfce04354d4",
+      "png_sha256": "2b1e4b5cd876e5ed919b82f303bf2c946b9089dc89dab20a828865488b6d38f0",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
@@ -611,7 +611,7 @@
         "assets/icons/lucide/folder-sync.svg",
         "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "7905879d7d22db1e90ff3b97ec799a62e3933b82cc11cf9e929031a7176e029a",
+      "png_sha256": "d69406465b6bcc60a398ae8f02a7b3b1ce55f8e0bd79d9d9c244ee613f78680c",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
@@ -953,14 +953,14 @@
         "assets/icons/lucide/book-open.svg",
         "assets/icons/lucide/server.svg"
       ],
-      "png_sha256": "aa23777c63e5edf4afd6e0848c21edd260ad76ad5fd764115fecdde42467e46c",
+      "png_sha256": "260a858a641e14ce979bc3b4035f15dd674baa657032b8aed6f52d290bd1215f",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "1f1bc1b84d32f756adbda1166315adfa36dfa468565061b38c14752002e33032",
+        "value": "6588564db86588baf806bb66abe7821323663481f4830bed6c5dff4975d7bc26",
         "contract_sha256": "cd7b3b4e6f4ddfe69ffe2f007c7f69a67136c0050134f0e6b5ac9556c6ec82ed",
         "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
-        "sources_sha256": "497ebb202233d6eb22e30f282bd1bd4335aabead9abac5713e5b60ccb769a007",
+        "sources_sha256": "99b9c034636637358b5a3398b25c9bb891ccf846c01122f875d4c185afd500e8",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -1046,8 +1046,8 @@
           },
           {
             "path": "app/ui/tabs/inspector_tab.py",
-            "size": 62783,
-            "sha256": "0f830a7882d48a87d5ed04b0ef85bc49a834eecebfa5f5cd7895802a9b3d12b2"
+            "size": 63626,
+            "sha256": "59ed0bd9b5f2e9666cb176c549cdf9d6bace7000455e9328fd9e9a2c8b5c150d"
           },
           {
             "path": "assets/icons/lucide/activity.svg",
@@ -1122,6 +1122,260 @@
         "가이드 캡처 objectName 표시: pageHeader",
         "가이드 캡처 objectName 표시: inspectorTopPanel",
         "가이드 캡처 objectName 표시: inspectorSupportingTools"
+      ]
+    },
+    {
+      "scenario_id": "guide_inspector_custom_commands",
+      "file": "inspector-custom-commands.png",
+      "viewport": [
+        1280,
+        800
+      ],
+      "capture_handler": "inspector_custom_commands",
+      "expected_object_names": [
+        "pageHeader",
+        "inspectorCustomCommandEditor",
+        "inspectorCustomCommandCheck",
+        "inspectorCustomCommandPreview"
+      ],
+      "source_paths": [
+        "app/ui/tabs/inspector_tab.py",
+        "app/ui/common/ux.py",
+        "app/ui/common/theme.py",
+        "netops_suite/modules/inspector/service.py",
+        "netops_suite/modules/inspector_runtime/core/command_patterns.py"
+      ],
+      "png_sha256": "97664f960e7fbe2212d6dcadc8b67101f4ea10da29c32e8c4f719c0db44abc07",
+      "fingerprint": {
+        "schema_version": 1,
+        "algorithm": "sha256",
+        "value": "cfc35536f1017a92c7981f3d93ba3ee1eb0f233900d31db3f8997afd111c7330",
+        "contract_sha256": "dd8fd8ba67eb5660d4f57b20cd3aced0b293d41b4dac24f9496ebf07636846a7",
+        "handler_sha256": "6577bde7b9deb61303ec28e3e8d82c7b4363a29551155ef50f1198f3a270d7f7",
+        "sources_sha256": "bc375570247a95c62e42ec022eaca217735c2012fbf300826e4575b2ca059ede",
+        "capture_handler": {
+          "name": "inspector_custom_commands",
+          "source": "qa/offscreen/harness.py",
+          "class": "OffscreenQaHarness",
+          "methods": [
+            {
+              "name": "_run_scenario",
+              "sha256": "2e2e07f023176c4fce56e1e4111186abf52b6e0dde38c26ec450d396367bf033"
+            },
+            {
+              "name": "_navigate_main",
+              "sha256": "a0d0f34ae36804abfef147bd2e6b1a0b3495766e6ac59223333b5bfaca2f6104"
+            },
+            {
+              "name": "_click_list_row",
+              "sha256": "fce7fa43f62fc7711910e023b0aa7504394e6bb641172e06bbfedcf9b8b29c52"
+            },
+            {
+              "name": "_flush",
+              "sha256": "bcd282c4e94affd1369c8101f75cc94d4d3cb34a12b33290f5fd30b7a3d7140c"
+            },
+            {
+              "name": "_capture",
+              "sha256": "cce82fd5c9e929eac3d0dada4bacaefad09e16b5e9d6712e86c24415516ca3bc"
+            },
+            {
+              "name": "_capture_handler_inspector_custom_commands",
+              "sha256": "4a583b4b846ef48c1399bbac3051892705f9e9a08ade341f7199273cdecd30b4"
+            }
+          ]
+        },
+        "viewport": [
+          1280,
+          800
+        ],
+        "expected_object_names": [
+          "pageHeader",
+          "inspectorCustomCommandEditor",
+          "inspectorCustomCommandCheck",
+          "inspectorCustomCommandPreview"
+        ],
+        "source_paths": [
+          "app/ui/tabs/inspector_tab.py",
+          "app/ui/common/ux.py",
+          "app/ui/common/theme.py",
+          "netops_suite/modules/inspector/service.py",
+          "netops_suite/modules/inspector_runtime/core/command_patterns.py"
+        ],
+        "source_files": [
+          {
+            "path": "app/ui/common/theme.py",
+            "size": 10689,
+            "sha256": "813dcc4e905944a67db1e582292152f54e7ac86ed57c2b00cedcc47e3f56c832"
+          },
+          {
+            "path": "app/ui/common/ux.py",
+            "size": 8214,
+            "sha256": "1f03c949729e17d2e195f005bfd047314fc58a76f9c050a2a26e21dd3d2b2c45"
+          },
+          {
+            "path": "app/ui/tabs/inspector_tab.py",
+            "size": 63626,
+            "sha256": "59ed0bd9b5f2e9666cb176c549cdf9d6bace7000455e9328fd9e9a2c8b5c150d"
+          },
+          {
+            "path": "netops_suite/modules/inspector/service.py",
+            "size": 61286,
+            "sha256": "6821ca286c1ed28c1c59b59b3c045f54c7aa8556525f2969233508f405710898"
+          },
+          {
+            "path": "netops_suite/modules/inspector_runtime/core/command_patterns.py",
+            "size": 9413,
+            "sha256": "4fae1453192ba9473f9f073f14b3850575c7633448d7224188d1045dc487d487"
+          }
+        ]
+      },
+      "checks": [
+        "메인 화면 3 이동",
+        "사용자 명령 기본 입력 방식은 직접 입력",
+        "직접 입력에서는 명령 파일 선택 숨김",
+        "명령 파일 방식 전환",
+        "직접 입력 방식 복귀",
+        "입력 즉시 변수 문법 오류 표시",
+        "입력 즉시 명령 수와 변수 표시",
+        "직접 입력 명령과 장비 목록 검증",
+        "검증 후 실행 미리보기 표시",
+        "첫 장비 기준 변수 치환 미리보기",
+        "미리보기 대상 장비 표시",
+        "조작부 전체 높이 및 클릭 영역: 직접 입력 (위젯 78×17, 가시 78×17)",
+        "조작부 전체 높이 및 클릭 영역: 명령 파일 (위젯 78×17, 가시 78×17)",
+        "조작부 전체 높이 및 클릭 영역: 실행할 명령 (위젯 904×104, 가시 904×104)",
+        "조작부 전체 높이 및 클릭 영역: 실행 미리보기 (위젯 904×84, 가시 904×84)",
+        "조작부 전체 높이 및 클릭 영역: 먼저 검증 (위젯 76×32, 가시 76×32)",
+        "조작부 전체 높이 및 클릭 영역: 실행 (위젯 68×32, 가시 68×32)",
+        "사용자 명령 영역 가로 잘림 없음",
+        "사용자 명령 검증 후 창 크기 유지",
+        "가이드 캡처 objectName 표시: pageHeader",
+        "가이드 캡처 objectName 표시: inspectorCustomCommandEditor",
+        "가이드 캡처 objectName 표시: inspectorCustomCommandCheck",
+        "가이드 캡처 objectName 표시: inspectorCustomCommandPreview"
+      ]
+    },
+    {
+      "scenario_id": "guide_inspector_profile_trial",
+      "file": "inspector-profile-trial.png",
+      "viewport": [
+        1280,
+        800
+      ],
+      "capture_handler": "inspector_profile_trial",
+      "expected_object_names": [
+        "profileTrialTab",
+        "profileTrialIpEdit",
+        "profileTrialRunButton",
+        "profileTrialStatus",
+        "profileTrialResult"
+      ],
+      "source_paths": [
+        "app/ui/dialogs/inspector_profile_dialog.py",
+        "app/ui/common/ux.py",
+        "app/ui/common/theme.py",
+        "netops_suite/modules/inspector/service.py",
+        "netops_suite/modules/inspector_runtime/core/ssh_diagnostics.py"
+      ],
+      "png_sha256": "31ec46d9cfa789dd0634d4032cf914c3efd914f13c17c41805ba113b354acb67",
+      "fingerprint": {
+        "schema_version": 1,
+        "algorithm": "sha256",
+        "value": "0f41c5442014eecaa5f7f6fd0b9f163885b16955dad76546dbdac5b30e8c6975",
+        "contract_sha256": "e456b5392e7f45ba9a829dc263e2b91c7c3b4a5a4e2a29d3d87a68b66e7a855b",
+        "handler_sha256": "3818484287c5519e549031f74ad3a35621db639b8f48821c44a31423bc7d6af5",
+        "sources_sha256": "9cfc993b22e4419eb8c2ef619553400bde2cd974c3966fd9baa70694152f59aa",
+        "capture_handler": {
+          "name": "inspector_profile_trial",
+          "source": "qa/offscreen/harness.py",
+          "class": "OffscreenQaHarness",
+          "methods": [
+            {
+              "name": "_run_scenario",
+              "sha256": "2e2e07f023176c4fce56e1e4111186abf52b6e0dde38c26ec450d396367bf033"
+            },
+            {
+              "name": "_navigate_main",
+              "sha256": "a0d0f34ae36804abfef147bd2e6b1a0b3495766e6ac59223333b5bfaca2f6104"
+            },
+            {
+              "name": "_click_list_row",
+              "sha256": "fce7fa43f62fc7711910e023b0aa7504394e6bb641172e06bbfedcf9b8b29c52"
+            },
+            {
+              "name": "_flush",
+              "sha256": "bcd282c4e94affd1369c8101f75cc94d4d3cb34a12b33290f5fd30b7a3d7140c"
+            },
+            {
+              "name": "_capture",
+              "sha256": "cce82fd5c9e929eac3d0dada4bacaefad09e16b5e9d6712e86c24415516ca3bc"
+            },
+            {
+              "name": "_capture_handler_inspector_profile_trial",
+              "sha256": "fc848005ce12cf4a1115c838f3349c25c88611f96e2f6f3fbfc8125cdf593770"
+            }
+          ]
+        },
+        "viewport": [
+          1280,
+          800
+        ],
+        "expected_object_names": [
+          "profileTrialTab",
+          "profileTrialIpEdit",
+          "profileTrialRunButton",
+          "profileTrialStatus",
+          "profileTrialResult"
+        ],
+        "source_paths": [
+          "app/ui/dialogs/inspector_profile_dialog.py",
+          "app/ui/common/ux.py",
+          "app/ui/common/theme.py",
+          "netops_suite/modules/inspector/service.py",
+          "netops_suite/modules/inspector_runtime/core/ssh_diagnostics.py"
+        ],
+        "source_files": [
+          {
+            "path": "app/ui/common/theme.py",
+            "size": 10689,
+            "sha256": "813dcc4e905944a67db1e582292152f54e7ac86ed57c2b00cedcc47e3f56c832"
+          },
+          {
+            "path": "app/ui/common/ux.py",
+            "size": 8214,
+            "sha256": "1f03c949729e17d2e195f005bfd047314fc58a76f9c050a2a26e21dd3d2b2c45"
+          },
+          {
+            "path": "app/ui/dialogs/inspector_profile_dialog.py",
+            "size": 76184,
+            "sha256": "b1f0a7961153c05bc9652231905a0487055d5ed766bdadab6c52be2672133fd0"
+          },
+          {
+            "path": "netops_suite/modules/inspector/service.py",
+            "size": 61286,
+            "sha256": "6821ca286c1ed28c1c59b59b3c045f54c7aa8556525f2969233508f405710898"
+          },
+          {
+            "path": "netops_suite/modules/inspector_runtime/core/ssh_diagnostics.py",
+            "size": 8715,
+            "sha256": "f30651d4536b0bfe02f05a3ef6bf00d299e16946cda4aca58985caf9f5a3634e"
+          }
+        ]
+      },
+      "checks": [
+        "메인 화면 3 이동",
+        "장비 시험 출력으로 출력 예시 채움",
+        "장비 시험 결과에 Excel 컬럼 값 표시",
+        "장비 시험 비밀번호 가림",
+        "조작부 전체 높이 및 클릭 영역: profileTrialIpEdit (위젯 1127×30, 가시 1127×30)",
+        "조작부 전체 높이 및 클릭 영역: profileTrialProbeButton (위젯 103×32, 가시 103×32)",
+        "조작부 전체 높이 및 클릭 영역: profileTrialRunButton (위젯 76×32, 가시 76×32)",
+        "조작부 전체 높이 및 클릭 영역: 장비 시험 결과 (위젯 1230×316, 가시 1230×316)",
+        "가이드 캡처 objectName 표시: profileTrialTab",
+        "가이드 캡처 objectName 표시: profileTrialIpEdit",
+        "가이드 캡처 objectName 표시: profileTrialRunButton",
+        "가이드 캡처 objectName 표시: profileTrialStatus",
+        "가이드 캡처 objectName 표시: profileTrialResult"
       ]
     },
     {
@@ -1355,7 +1609,7 @@
         "assets/icons/lucide/folder-sync.svg",
         "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "68ac2dcf6f34c5e654b80a69c33f5cd494fc2b42b823e7ef9f6396c14d798783",
+      "png_sha256": "07b2cf916136322a3f023cb7b6eb9657026686beb7b53db43e8126bbaab86f20",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
@@ -1544,7 +1798,7 @@
         "assets/icons/lucide/folder-sync.svg",
         "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "050f78d0dd68d73634e3c0ca96c447b516108ff45f949cb346e22c06145017e8",
+      "png_sha256": "7d61aca92cef96db979c57771ae056a92ddb737c842717bff15a2b0a1067ec47",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
@@ -1719,7 +1973,7 @@
         "assets/icons/lucide/folder-sync.svg",
         "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "d1cfd2a0d179dfa06f833c7b58adb62183e3d20830d1cc09c201ae79699b9e5d",
+      "png_sha256": "46eb9a11bc20f8ed3c79c22072b3a69b4fc6ca5ec8158e8fa4d018d0a431235b",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
@@ -1910,7 +2164,7 @@
         "assets/icons/lucide/folder-sync.svg",
         "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "2a00065ed93839f193d2c3dce63b5d3556bcec15f4a99330262618e10969cfd4",
+      "png_sha256": "362ceda9e2e8ea4a935d3b4a4ceb1dc14388886e5163ede3462b57a800ce1531",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
@@ -2044,137 +2298,6 @@
         "Ping 전용 도움말 연결",
         "가이드 도움말 캡처 크기 유지",
         "가이드 캡처 objectName 표시: contextHelpDock"
-      ]
-    },
-    {
-      "scenario_id": "guide_inspector_custom_commands",
-      "file": "inspector-custom-commands.png",
-      "viewport": [
-        1280,
-        800
-      ],
-      "capture_handler": "inspector_custom_commands",
-      "expected_object_names": [
-        "pageHeader",
-        "inspectorCustomCommandEditor",
-        "inspectorCustomCommandCheck",
-        "inspectorCustomCommandPreview"
-      ],
-      "source_paths": [
-        "app/ui/tabs/inspector_tab.py",
-        "app/ui/common/ux.py",
-        "app/ui/common/theme.py",
-        "netops_suite/modules/inspector/service.py",
-        "netops_suite/modules/inspector_runtime/core/command_patterns.py"
-      ],
-      "png_sha256": "ccabe432544b8e5ad7e9286f743b42203e2a7c28455a63c06a94570281eefb53",
-      "fingerprint": {
-        "schema_version": 1,
-        "algorithm": "sha256",
-        "value": "1eb72d06dbb6a9fbc2def1fe7c87d826357222cf4aa3ed357a0c7ac2fb7a40d1",
-        "contract_sha256": "dd8fd8ba67eb5660d4f57b20cd3aced0b293d41b4dac24f9496ebf07636846a7",
-        "handler_sha256": "6577bde7b9deb61303ec28e3e8d82c7b4363a29551155ef50f1198f3a270d7f7",
-        "sources_sha256": "f1beaa35342d0bbe452b258f2e84664fd58708d47d4397a392e86f7012df4c8e",
-        "capture_handler": {
-          "name": "inspector_custom_commands",
-          "source": "qa/offscreen/harness.py",
-          "class": "OffscreenQaHarness",
-          "methods": [
-            {
-              "name": "_run_scenario",
-              "sha256": "2e2e07f023176c4fce56e1e4111186abf52b6e0dde38c26ec450d396367bf033"
-            },
-            {
-              "name": "_navigate_main",
-              "sha256": "a0d0f34ae36804abfef147bd2e6b1a0b3495766e6ac59223333b5bfaca2f6104"
-            },
-            {
-              "name": "_click_list_row",
-              "sha256": "fce7fa43f62fc7711910e023b0aa7504394e6bb641172e06bbfedcf9b8b29c52"
-            },
-            {
-              "name": "_flush",
-              "sha256": "bcd282c4e94affd1369c8101f75cc94d4d3cb34a12b33290f5fd30b7a3d7140c"
-            },
-            {
-              "name": "_capture",
-              "sha256": "cce82fd5c9e929eac3d0dada4bacaefad09e16b5e9d6712e86c24415516ca3bc"
-            },
-            {
-              "name": "_capture_handler_inspector_custom_commands",
-              "sha256": "4a583b4b846ef48c1399bbac3051892705f9e9a08ade341f7199273cdecd30b4"
-            }
-          ]
-        },
-        "viewport": [
-          1280,
-          800
-        ],
-        "expected_object_names": [
-          "pageHeader",
-          "inspectorCustomCommandEditor",
-          "inspectorCustomCommandCheck",
-          "inspectorCustomCommandPreview"
-        ],
-        "source_paths": [
-          "app/ui/tabs/inspector_tab.py",
-          "app/ui/common/ux.py",
-          "app/ui/common/theme.py",
-          "netops_suite/modules/inspector/service.py",
-          "netops_suite/modules/inspector_runtime/core/command_patterns.py"
-        ],
-        "source_files": [
-          {
-            "path": "app/ui/common/theme.py",
-            "size": 10689,
-            "sha256": "813dcc4e905944a67db1e582292152f54e7ac86ed57c2b00cedcc47e3f56c832"
-          },
-          {
-            "path": "app/ui/common/ux.py",
-            "size": 8214,
-            "sha256": "1f03c949729e17d2e195f005bfd047314fc58a76f9c050a2a26e21dd3d2b2c45"
-          },
-          {
-            "path": "app/ui/tabs/inspector_tab.py",
-            "size": 62783,
-            "sha256": "0f830a7882d48a87d5ed04b0ef85bc49a834eecebfa5f5cd7895802a9b3d12b2"
-          },
-          {
-            "path": "netops_suite/modules/inspector/service.py",
-            "size": 54963,
-            "sha256": "c066b63092f8274fb75aa6998d36b4122a9e71ac4c3939439c35875a6de9e218"
-          },
-          {
-            "path": "netops_suite/modules/inspector_runtime/core/command_patterns.py",
-            "size": 9413,
-            "sha256": "4fae1453192ba9473f9f073f14b3850575c7633448d7224188d1045dc487d487"
-          }
-        ]
-      },
-      "checks": [
-        "메인 화면 3 이동",
-        "사용자 명령 기본 입력 방식은 직접 입력",
-        "직접 입력에서는 명령 파일 선택 숨김",
-        "명령 파일 방식 전환",
-        "직접 입력 방식 복귀",
-        "입력 즉시 변수 문법 오류 표시",
-        "입력 즉시 명령 수와 변수 표시",
-        "직접 입력 명령과 장비 목록 검증",
-        "검증 후 실행 미리보기 표시",
-        "첫 장비 기준 변수 치환 미리보기",
-        "미리보기 대상 장비 표시",
-        "조작부 전체 높이 및 클릭 영역: 직접 입력 (위젯 78×17, 가시 78×17)",
-        "조작부 전체 높이 및 클릭 영역: 명령 파일 (위젯 78×17, 가시 78×17)",
-        "조작부 전체 높이 및 클릭 영역: 실행할 명령 (위젯 904×104, 가시 904×104)",
-        "조작부 전체 높이 및 클릭 영역: 실행 미리보기 (위젯 904×84, 가시 904×84)",
-        "조작부 전체 높이 및 클릭 영역: 먼저 검증 (위젯 76×32, 가시 76×32)",
-        "조작부 전체 높이 및 클릭 영역: 실행 (위젯 68×32, 가시 68×32)",
-        "사용자 명령 영역 가로 잘림 없음",
-        "사용자 명령 검증 후 창 크기 유지",
-        "가이드 캡처 objectName 표시: pageHeader",
-        "가이드 캡처 objectName 표시: inspectorCustomCommandEditor",
-        "가이드 캡처 objectName 표시: inspectorCustomCommandCheck",
-        "가이드 캡처 objectName 표시: inspectorCustomCommandPreview"
       ]
     }
   ]

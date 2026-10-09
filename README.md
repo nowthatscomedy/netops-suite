@@ -181,7 +181,7 @@ gitleaks dir --no-banner --redact .
 ```powershell
 pip install -r requirements-dev-lock.txt
 pip install "pyinstaller==6.21.0" "pyinstaller-hooks-contrib==2026.6"
-powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.1.0 -Clean
+powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.2.0 -Clean
 ```
 
 Windows 설치 파일 빌드에는 Inno Setup 6가 필요합니다.
@@ -192,8 +192,10 @@ Windows 설치 파일 빌드에는 Inno Setup 6가 필요합니다.
 uv pip compile requirements.txt --python-platform windows --python-version 3.11 --generate-hashes --output-file requirements-lock.txt
 uv pip compile requirements-dev.txt --python-platform windows --python-version 3.11 --generate-hashes --output-file requirements-dev-lock.txt
 ```
-현재 Paramiko 보안 예외는 Netmiko의 공식 호환 버전을 기다리는 동안만 2026-08-31까지 유효하며,
-기한이 지나면 `scripts/audit_dependencies.py`가 릴리즈를 자동 차단합니다.
+앱은 Paramiko 5를 사용하고, SHA-1·DSS만 지원하는 구형 장비용 Paramiko 3.5.1은
+`requirements-legacy-ssh-lock.txt`로 따로 고정합니다. 릴리즈 빌드는 이것을 설치 폴더의 `_internal\legacy_ssh`에
+넣고 별도 프로세스(`NetOpsSuite.exe --legacy-ssh-worker`)에서만 불러옵니다. 개발 환경에서는
+`python scripts/setup_legacy_ssh.py`로 격리된 런타임을 만들어야 실제 구형 SSH 테스트가 실행됩니다.
 
 GitHub Actions 릴리즈 빌드는 `workflow_dispatch`로 수동 실행하며, 저장소 공개 전환이나 `main` push와
 릴리즈 게시를 분리합니다. 한 번 공개한 릴리즈와 asset은 교체하지 않습니다. 게시 전 draft 릴리즈를
@@ -214,7 +216,7 @@ GitHub Actions 릴리즈 빌드는 `workflow_dispatch`로 수동 실행하며, �
 ```powershell
 $env:WINDOWS_CODESIGN_CERT_PATH = "C:\path\codesign.pfx"
 $env:WINDOWS_CODESIGN_CERT_PASSWORD = "<pfx password>"
-powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.1.0 -Clean -RequireCodeSigning
+powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.2.0 -Clean -RequireCodeSigning
 ```
 
 ## 프로젝트 구조

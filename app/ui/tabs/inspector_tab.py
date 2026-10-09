@@ -37,6 +37,7 @@ from app.ui.common import (
     confirm_risky_action,
     make_inline_status,
     make_table_item,
+    make_visible_checkbox,
     set_inline_status,
     set_table_minimums,
 )
@@ -474,6 +475,12 @@ class InspectorTab(QWidget):
         action_row.addWidget(self.validate_button)
         action_row.addWidget(self.run_button)
         action_row.addWidget(self.cancel_button)
+        self.first_device_only_check = make_visible_checkbox("첫 장비 1대만 먼저 실행")
+        self.first_device_only_check.setObjectName("inspectorFirstDeviceOnlyCheck")
+        self.first_device_only_check.setToolTip(
+            "목록의 첫 장비에서만 실행해 결과를 확인한 뒤, 체크를 풀고 전체를 실행하세요."
+        )
+        action_row.addWidget(self.first_device_only_check)
         action_row.addStretch(1)
         validation_layout.addLayout(action_row)
         top_layout.addWidget(validation_group)
@@ -1105,12 +1112,18 @@ class InspectorTab(QWidget):
                 f"변수({variables})가 검증되었습니다."
                 + self._confirmation_command_preview(self._custom_command_validation)
             )
+        first_device_only = self.first_device_only_check.isChecked()
+        scope = (
+            "목록의 첫 장비 1대에만 SSH/Telnet 접속을 시도합니다. "
+            if first_device_only
+            else f"목록에 있는 장비에 SSH/Telnet 접속을 시도합니다. 최대 {self.max_workers_spin.value()}대가 동시에 처리되며 "
+        )
         if not confirm_risky_action(
             self,
-            "대량 장비 점검 실행",
+            "첫 장비 시험 실행" if first_device_only else "대량 장비 점검 실행",
             impact=(
-                f"목록에 있는 장비에 SSH/Telnet 접속을 시도합니다. 최대 {self.max_workers_spin.value()}대가 동시에 처리되며 "
-                "일부 장비에서 로그인 실패, 세션 잠금, 네트워크 부하가 발생할 수 있습니다."
+                scope
+                + "일부 장비에서 로그인 실패, 세션 잠금, 네트워크 부하가 발생할 수 있습니다."
                 + custom_validation_detail
             ),
             reversibility="기본 점검/백업 모드는 장비 설정을 변경하지 않습니다. 사용자 명령 모드는 명령 파일 내용에 따라 되돌리기 어려울 수 있습니다.",
@@ -1134,6 +1147,7 @@ class InspectorTab(QWidget):
             max_workers=self.max_workers_spin.value(),
             timeout=self.timeout_spin.value(),
             max_retries=self.retry_spin.value(),
+            device_limit=1 if first_device_only else None,
         )
         self.log_view.clear()
         self.summary_label.setText("장비 점검 작업을 실행 중입니다...")
@@ -1236,6 +1250,7 @@ class InspectorTab(QWidget):
             self.max_workers_spin,
             self.timeout_spin,
             self.retry_spin,
+            self.first_device_only_check,
         ):
             widget.setEnabled(not locked)
         self._update_command_file_state()

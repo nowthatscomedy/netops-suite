@@ -40,16 +40,41 @@ def test_vendor_independent_automatic_dss_fallback(tmp_path, vendor, os_name):
             client.close()
 
 
-@pytest.mark.parametrize("kind", ["rsa", "dss"])
+@pytest.mark.parametrize("kind,host_key", [("rsa-sha1", "ssh-rsa"), ("kex-sha1", "ssh-rsa")])
+def test_sha1_only_firmware_falls_back_to_legacy_runtime(tmp_path, kind, host_key):
+    with ssh_server(tmp_path, kind, attempts=2) as (info, marker):
+        target = dict(default_device(info["port"]), vendor="ubiquoss", os="e4020")
+        client = CompatibleSSHClient(target)
+        try:
+            client.connect(hostname=target["ip"], port=target["port"], username="test",
+                           password="test-password", timeout=5, allow_agent=False, look_for_keys=False)
+            assert client.is_legacy
+            assert client.host_key_type == host_key
+            channel = client.invoke_shell(width=80, height=24)
+            channel.settimeout(5)
+            channel.send("show version\n")
+            output = b""
+            deadline = time.monotonic() + 5
+            while b"TEST OUTPUT" not in output and time.monotonic() < deadline:
+                if channel.recv_ready():
+                    output += channel.recv(4096)
+                time.sleep(0.05)
+            assert b"TEST OUTPUT" in output
+            assert marker.exists()
+        finally:
+            client.close()
+
+
+@pytest.mark.parametrize("kind", ["rsa", "dss", "kex-sha1"])
 def test_netmiko_uses_real_channels_keepalive_and_selected_driver(tmp_path, kind):
-    with ssh_server(tmp_path, kind, attempts=2 if kind == "dss" else 1) as (info, marker):
+    with ssh_server(tmp_path, kind, attempts=1 if kind == "rsa" else 2) as (info, marker):
         target = dict(default_device(info["port"]), vendor="cisco", os="ios")
         with compatible_connect_handler(
             compat_device=target, device_type="terminal_server", host=target["ip"], port=target["port"],
             username="test", password="test-password", conn_timeout=5, keepalive=5,
         ) as connection:
             assert connection.device_type == "terminal_server"
-            assert connection.remote_conn_pre.is_legacy == (kind == "dss")
+            assert connection.remote_conn_pre.is_legacy == (kind != "rsa")
             connection.write_channel("show system\n")
             output = ""
             deadline = time.monotonic() + 5

@@ -1,11 +1,63 @@
-"""Standalone pipe worker; executed exclusively by the pinned legacy Python."""
+"""Standalone pipe worker; executed exclusively with the pinned legacy Paramiko.
+
+Development runs it with the isolated legacy venv. The packaged app runs it in a
+separate copy of its own executable and loads Paramiko 3.5.1 from a bundled
+folder through ``--paramiko-path``, so the app process keeps Paramiko 5.
+"""
 import base64
 import hashlib
 import hmac
+import importlib.abc
+import importlib.machinery
 import json
 import sys
 
-import paramiko
+LEGACY_PARAMIKO_VERSION = "3.5.1"
+REQUIRED_LEGACY_ALGORITHMS = {
+    "kex": ("diffie-hellman-group14-sha1", "diffie-hellman-group1-sha1"),
+    "keys": ("ssh-rsa", "ssh-dss"),
+}
+
+
+class _LegacyParamikoFinder(importlib.abc.MetaPathFinder):
+    """Resolve only ``paramiko`` from the legacy folder; other packages stay shared."""
+
+    def __init__(self, directory):
+        self.directory = directory
+
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "paramiko":
+            return importlib.machinery.PathFinder.find_spec(fullname, [self.directory])
+        if fullname.startswith("paramiko."):
+            return importlib.machinery.PathFinder.find_spec(fullname, path)
+        return None
+
+
+def use_paramiko_from(directory):
+    if "paramiko" in sys.modules:
+        raise RuntimeError("paramiko was imported before the legacy path was set")
+    sys.meta_path.insert(0, _LegacyParamikoFinder(str(directory)))
+
+
+def self_check():
+    import paramiko
+
+    transport = paramiko.Transport
+    report = {
+        "paramiko": paramiko.__version__,
+        "kex": list(transport._preferred_kex),
+        "keys": list(transport._preferred_keys),
+        "ciphers": list(transport._preferred_ciphers),
+        "macs": list(transport._preferred_macs),
+    }
+    ok = paramiko.__version__ == LEGACY_PARAMIKO_VERSION and all(
+        name in report[group]
+        for group, names in REQUIRED_LEGACY_ALGORITHMS.items()
+        for name in names
+    )
+    report["ok"] = ok
+    print(json.dumps(report), flush=True)
+    return 0 if ok else 1
 
 
 class NoneAuthStrategy:
@@ -18,11 +70,13 @@ class NoneAuthStrategy:
         transport.auth_none(self.username)
 
 
-class PinnedHostKey(paramiko.MissingHostKeyPolicy):
+class PinnedHostKey:
     def __init__(self, fingerprint):
         self.fingerprint = fingerprint
 
     def missing_host_key(self, client, hostname, key):
+        import paramiko
+
         if not self.fingerprint:
             return
         actual = "SHA256:" + base64.b64encode(hashlib.sha256(key.asbytes()).digest()).decode().rstrip("=")
@@ -31,10 +85,12 @@ class PinnedHostKey(paramiko.MissingHostKeyPolicy):
 
 
 def serve():
+    import paramiko
+
     client = paramiko.SSHClient()
     channel = None
     try:
-        if paramiko.__version__ != "3.5.1":
+        if paramiko.__version__ != LEGACY_PARAMIKO_VERSION:
             print(json.dumps({"error": "레거시 SSH는 고정된 Paramiko 3.5.1 런타임이 필요합니다."}), flush=True)
             return
         for line in sys.stdin:
@@ -88,5 +144,19 @@ def serve():
         client.close()
 
 
-if __name__ == "__main__":
+def main(argv):
+    args = list(argv)
+    if "--paramiko-path" in args:
+        index = args.index("--paramiko-path")
+        use_paramiko_from(args[index + 1])
+        del args[index:index + 2]
+    if "--self-check" in args:
+        return self_check()
+    if sys.stdin is None or sys.stdout is None:
+        return 3
     serve()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

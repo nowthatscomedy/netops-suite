@@ -9,7 +9,7 @@ import pandas as pd
 
 from core.custom_exceptions import ValidationError
 from core.i18n import t
-from core.legacy_ssh import LegacySSHError, validate_legacy_device, legacy_python
+from core.legacy_ssh import LegacySSHError, validate_legacy_device, legacy_worker_command
 from core.profile_resolver import normalize_profile_part, resolve_device_profile
 from core.settings import REQUIRED_INPUT_COLUMNS, canonicalize_input_column_name
 from vendors import INSPECTION_COMMANDS
@@ -65,7 +65,7 @@ def normalize_device_dataframe(
 def validate_device_info(device: dict[str, Any]) -> tuple[bool, str]:
     try:
         if validate_legacy_device(device):
-            legacy_python()
+            legacy_worker_command()
     except LegacySSHError as exc:
         return False, str(exc)
     for field in REQUIRED_INPUT_COLUMNS:
