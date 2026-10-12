@@ -15,6 +15,46 @@ from core.ssh_compat import CompatibleSSHClient
 
 logger = logging.getLogger(__name__)
 
+_TELNET_LOGIN_PATTERNS = [
+    re.compile(rb"(?i)(user ?name|login)\s*:\s*$"),
+    re.compile(rb"(?i)password\s*:\s*$"),
+    re.compile(rb"[#>$]\s*$"),
+]
+
+
+def telnet_login(tn, username, password, timeout=10) -> str:
+    """Answer only the prompts the device actually shows.
+
+    Some devices skip the username or password prompt, or open straight to the
+    CLI when no password is set (e.g. AxGate dropping into ``#``). Waiting for
+    fixed prompts would stall there and then type the credentials as commands.
+    """
+    wait = max(3, min(float(timeout or 10), 20))
+    transcript = b""
+    sent_username = sent_password = nudged = False
+    for _ in range(8):
+        index, _match, data = tn.expect(_TELNET_LOGIN_PATTERNS, timeout=wait)
+        transcript += data or b""
+        if index == 2:
+            return transcript.decode("utf-8", errors="ignore")
+        if index == 0 and not sent_username:
+            tn.write(str(username or "").encode("utf-8") + b"\n")
+            sent_username = True
+        elif index == 1 and not sent_password:
+            tn.write(str(password or "").encode("utf-8") + b"\n")
+            sent_password = True
+        elif index in (0, 1):
+            raise ConnectionError("텔넷 로그인 실패: 장비가 계정을 다시 묻습니다. 계정과 비밀번호를 확인하세요.")
+        elif not nudged:
+            # Some devices print nothing until a key is pressed.
+            tn.write(b"\n")
+            nudged = True
+        else:
+            break
+    raise ConnectionError(
+        "텔넷 로그인 프롬프트(Username·Password·#·>)를 찾지 못했습니다."
+    )
+
 # 핸들러 등록을 위한 레지스트리
 HANDLER_REGISTRY = {}
 

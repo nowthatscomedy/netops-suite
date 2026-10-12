@@ -260,3 +260,60 @@ def test_header_help_and_profile_buttons_line_up(workspace, qapp, size):
         profile_top = profile_button.mapTo(tab, QPoint()).y()
         assert help_button.height() == profile_button.height(), key
         assert help_top == profile_top, key
+
+
+def test_sidebar_help_admin_and_view_buttons_share_one_row_and_size(workspace, qapp):
+    from PySide6.QtCore import QPoint
+
+    window = workspace
+    for size in ((1024, 680), (1280, 800)):
+        window.resize(*size)
+        qapp.processEvents()
+        buttons = (window.guide_button, window.admin_button, window.view_button)
+        tops = {button.mapTo(window, QPoint()).y() for button in buttons}
+        heights = {button.height() for button in buttons}
+        widths = {button.width() for button in buttons}
+        assert len(tops) == 1 and len(heights) == 1, size
+        assert max(widths) - min(widths) <= 1, size
+        assert all(not button.icon().isNull() for button in buttons)
+
+
+def test_results_open_large_in_the_work_area_and_return(workspace, qapp):
+    from PySide6.QtWidgets import QTableWidgetItem
+
+    window = workspace
+    window.resize(1280, 800)
+    window.navigate_to("diagnostics")
+    tab = window.diagnostics_tab
+    tab.ping_table.insertRow(0)
+    tab.ping_table.setItem(0, 0, QTableWidgetItem("gateway"))
+    qapp.processEvents()
+    small_height = tab.ping_table.height()
+
+    tab.ping_result_focus_button.click()
+    window.tcp_result_view_action.trigger()
+    qapp.processEvents()
+    assert window.is_result_focus_visible()
+    assert window.result_focus_view.keys() == ("ping", "tcp")
+    window.result_focus_view.select("ping")
+    qapp.processEvents()
+    assert tab.ping_table.isVisibleTo(window)
+    assert tab.ping_table.height() > small_height
+    assert window.ping_result_view_action.isChecked()
+    assert tab.ping_result_focus_button.text() == "원래 자리로"
+
+    QTest.keyClick(window.result_focus_view.back_button, Qt.Key.Key_Escape)
+    qapp.processEvents()
+    assert not window.is_result_focus_visible()
+    assert window.tab_widget.currentWidget() is tab
+    assert tab.ping_table.item(0, 0).text() == "gateway"
+    assert tab.ping_table.isVisibleTo(window)
+    assert not window.ping_result_view_action.isChecked()
+    assert tab.ping_result_focus_button.text() == "크게 보기"
+
+    tab.ping_result_focus_button.click()
+    qapp.processEvents()
+    window.navigate_to("home")
+    qapp.processEvents()
+    assert not window.is_result_focus_visible()
+    assert not tab.is_result_dock_visible("ping")

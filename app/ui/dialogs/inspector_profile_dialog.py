@@ -8,10 +8,11 @@ from typing import Any
 
 from threading import Event
 
-from PySide6.QtCore import QThreadPool, QTimer
-from PySide6.QtGui import QColor
+from PySide6.QtCore import Qt, QThreadPool, QTimer
+from PySide6.QtGui import QColor, QFontDatabase, QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
+    QTextEdit,
     QDialog,
     QFileDialog,
     QFormLayout,
@@ -22,11 +23,20 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPlainTextEdit,
+    QSplitter,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from app.ui.common.disclosure import CollapsibleSection
+from app.ui.common.required import (
+    MISSING_STYLE,
+    mark_missing,
+    required_label,
+    required_legend_text,
+    set_required_label,
+)
 from app.ui.common import (
     JobRunner,
     confirm_risky_action,
@@ -38,6 +48,12 @@ from app.ui.common import (
 )
 from app.utils.file_utils import timestamped_export_path
 from netops_suite.modules.inspector import InspectorService
+from netops_suite.modules.inspector.extraction_suggest import (
+    ExtractionSuggestion,
+    SelectionError,
+    extract_value,
+    suggest_extractions,
+)
 from netops_suite.modules.inspector.service import ProfileTrialResult
 from netops_suite.ui.actions import ActionKind, make_action_button
 from netops_suite.ui.numeric_inputs import NoWheelSpinBox
@@ -47,6 +63,7 @@ ERROR_BG = QColor("#fff1ed")
 OK_BG = QColor("#eef8eb")
 _DEVICE_TYPE_RE = re.compile(r"[a-z0-9][a-z0-9_]{0,63}\Z")
 _TRIAL_OUTPUT_PREVIEW_LINES = 12
+_TRIAL_SESSION_MAX_LINES = 5000
 
 
 @lru_cache(maxsize=1)
@@ -202,6 +219,7 @@ class InspectorProfileDialog(QDialog):
         self._trial_cancel: Event | None = None
         self._trial_running = False
         self._trial_session_dir: str | None = None
+        self._trial_ip_flagged = False
         self.preview_timer = QTimer(self)
         self.preview_timer.setInterval(180)
         self.preview_timer.setSingleShot(True)
@@ -265,9 +283,11 @@ class InspectorProfileDialog(QDialog):
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
         polish_dialog(self, layout)
+        self.setStyleSheet(self.styleSheet() + MISSING_STYLE)
+        self._show_missing_required = False
         intro = make_dialog_intro(
             "이 프로파일은 장비에 명령어를 실행하고, 출력값을 Excel 컬럼으로 정리합니다. "
-            "명령어 출력 예시를 붙여넣고, Excel에 넣을 값을 선택하세요."
+            "명령을 입력하고 장비로 시험해 출력을 가져온 뒤, 출력에서 Excel에 넣을 값을 마우스로 고르세요."
         )
         layout.addWidget(intro)
 
@@ -277,10 +297,11 @@ class InspectorProfileDialog(QDialog):
         self._build_device_tab()
         self._build_command_tab()
         self._build_backup_tab()
-        self._build_column_tab()
         self._build_trial_tab()
+        self._build_column_tab()
         self._build_review_tab()
         self._build_advanced_tab()
+        self.tabs.currentChanged.connect(self._update_next_step_button)
 
         actions = QHBoxLayout()
         self.trial_shortcut_button = make_action_button(
@@ -293,6 +314,11 @@ class InspectorProfileDialog(QDialog):
             lambda: self.tabs.setCurrentWidget(self.trial_tab)
         )
         actions.addWidget(self.trial_shortcut_button)
+        self.required_legend = QLabel()
+        self.required_legend.setObjectName("profileRequiredLegend")
+        self.required_legend.setWordWrap(True)
+        self._show_required_legend()
+        actions.addWidget(self.required_legend, 1)
         refresh_button = make_action_button(
             "갱신", ActionKind.REFRESH, tooltip="YAML 미리보기를 갱신합니다."
         )
@@ -303,16 +329,128 @@ class InspectorProfileDialog(QDialog):
         self.save_button.clicked.connect(self._save_profile)
         self.close_button = make_action_button("닫기", ActionKind.CANCEL)
         self.close_button.clicked.connect(self._request_close)
+        self.next_step_button = make_action_button(
+            "다음", ActionKind.PRIMARY, tooltip="다음 단계로 이동합니다."
+        )
+        self.next_step_button.setObjectName("profileNextStepButton")
+        self.next_step_button.clicked.connect(self._go_to_next_step)
         actions.addStretch(1)
+        actions.addWidget(self.next_step_button)
         actions.addWidget(refresh_button)
         actions.addWidget(self.save_button)
         actions.addWidget(self.close_button)
         layout.addLayout(actions)
+        self._update_next_step_button()
+
+    def _step_tabs(self) -> list[QWidget]:
+        return [self.tabs.widget(index) for index in range(self.tabs.count())][
+            : self.tabs.indexOf(self.review_tab) + 1
+        ]
+
+    def _update_next_step_button(self, _index: int | None = None) -> None:
+        steps = self._step_tabs()
+        current = self.tabs.currentWidget()
+        if current in steps[:-1]:
+            target = steps[steps.index(current) + 1]
+            title = self.tabs.tabText(self.tabs.indexOf(target)).split(". ", 1)[-1]
+            self.next_step_button.setText(f"다음: {title}")
+            self.next_step_button.show()
+        else:
+            self.next_step_button.hide()
+        self.trial_shortcut_button.setVisible(current is not self.trial_tab)
+
+    def _go_to_next_step(self) -> None:
+        steps = self._step_tabs()
+        current = self.tabs.currentWidget()
+        if current not in steps[:-1]:
+            return
+        # The device trial is optional, so only real profile fields block a step.
+        if current is not self.trial_tab:
+            self._collect_state()
+            missing = self._missing_required_fields(current)
+            if missing:
+                self._show_missing_required = True
+                self._refresh_required_marks()
+                self._show_required_legend([name for _widget, name in missing])
+                missing[0][0].setFocus()
+                return
+        self._show_required_legend()
+        self.tabs.setCurrentWidget(steps[steps.index(current) + 1])
+
+    def _show_required_legend(self, missing: list[str] | None = None) -> None:
+        self.required_legend.setText(required_legend_text(missing))
+
+    def _missing_required_fields(self, tab: QWidget | None = None) -> list[tuple[QWidget, str]]:
+        """Required fields left empty, optionally only those on one step."""
+        checks: list[tuple[QWidget, QWidget, str, bool]] = [
+            (self.device_tab, self.vendor_edit, "벤더", not self.state["vendor"]),
+            (self.device_tab, self.os_edit, "OS", not self.state["os"]),
+            (
+                self.device_tab,
+                self.model_edit,
+                "모델",
+                self.state.get("profile_scope") == "model" and not self.state["model"],
+            ),
+            (
+                self.command_tab,
+                self.command_edit,
+                "명령어",
+                not self.command_edit.text().strip() or not self._commands(),
+            ),
+            (
+                self.backup_tab,
+                self.backup_command_edit,
+                "백업 명령",
+                self.state["backup_enabled"] and not self.state["backup_command"],
+            ),
+            (
+                self.column_tab,
+                self.column_name_edit,
+                "Excel 컬럼명",
+                self._selected_column_row >= 0 and not self.column_name_edit.text().strip(),
+            ),
+        ]
+        return [
+            (widget, name)
+            for owner, widget, name, empty in checks
+            if empty and (tab is None or owner is tab)
+        ]
+
+    def _refresh_required_marks(self) -> None:
+        missing = (
+            {widget for widget, _name in self._missing_required_fields()}
+            if self._show_missing_required
+            else set()
+        )
+        if (
+            self._show_missing_required
+            and self._trial_ip_flagged
+            and not self.trial_ip_edit.text().strip()
+        ):
+            missing.add(self.trial_ip_edit)
+        for widget in (
+            self.vendor_edit,
+            self.os_edit,
+            self.model_edit,
+            self.command_edit,
+            self.backup_command_edit,
+            self.column_name_edit,
+            self.trial_ip_edit,
+        ):
+            mark_missing(widget, widget in missing)
+        if self._show_missing_required and not missing:
+            self._show_required_legend()
 
     def _build_device_tab(self) -> None:
         tab = QWidget()
+        self.device_tab = tab
         layout = QVBoxLayout(tab)
-        hint = QLabel("어떤 장비의 점검 결과를 Excel로 정리할지 입력합니다.")
+        hint = QLabel(
+            "어떤 장비의 점검 결과를 Excel로 정리할지 입력합니다. 벤더와 OS는 장비 목록 Excel의 "
+            "vendor·os 칸에 그대로 쓰는 이름입니다. 지원 목록에 없는 장비라면 알아보기 쉬운 이름을 "
+            "자유롭게 정하세요. 비슷한 장비의 프로파일이 있으면 '기존 프로파일 복사'로 시작하면 빠릅니다."
+        )
+        hint.setObjectName("profileDeviceHint")
         hint.setWordWrap(True)
         layout.addWidget(hint)
         form = QFormLayout()
@@ -339,15 +477,16 @@ class InspectorProfileDialog(QDialog):
             "모델 전용은 장비 목록의 model 값이 정확히 일치할 때만 적용됩니다."
         )
         form.addRow("적용 범위", self.profile_scope_combo)
-        form.addRow("벤더", self.vendor_edit)
-        form.addRow("모델", self.model_edit)
-        form.addRow("OS", self.os_edit)
+        form.addRow(required_label("벤더"), self.vendor_edit)
+        self.model_label = required_label("모델", required=False)
+        form.addRow(self.model_label, self.model_edit)
+        form.addRow(required_label("OS"), self.os_edit)
         form.addRow("OS 버전", self.os_version_edit)
         form.addRow("접속 방식", self.connection_combo)
         form.addRow("기존 프로파일 복사", self.copy_profile_combo)
         layout.addLayout(form)
         layout.addStretch(1)
-        self.tabs.addTab(tab, "장비 정보")
+        self.tabs.addTab(tab, "1. 장비 정보")
 
         for widget in (
             self.vendor_edit,
@@ -364,6 +503,7 @@ class InspectorProfileDialog(QDialog):
 
     def _on_profile_scope_changed(self, _index: int | None = None) -> None:
         model_specific = self.profile_scope_combo.currentData() == "model"
+        set_required_label(self.model_label, "모델", model_specific)
         self.model_edit.setToolTip(
             "장비 목록 Excel의 model 값과 대소문자·공백 정규화 후 정확히 일치해야 합니다."
             if model_specific
@@ -373,6 +513,7 @@ class InspectorProfileDialog(QDialog):
 
     def _build_command_tab(self) -> None:
         tab = QWidget()
+        self.command_tab = tab
         tab.setObjectName("inspectionCommandsTab")
         layout = QHBoxLayout(tab)
         left = QVBoxLayout()
@@ -403,21 +544,23 @@ class InspectorProfileDialog(QDialog):
         self.command_edit.setPlaceholderText("예: show version")
         self.sample_output_edit = QPlainTextEdit()
         self.sample_output_edit.setPlaceholderText(
-            "예:\nCisco IOS XE Software, Version 17.09.04\ncisco C9300-24T processor\nProcessor board ID FOC1234ABCD"
+            "비워 두어도 됩니다. '4. 장비로 시험'을 실행하면 장비 출력으로 채워집니다.\n"
+            "장비에 접속할 수 없으면 출력을 여기에 붙여넣으세요."
         )
-        form.addRow("명령어", self.command_edit)
+        form.addRow(required_label("명령어"), self.command_edit)
         form.addRow("출력 예시", self.sample_output_edit)
         right.addLayout(form, 1)
 
         layout.addLayout(left, 2)
         layout.addLayout(right, 4)
-        self.tabs.addTab(tab, "점검 명령")
+        self.tabs.addTab(tab, "2. 점검 명령")
 
         self.command_edit.textChanged.connect(self._on_command_changed)
         self.sample_output_edit.textChanged.connect(self._on_command_changed)
 
     def _build_backup_tab(self) -> None:
         tab = QWidget()
+        self.backup_tab = tab
         tab.setObjectName("backupCommandTab")
         layout = QVBoxLayout(tab)
 
@@ -445,7 +588,8 @@ class InspectorProfileDialog(QDialog):
         self.backup_command_edit.setToolTip(
             "장비 구성을 백업할 때 한 번 실행할 명령을 입력합니다."
         )
-        form.addRow("백업 명령", self.backup_command_edit)
+        self.backup_command_label = required_label("백업 명령")
+        form.addRow(self.backup_command_label, self.backup_command_edit)
         layout.addLayout(form)
 
         backup_hint = QLabel(
@@ -456,7 +600,7 @@ class InspectorProfileDialog(QDialog):
         layout.addWidget(backup_hint)
         layout.addStretch(1)
 
-        self.tabs.addTab(tab, "백업 명령")
+        self.tabs.addTab(tab, "3. 백업 명령")
 
         self.backup_enabled_check.toggled.connect(self._on_backup_enabled_changed)
         self.backup_command_edit.textChanged.connect(self._schedule_preview)
@@ -468,6 +612,8 @@ class InspectorProfileDialog(QDialog):
 
     def _build_column_tab(self) -> None:
         tab = QWidget()
+        tab.setObjectName("profileColumnTab")
+        self.column_tab = tab
         layout = QHBoxLayout(tab)
         left = QVBoxLayout()
         left.addWidget(QLabel("Excel에 표시할 컬럼"))
@@ -477,7 +623,7 @@ class InspectorProfileDialog(QDialog):
         left.addWidget(self.column_list, 1)
         buttons = QHBoxLayout()
         add_button = make_action_button(
-            "추가", ActionKind.ADD, tooltip="Excel 출력 컬럼을 추가합니다."
+            "추가", ActionKind.ADD, tooltip="빈 Excel 출력 컬럼을 추가합니다."
         )
         add_button.clicked.connect(self._add_column)
         remove_button = make_action_button(
@@ -489,12 +635,72 @@ class InspectorProfileDialog(QDialog):
         left.addLayout(buttons)
 
         right = QVBoxLayout()
+        source_row = QFormLayout()
+        source_row.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        self.column_command_combo = NoWheelComboBox()
+        self.column_command_combo.setAccessibleName("값을 가져올 명령")
+        source_row.addRow("명령 출력", self.column_command_combo)
+        right.addLayout(source_row)
+        pick_hint = QLabel(
+            "아래 출력에서 Excel에 넣을 값을 마우스로 드래그한 뒤 "
+            "'선택한 값으로 컬럼 만들기'를 누르세요. 값을 다시 찾는 규칙은 자동으로 만들어집니다."
+        )
+        pick_hint.setObjectName("profileColumnPickHint")
+        pick_hint.setWordWrap(True)
+        right.addWidget(pick_hint)
+        self.column_output_view = QPlainTextEdit()
+        self.column_output_view.setObjectName("profileColumnOutputView")
+        self.column_output_view.setReadOnly(True)
+        self.column_output_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.column_output_view.setFont(
+            QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+        )
+        self.column_output_view.setAccessibleName("명령 출력에서 값 고르기")
+        self.column_output_view.setPlaceholderText(
+            "이 명령의 출력이 아직 없습니다. '장비로 시험'에서 장비 출력을 가져오거나 "
+            "'점검 명령' 탭의 출력 예시에 붙여넣으세요."
+        )
+        right.addWidget(self.column_output_view, 3)
+        pick_row = QHBoxLayout()
+        self.pick_value_button = make_action_button(
+            "선택한 값으로 컬럼 만들기",
+            ActionKind.PRIMARY,
+            tooltip="드래그해서 고른 값을 가져오는 Excel 컬럼을 만듭니다.",
+        )
+        self.pick_value_button.setObjectName("profileColumnPickButton")
+        self.pick_value_button.clicked.connect(self._create_column_from_selection)
+        self.suggestion_label = QLabel("찾는 방법")
+        self.suggestion_combo = NoWheelComboBox()
+        self.suggestion_combo.setObjectName("profileColumnSuggestionCombo")
+        self.suggestion_combo.setAccessibleName("값을 찾는 방법")
+        self.suggestion_combo.currentIndexChanged.connect(self._apply_selected_suggestion)
+        pick_row.addWidget(self.pick_value_button)
+        pick_row.addWidget(self.suggestion_label)
+        pick_row.addWidget(self.suggestion_combo, 1)
+        right.addLayout(pick_row)
+        self._suggestions: list[ExtractionSuggestion] = []
+        self._set_suggestions([])
+        self.pick_status_label = make_inline_status("info", "")
+        self.pick_status_label.setObjectName("profileColumnPickStatus")
+        right.addWidget(self.pick_status_label)
+
         form = QFormLayout()
         form.setVerticalSpacing(8)
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.column_name_edit = QLineEdit()
         self.column_name_edit.setPlaceholderText("예: OS버전, 시리얼번호, CPU 사용률")
-        self.column_command_combo = NoWheelComboBox()
+        self.preview_label = QLabel("추출 결과: -")
+        self.preview_label.setObjectName("profileColumnPreview")
+        self.preview_label.setWordWrap(True)
+        form.addRow(required_label("Excel 컬럼명"), self.column_name_edit)
+        form.addRow("", self.preview_label)
+        right.addLayout(form)
+
+        self.rule_section = CollapsibleSection("추출 규칙 직접 고치기")
+        self.rule_section.setObjectName("profileColumnRuleSection")
+        rule_form = QFormLayout()
+        rule_form.setVerticalSpacing(8)
+        rule_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.extract_method_combo = NoWheelComboBox()
         self.extract_method_combo.addItem(
             "몇 번째 줄/몇 번째 값 가져오기", "split_fields"
@@ -515,40 +721,36 @@ class InspectorProfileDialog(QDialog):
         self.regex_edit.setPlaceholderText(r"예: Version\s+([0-9.]+)")
         self.python_parser_combo = NoWheelComboBox()
         self.python_parser_combo.setEditable(True)
-        self.preview_label = QLabel("추출 결과: -")
-        self.preview_label.setWordWrap(True)
-        form.addRow("Excel 컬럼명", self.column_name_edit)
-        form.addRow("가져올 명령 결과", self.column_command_combo)
-        form.addRow("추출 방식", self.extract_method_combo)
-        form.addRow("줄 번호", self.line_number_spin)
-        form.addRow("시작 값 번호", self.start_field_spin)
-        form.addRow("끝 값 번호", self.end_field_spin)
-        form.addRow("찾을 단어", self.keyword_edit)
-        form.addRow("정규식", self.regex_edit)
-        form.addRow("Python 추출 함수", self.python_parser_combo)
+        rule_form.addRow("추출 방식", self.extract_method_combo)
+        rule_form.addRow("줄 번호", self.line_number_spin)
+        rule_form.addRow("시작 값 번호", self.start_field_spin)
+        rule_form.addRow("끝 값 번호", self.end_field_spin)
+        rule_form.addRow("찾을 단어", self.keyword_edit)
+        rule_form.addRow("정규식", self.regex_edit)
+        rule_form.addRow("Python 추출 함수", self.python_parser_combo)
         self._extraction_method_fields = {
-            "line_number": (form.labelForField(self.line_number_spin), self.line_number_spin),
-            "start_field": (form.labelForField(self.start_field_spin), self.start_field_spin),
-            "end_field": (form.labelForField(self.end_field_spin), self.end_field_spin),
-            "keyword": (form.labelForField(self.keyword_edit), self.keyword_edit),
-            "regex": (form.labelForField(self.regex_edit), self.regex_edit),
+            "line_number": (rule_form.labelForField(self.line_number_spin), self.line_number_spin),
+            "start_field": (rule_form.labelForField(self.start_field_spin), self.start_field_spin),
+            "end_field": (rule_form.labelForField(self.end_field_spin), self.end_field_spin),
+            "keyword": (rule_form.labelForField(self.keyword_edit), self.keyword_edit),
+            "regex": (rule_form.labelForField(self.regex_edit), self.regex_edit),
             "python": (
-                form.labelForField(self.python_parser_combo),
+                rule_form.labelForField(self.python_parser_combo),
                 self.python_parser_combo,
             ),
         }
-        right.addLayout(form)
-        right.addWidget(self.preview_label)
-        sample_view_label = QLabel("선택한 명령 출력 예시")
-        right.addWidget(sample_view_label)
+        self.rule_section.content_layout.addLayout(rule_form)
+        self.rule_section.content_layout.addWidget(QLabel("줄·값 번호로 본 출력"))
         self.sample_line_view = QPlainTextEdit()
         self.sample_line_view.setReadOnly(True)
         self.sample_line_view.setAccessibleName("선택한 명령 출력 예시")
-        right.addWidget(self.sample_line_view, 1)
+        self.sample_line_view.setMinimumHeight(140)
+        self.rule_section.content_layout.addWidget(self.sample_line_view)
+        right.addWidget(self.rule_section)
 
         layout.addLayout(left, 2)
-        layout.addLayout(right, 4)
-        self.tabs.addTab(tab, "Excel 컬럼")
+        layout.addLayout(right, 5)
+        self.tabs.addTab(tab, "5. Excel 컬럼")
 
         for widget in (self.column_name_edit, self.keyword_edit, self.regex_edit):
             widget.textChanged.connect(self._on_column_changed)
@@ -561,6 +763,94 @@ class InspectorProfileDialog(QDialog):
         self.end_field_spin.valueChanged.connect(self._on_column_changed)
         self.python_parser_combo.currentTextChanged.connect(self._on_column_changed)
         self._update_extraction_method_fields()
+
+    def _set_suggestions(self, suggestions: list[ExtractionSuggestion]) -> None:
+        self._suggestions = list(suggestions)
+        self.suggestion_combo.blockSignals(True)
+        self.suggestion_combo.clear()
+        for suggestion in self._suggestions:
+            label = suggestion.description
+            if suggestion.position_based:
+                label += " (위치 기준)"
+            self.suggestion_combo.addItem(label)
+        self.suggestion_combo.blockSignals(False)
+        visible = len(self._suggestions) > 1
+        self.suggestion_label.setVisible(visible)
+        self.suggestion_combo.setVisible(visible)
+
+    def _create_column_from_selection(self) -> None:
+        cursor = self.column_output_view.textCursor()
+        command = self.column_command_combo.currentText().strip()
+        sample = self.column_output_view.toPlainText()
+        if not command or not sample.strip():
+            set_inline_status(
+                self.pick_status_label,
+                "warning",
+                "먼저 명령 출력을 준비하세요. '장비로 시험'에서 가져오거나 출력 예시에 붙여넣으면 됩니다.",
+            )
+            return
+        try:
+            suggestions = suggest_extractions(
+                sample, cursor.selectionStart(), cursor.selectionEnd()
+            )
+        except SelectionError as exc:
+            set_inline_status(self.pick_status_label, "warning", str(exc))
+            return
+        self._persist_column()
+        best = suggestions[0]
+        taken = {
+            str(column.get("name", "")).casefold()
+            for index, column in enumerate(self.state["columns"])
+        }
+        name = best.column_name
+        number = 2
+        while name.casefold() in taken:
+            name = f"{best.column_name} {number}"
+            number += 1
+        self.state["columns"].append(best.as_column(command, name))
+        self._refresh_column_list(len(self.state["columns"]) - 1)
+        self._set_suggestions(suggestions)
+        self._show_pick_result(best)
+        self.column_name_edit.setFocus()
+        self.column_name_edit.selectAll()
+        self._schedule_preview()
+
+    def _apply_selected_suggestion(self, index: int) -> None:
+        row = self._selected_column_row
+        if not (0 <= index < len(self._suggestions)) or row < 0:
+            return
+        suggestion = self._suggestions[index]
+        current = self.state["columns"][row]
+        self.state["columns"][row] = suggestion.as_column(
+            current.get("command", ""), current.get("name", "")
+        )
+        self._load_column(row)
+        self._show_pick_result(suggestion)
+        self._schedule_preview()
+
+    def _show_pick_result(self, suggestion: ExtractionSuggestion) -> None:
+        message = f"{suggestion.description}으로 '{suggestion.value}'를 가져옵니다. 컬럼 이름을 확인하세요."
+        if suggestion.position_based:
+            message += " 줄 위치 기준이라 출력 줄 수가 다른 장비에서는 틀릴 수 있습니다."
+        set_inline_status(
+            self.pick_status_label,
+            "warning" if suggestion.position_based else "success",
+            message,
+        )
+
+    def _highlight_extracted_value(self, sample: str, value: str) -> None:
+        selections = []
+        if value:
+            start = sample.find(value)
+            if start >= 0:
+                selection = QTextEdit.ExtraSelection()
+                selection.format.setBackground(QColor("#fde68a"))
+                cursor = self.column_output_view.textCursor()
+                cursor.setPosition(start)
+                cursor.setPosition(start + len(value), QTextCursor.MoveMode.KeepAnchor)
+                selection.cursor = cursor
+                selections.append(selection)
+        self.column_output_view.setExtraSelections(selections)
 
     def _build_trial_tab(self) -> None:
         tab = QWidget()
@@ -580,6 +870,7 @@ class InspectorProfileDialog(QDialog):
         self.trial_ip_edit = QLineEdit()
         self.trial_ip_edit.setObjectName("profileTrialIpEdit")
         self.trial_ip_edit.setPlaceholderText("예: 192.168.0.10")
+        self.trial_ip_edit.textChanged.connect(self._refresh_required_marks)
         self.trial_port_spin = NoWheelSpinBox()
         self.trial_port_spin.setRange(1, 65535)
         self.trial_port_spin.setValue(22)
@@ -590,7 +881,7 @@ class InspectorProfileDialog(QDialog):
         self.trial_enable_edit = QLineEdit()
         self.trial_enable_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.trial_enable_edit.setPlaceholderText("필요한 장비만 입력")
-        form.addRow("장비 IP", self.trial_ip_edit)
+        form.addRow(required_label("장비 IP"), self.trial_ip_edit)
         form.addRow("포트", self.trial_port_spin)
         form.addRow("계정", self.trial_username_edit)
         form.addRow("비밀번호", self.trial_password_edit)
@@ -646,12 +937,38 @@ class InspectorProfileDialog(QDialog):
         )
         self.trial_status_label.setObjectName("profileTrialStatus")
         layout.addWidget(self.trial_status_label)
+        self.trial_session_view = QPlainTextEdit()
+        self.trial_session_view.setObjectName("profileTrialSession")
+        self.trial_session_view.setReadOnly(True)
+        self.trial_session_view.setAccessibleName("장비 세션 화면")
+        self.trial_session_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.trial_session_view.setMaximumBlockCount(_TRIAL_SESSION_MAX_LINES)
+        self.trial_session_view.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+        self.trial_session_view.setPlaceholderText(
+            "시험 실행을 누르면 장비와 주고받는 CLI 화면이 여기에 실시간으로 나옵니다."
+        )
         self.trial_result_view = QPlainTextEdit()
         self.trial_result_view.setObjectName("profileTrialResult")
         self.trial_result_view.setReadOnly(True)
         self.trial_result_view.setAccessibleName("장비 시험 결과")
-        layout.addWidget(self.trial_result_view, 1)
-        self.tabs.addTab(tab, "장비로 시험")
+        output_split = QSplitter(Qt.Orientation.Horizontal)
+        output_split.setObjectName("profileTrialOutputSplit")
+        output_split.setChildrenCollapsible(False)
+        for title, view in (
+            ("세션 화면 (실시간)", self.trial_session_view),
+            ("시험 결과", self.trial_result_view),
+        ):
+            pane = QWidget()
+            pane_layout = QVBoxLayout(pane)
+            pane_layout.setContentsMargins(0, 0, 0, 0)
+            pane_layout.setSpacing(4)
+            pane_layout.addWidget(QLabel(title))
+            pane_layout.addWidget(view, 1)
+            output_split.addWidget(pane)
+        output_split.setStretchFactor(0, 3)
+        output_split.setStretchFactor(1, 2)
+        layout.addWidget(output_split, 1)
+        self.tabs.addTab(tab, "4. 장비로 시험")
 
     def _sync_trial_port(self, _index: int | None = None) -> None:
         defaults = {"ssh": 22, "telnet": 23}
@@ -730,6 +1047,10 @@ class InspectorProfileDialog(QDialog):
             problems.append("장비 정보 탭에서 벤더와 OS를 입력하세요.")
         if not host:
             problems.append("장비 IP를 입력하세요.")
+        self._trial_ip_flagged = not host
+        if problems:
+            self._show_missing_required = True
+            self._refresh_required_marks()
         commands = self._trial_commands()
         if not commands:
             problems.append("점검 명령을 하나 이상 입력하세요.")
@@ -762,6 +1083,7 @@ class InspectorProfileDialog(QDialog):
         self.trial_log_button.setEnabled(False)
         self._set_trial_running(True)
         self.trial_result_view.clear()
+        self.trial_session_view.clear()
         set_inline_status(
             self.trial_status_label, "info", f"{host}에 접속하는 중입니다..."
         )
@@ -779,9 +1101,24 @@ class InspectorProfileDialog(QDialog):
         )
 
     def _show_trial_progress(self, event: object) -> None:
+        if isinstance(event, dict) and event.get("type") == "session":
+            self._append_session_text(str(event.get("text", "")))
+            return
         message = event.get("message", "") if isinstance(event, dict) else str(event)
         if message:
             set_inline_status(self.trial_status_label, "info", message)
+
+    def _append_session_text(self, text: str) -> None:
+        if not text:
+            return
+        view = self.trial_session_view
+        scrollbar = view.verticalScrollBar()
+        follow = scrollbar.value() >= scrollbar.maximum() - 2
+        cursor = view.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.insertText(text.replace("\r\n", "\n").replace("\r", ""))
+        if follow:
+            scrollbar.setValue(scrollbar.maximum())
 
     def _stop_profile_trial(self) -> None:
         if self._trial_cancel is not None:
@@ -842,6 +1179,7 @@ class InspectorProfileDialog(QDialog):
         message = f"명령 {len(result.outputs)}개를 실행했습니다."
         if filled:
             message += f" 출력 예시 {filled}개를 장비 출력으로 바꿨습니다."
+        message += " 다음 단계 '5. Excel 컬럼'에서 출력의 값을 드래그해 컬럼을 만드세요."
         if missing:
             message += (
                 f" 값을 찾지 못한 컬럼: {', '.join(missing)}. "
@@ -859,7 +1197,7 @@ class InspectorProfileDialog(QDialog):
             output = by_command.get(str(row.get("command", "")).strip().casefold())
             if output is None:
                 continue
-            row["sample"] = output[:20_000]
+            row["sample"] = output.replace("\r\n", "\n").replace("\r", "\n")[:20_000]
             filled += 1
         self._load_command(self._selected_command_row)
         self._refresh_extraction_preview()
@@ -883,7 +1221,7 @@ class InspectorProfileDialog(QDialog):
         self.summary_preview.setReadOnly(True)
         self.summary_preview.setAccessibleName("프로파일 요약")
         layout.addWidget(self.summary_preview, 2)
-        self.tabs.addTab(tab, "미리보기/저장")
+        self.tabs.addTab(tab, "6. 확인·저장")
 
     def _build_advanced_tab(self) -> None:
         tab = QWidget()
@@ -1166,6 +1504,8 @@ class InspectorProfileDialog(QDialog):
     def _on_column_selected(self, row: int) -> None:
         self._persist_column()
         self._selected_column_row = row
+        self._set_suggestions([])
+        set_inline_status(self.pick_status_label, "info", "")
         self._load_column(row)
         self._schedule_preview()
 
@@ -1256,8 +1596,11 @@ class InspectorProfileDialog(QDialog):
             )
             numbered.append(f"{marker} {idx:02d}: {line}\n     {fields}")
         self.sample_line_view.setPlainText("\n".join(numbered))
+        if self.column_output_view.toPlainText() != sample:
+            self.column_output_view.setPlainText(sample)
         result = self._preview_value(sample)
         self.preview_label.setText(f"추출 결과: {result or '-'}")
+        self._highlight_extracted_value(sample, result)
 
     def _preview_value(self, sample: str) -> str:
         return self._extract_column_value(
@@ -1274,42 +1617,7 @@ class InspectorProfileDialog(QDialog):
 
     @staticmethod
     def _extract_column_value(column: dict[str, Any], sample: str) -> str:
-        method = column.get("method", "split_fields")
-        lines = sample.splitlines()
-        line_number = int(column.get("line_number", 1) or 1)
-        if method == "split_fields":
-            if not (1 <= line_number <= len(lines)):
-                return ""
-            fields = lines[line_number - 1].split()
-            start = int(column.get("start_field", 1) or 1)
-            end = int(column.get("end_field", start) or start)
-            if not (1 <= start <= len(fields)):
-                return ""
-            return " ".join(fields[start - 1 : min(max(end, start), len(fields))])
-        if method == "keyword_after":
-            keyword = str(column.get("keyword", "")).strip()
-            if not keyword:
-                return ""
-            for line in lines:
-                if keyword in line:
-                    return line.split(keyword, 1)[1].strip(" :\t")
-        if method == "line_text":
-            if 1 <= line_number <= len(lines):
-                return lines[line_number - 1].strip()
-        if method == "regex":
-            pattern = str(column.get("regex", "")).strip()
-            if not pattern:
-                return ""
-            try:
-                match = re.search(pattern, sample, flags=re.MULTILINE)
-            except re.error as exc:
-                return f"정규식 오류: {exc}"
-            if match is None:
-                return ""
-            if match.lastindex:
-                return match.group(1)
-            return match.group(0)
-        return ""
+        return extract_value(column, sample)
 
     def _copy_selected_profile(self, index: int | None = None) -> None:
         if self._loading_state:
@@ -1421,6 +1729,7 @@ class InspectorProfileDialog(QDialog):
 
     def refresh_preview(self) -> None:
         self._collect_state()
+        self._refresh_required_marks()
         issues = self._validation_issues()
         parser_rows = self._parser_rows_from_columns()
         try:
@@ -1606,6 +1915,7 @@ class InspectorProfileDialog(QDialog):
         return "\n".join(lines)
 
     def _save_profile(self) -> None:
+        self._show_missing_required = True
         self.refresh_preview()
         if not self.save_button.isEnabled():
             self.tabs.setCurrentWidget(self.review_tab)

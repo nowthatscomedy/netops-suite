@@ -8,6 +8,14 @@ from app.ui.common.tables import (
 )
 from app.ui.common.table_items import nullable_number_sort_value, sortable_table_item
 from app.ui.common.theme import apply_app_theme
+from app.ui.common.required import (
+    check_required,
+    make_required_legend,
+    mark_missing,
+    required_label,
+    required_legend_text,
+    set_required_label,
+)
 from app.ui.common.ux import (
     confirm_risky_action,
     ensure_visible_checkbox,
@@ -24,6 +32,12 @@ from app.ui.common.ux import (
 )
 
 __all__ = [
+    "check_required",
+    "make_required_legend",
+    "mark_missing",
+    "required_label",
+    "required_legend_text",
+    "set_required_label",
     "JobRunner",
     "apply_app_theme",
     "bind_empty_state",

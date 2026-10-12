@@ -181,7 +181,7 @@ gitleaks dir --no-banner --redact .
 ```powershell
 pip install -r requirements-dev-lock.txt
 pip install "pyinstaller==6.21.0" "pyinstaller-hooks-contrib==2026.6"
-powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.2.0 -Clean
+powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.3.0 -Clean
 ```
 
 Windows 설치 파일 빌드에는 Inno Setup 6가 필요합니다.
@@ -216,7 +216,7 @@ GitHub Actions 릴리즈 빌드는 `workflow_dispatch`로 수동 실행하며, �
 ```powershell
 $env:WINDOWS_CODESIGN_CERT_PATH = "C:\path\codesign.pfx"
 $env:WINDOWS_CODESIGN_CERT_PASSWORD = "<pfx password>"
-powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.2.0 -Clean -RequireCodeSigning
+powershell -ExecutionPolicy Bypass -File .\scripts\build_release.ps1 -Version 1.3.0 -Clean -RequireCodeSigning
 ```
 
 ## 프로젝트 구조

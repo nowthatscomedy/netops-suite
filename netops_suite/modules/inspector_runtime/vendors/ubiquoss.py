@@ -8,7 +8,7 @@ Ubiquoss 장비의 명령어, 파싱 규칙, 핸들러 클래스를 제공합니
 from core import telnet_compat as telnetlib
 import time
 import logging
-from vendors.base import CustomDeviceHandler, register_handler
+from vendors.base import CustomDeviceHandler, register_handler, telnet_login
 from core.ssh_compat import CompatibleSSHClient
 import re
 
@@ -430,18 +430,10 @@ class UbiquossE4020Handler(CustomDeviceHandler):
         
         self.tn = telnetlib.Telnet(self.device['ip'], port=self.device['port'], timeout=self.timeout)
         
-        # Username 입력 - str()로 명시적 변환
-        self.tn.read_until(b"Username:", timeout=10)
-        self.tn.write(str(self.device['username']).encode('utf-8') + b"\n")
-        time.sleep(1)
-        
-        # Password 입력 - str()로 명시적 변환
-        self.tn.read_until(b"Password:", timeout=10)
-        self.tn.write(str(self.device['password']).encode('utf-8') + b"\n")
-        time.sleep(2)
-        
-        # 로그인 후 출력 확인
-        output = self.tn.read_very_eager().decode('utf-8', errors='ignore')
+        # 장비가 실제로 묻는 프롬프트에만 답합니다. 비밀번호가 없으면 바로 CLI가 열립니다.
+        output = telnet_login(
+            self.tn, self.device.get('username', ''), self.device.get('password', ''), self.timeout
+        )
         self.log_output("로그인 후 출력", output)
         
         return True

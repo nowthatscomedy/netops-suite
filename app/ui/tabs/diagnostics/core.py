@@ -34,6 +34,7 @@ from app.models.network_models import PublicIperfServer
 from app.models.result_models import PingResult, TcpCheckResult
 from app.ui.common import JobRunner, nullable_number_sort_value, sortable_table_item
 from app.ui.common.disclosure import make_page_header
+from app.ui.common.required import mark_missing
 from app.ui.tabs.diagnostics.dns import DnsDiagnosticsMixin
 from app.ui.tabs.diagnostics.ftp import FtpDiagnosticsMixin
 from app.ui.tabs.diagnostics.iperf import IperfDiagnosticsMixin
@@ -321,6 +322,7 @@ class DiagnosticsTab(
         label.setStyleSheet("color:#b42318;")
         label.setWordWrap(True)
         label.show()
+        mark_missing(field)
         field.setFocus()
 
     def _build_quick_diagnostics_bar(self) -> QWidget:

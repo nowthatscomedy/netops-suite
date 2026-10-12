@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 
 from app.ui.common import make_empty_state, make_inline_status, set_inline_status
 from app.ui.common.disclosure import CollapsibleSection
+from app.ui.common.required import mark_missing, required_label
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
@@ -43,7 +44,7 @@ class DnsDiagnosticsMixin:
         button_row.addWidget(self.dns_export_button)
         button_row.addStretch(1)
 
-        form.addRow("도메인 / IP", self.dns_query_edit)
+        form.addRow(required_label("도메인 / IP"), self.dns_query_edit)
         form.addRow("레코드 타입", self.dns_type_combo)
         form.addRow("", self.dns_type_hint)
         self.dns_options_section = CollapsibleSection("실행 옵션")
@@ -83,6 +84,7 @@ class DnsDiagnosticsMixin:
         query = self.dns_query_edit.text().strip()
         if not query:
             set_inline_status(self.dns_input_error, "error", "도메인 또는 IP를 입력해 주세요.")
+            mark_missing(self.dns_query_edit)
             self.dns_query_edit.setFocus()
             return
 

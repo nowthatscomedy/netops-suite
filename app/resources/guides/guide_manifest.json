@@ -31,7 +31,9 @@
         "app/guides/*",
         "app/ui/common/theme.py",
         "netops_suite/ui/icons.py",
-        "assets/icons/lucide"
+        "assets/icons/lucide",
+        "app/ui/common/result_focus.py",
+        "app/ui/common/required.py"
       ],
       "keywords": [
         "빠른 시작",
@@ -145,7 +147,9 @@
       "route": "diagnostics",
       "source_paths": [
         "app/ui/tabs/diagnostics_tab.py",
-        "app/ui/tabs/diagnostics/core.py"
+        "app/ui/tabs/diagnostics/core.py",
+        "app/ui/tabs/diagnostics/result_dock.py",
+        "app/ui/common/result_focus.py"
       ],
       "keywords": [
         "진단",
@@ -873,6 +877,7 @@
       "source_paths": [
         "app/ui/tabs/inspector_tab.py",
         "app/ui/dialogs/inspector_profile_dialog.py",
+        "netops_suite/modules/inspector/extraction_suggest.py",
         "netops_suite/modules/inspector/service.py",
         "netops_suite/modules/inspector/vendor_profiles",
         "netops_suite/modules/inspector_runtime/core/command_patterns.py",
@@ -928,6 +933,7 @@
         "guide_inspector_overview",
         "inspector_profile",
         "guide_inspector_profile_trial",
+        "guide_inspector_profile_columns",
         "inspector_expanded_1024",
         "inspector_expanded_1280",
         "inspector_expanded_1600",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+import math
 from collections import Counter
 from typing import Any
 
@@ -121,6 +122,18 @@ def validate_device_info(device: dict[str, Any]) -> tuple[bool, str]:
     return True, ""
 
 
+def _credential_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        if math.isnan(value):
+            return ""
+        # A numeric column with a blank cell turns 1234 into 1234.0.
+        if value.is_integer():
+            return str(int(value))
+    return str(value)
+
+
 def validate_dataframe(
     df: pd.DataFrame,
     input_column_aliases: dict[str, str] | None = None,
@@ -134,6 +147,12 @@ def validate_dataframe(
         normalized_df["model"] = normalized_df["model"].fillna("").map(
             lambda value: str(value).strip()
         )
+
+    # A blank password cell means the device has no password: some devices
+    # (for example AxGate without a login password) open straight to the CLI.
+    for column in ("username", "password", "enable_password"):
+        if column in normalized_df.columns:
+            normalized_df[column] = normalized_df[column].map(_credential_text)
 
     missing_columns = [col for col in REQUIRED_INPUT_COLUMNS if col not in normalized_df.columns]
     if missing_columns:

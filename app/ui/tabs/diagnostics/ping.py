@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from app.models.result_models import PingResult
 from app.ui.common import fit_wrapped_label_height, make_empty_state, make_inline_status, set_inline_status
 from app.ui.common.disclosure import CollapsibleSection
+from app.ui.common.required import mark_missing, required_label
 from app.utils.parser import parse_target_entries
 from app.utils.validators import ValidationError
 
@@ -110,7 +111,7 @@ class PingDiagnosticsMixin:
         button_row.addWidget(self.ping_cancel_button)
         button_row.addStretch(1)
 
-        group_layout.addWidget(QLabel("대상 목록"), 0, 0, 2, 1, alignment=Qt.AlignmentFlag.AlignTop)
+        group_layout.addWidget(required_label("대상 목록"), 0, 0, 2, 1, alignment=Qt.AlignmentFlag.AlignTop)
         group_layout.addLayout(targets_layout, 0, 1, 2, 1)
         self.ping_options_section = CollapsibleSection("실행 옵션")
         self.ping_options_section.content_layout.addLayout(options_row)
@@ -192,6 +193,7 @@ class PingDiagnosticsMixin:
             if error_widget is not self.ping_targets_edit:
                 self.ping_options_section.setExpanded(True)
             set_inline_status(self.ping_input_error, "error", str(exc))
+            mark_missing(error_widget)
             error_widget.setFocus()
             return
 

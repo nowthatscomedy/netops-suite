@@ -26,6 +26,7 @@ from app.models.scp_models import ScpProfile, ScpServerRuntime, ScpTransferResul
 from app.ui.common import confirm_risky_action, make_empty_state, make_table_item, set_table_minimums
 from app.ui.dialogs.scp_profile_dialog import ScpProfileDialog
 from app.ui.common.disclosure import CollapsibleSection
+from app.ui.common.required import check_required, required_label
 from app.utils.file_utils import open_in_explorer
 
 
@@ -91,11 +92,11 @@ class ScpDiagnosticsMixin:
             self.scp_client_local_browse_button,
         )
 
-        form.addWidget(QLabel("호스트"), 0, 0)
+        form.addWidget(required_label("호스트"), 0, 0)
         form.addWidget(self.scp_client_host_edit, 0, 1)
         form.addWidget(QLabel("포트"), 0, 2)
         form.addWidget(self.scp_client_port_edit, 0, 3)
-        form.addWidget(QLabel("사용자명"), 1, 0)
+        form.addWidget(required_label("사용자명"), 1, 0)
         form.addWidget(self.scp_client_username_edit, 1, 1)
         form.addWidget(QLabel("비밀번호"), 1, 2)
         form.addWidget(self.scp_client_password_edit, 1, 3)
@@ -246,7 +247,7 @@ class ScpDiagnosticsMixin:
         form.addWidget(self.scp_server_bind_warning_label, 4, 0, 1, 4)
         form.addWidget(QLabel("포트"), 0, 2)
         form.addWidget(self.scp_server_port_edit, 0, 3)
-        form.addWidget(QLabel("공유 루트"), 1, 0)
+        form.addWidget(required_label("공유 루트"), 1, 0)
         root_row = QWidget()
         root_row_layout = QHBoxLayout(root_row)
         root_row_layout.setContentsMargins(0, 0, 0, 0)
@@ -611,6 +612,8 @@ class ScpDiagnosticsMixin:
         self._apply_scp_support_label(self.scp_server_support_label, support)
         if not support.success:
             self._show_scp_support_warning("SCP 서버 준비 필요", support)
+            return
+        if not check_required(self, [(self.scp_server_root_edit, "공유 루트")], title="서버 시작 전 확인"):
             return
         root = self.scp_server_root_edit.text().strip() or "(공유 루트 미입력)"
         access = "읽기 전용" if bool(self.scp_server_readonly_combo.currentData()) else "읽기/쓰기 가능"

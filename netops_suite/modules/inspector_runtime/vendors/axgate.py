@@ -12,7 +12,7 @@ import paramiko
 from core.ssh_compat import CompatibleSSHClient
 import re
 from datetime import datetime
-from vendors.base import CustomDeviceHandler, register_handler
+from vendors.base import CustomDeviceHandler, register_handler, telnet_login
 
 logger = logging.getLogger(__name__)
 
@@ -185,18 +185,10 @@ class AxgateHandler(CustomDeviceHandler):
         
         self.tn = telnetlib.Telnet(self.device['ip'], port=self.device['port'], timeout=self.timeout)
         
-        # Username 입력 (타임아웃 20초로 늘림)
-        self.tn.read_until(b"Username:", timeout=20)
-        self.tn.write(self.device['username'].encode('utf-8') + b"\n")
-        time.sleep(2)  # 대기 시간 증가
-        
-        # Password 입력 (타임아웃 20초로 늘림)
-        self.tn.read_until(b"Password:", timeout=20)
-        self.tn.write(self.device['password'].encode('utf-8') + b"\n")
-        time.sleep(3)  # 대기 시간 증가
-        
-        # 로그인 후 출력 확인
-        output = self.tn.read_very_eager().decode('utf-8', errors='ignore')
+        # 장비가 실제로 묻는 프롬프트에만 답합니다. 비밀번호가 없으면 바로 CLI가 열립니다.
+        output = telnet_login(
+            self.tn, self.device.get('username', ''), self.device.get('password', ''), self.timeout
+        )
         self.log_output("로그인 후 출력", output)
         
         return True

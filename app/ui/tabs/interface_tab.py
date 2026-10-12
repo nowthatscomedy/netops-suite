@@ -31,6 +31,7 @@ from app.models.profile_models import IPProfile
 from app.ui.common import confirm_risky_action, make_empty_state, make_inline_status, make_table_item, set_inline_status
 from app.ui.dialogs.profile_editor_dialog import ProfileEditorDialog
 from app.ui.common.disclosure import CollapsibleSection, make_page_header
+from app.ui.common.required import mark_missing, required_label
 from app.utils.threading_utils import FunctionWorker
 from app.utils.validators import (
     ValidationError,
@@ -183,8 +184,8 @@ class InterfaceTab(QWidget):
         static_form = QFormLayout(self.static_fields)
         static_form.setContentsMargins(0, 0, 0, 0)
         static_form.setSizeConstraint(QFormLayout.SizeConstraint.SetMinimumSize)
-        static_form.addRow("로컬 IPv4", self.ip_edit)
-        static_form.addRow("프리픽스 / 마스크", self.prefix_edit)
+        static_form.addRow(required_label("로컬 IPv4"), self.ip_edit)
+        static_form.addRow(required_label("프리픽스 / 마스크"), self.prefix_edit)
         static_form.addRow("게이트웨이", self.gateway_edit)
         static_form.addRow("DNS", self.dns_edit)
         form_group_layout.addWidget(self.static_fields)
@@ -504,6 +505,7 @@ class InterfaceTab(QWidget):
         except ValidationError as exc:
             set_inline_status(self.form_status_label, "error", f"{exc} 입력값을 수정한 뒤 다시 검토하세요.")
             self.form_status_label.show()
+            mark_missing(validation_target)
             validation_target.setFocus(Qt.FocusReason.OtherFocusReason)
             validation_target.selectAll()
             return

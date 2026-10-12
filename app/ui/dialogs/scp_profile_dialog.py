@@ -10,7 +10,13 @@ from PySide6.QtWidgets import (
 )
 
 from app.models.scp_models import ScpProfile
-from app.ui.common import make_dialog_intro, polish_dialog
+from app.ui.common import (
+    check_required,
+    make_dialog_intro,
+    make_required_legend,
+    polish_dialog,
+    required_label,
+)
 from app.utils.validators import ValidationError, parse_positive_int, validate_ftp_host, validate_ftp_username
 from netops_suite.ui.actions import polish_dialog_button_box
 
@@ -40,13 +46,15 @@ class ScpProfileDialog(QDialog):
         form = QFormLayout()
         form.setVerticalSpacing(8)
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        form.addRow("프로파일 이름", self.name_edit)
-        form.addRow("호스트", self.host_edit)
+        form.addRow(required_label("프로파일 이름"), self.name_edit)
+        form.addRow(required_label("호스트"), self.host_edit)
         form.addRow("포트", self.port_edit)
-        form.addRow("사용자명", self.username_edit)
+        form.addRow(required_label("사용자명"), self.username_edit)
         form.addRow("기본 원격 경로", self.remote_path_edit)
         form.addRow("타임아웃(초)", self.timeout_edit)
         layout.addLayout(form)
+        self.required_legend = make_required_legend()
+        layout.addWidget(self.required_legend)
 
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         polish_dialog_button_box(self.buttons)
@@ -55,6 +63,13 @@ class ScpProfileDialog(QDialog):
         layout.addWidget(self.buttons)
 
     def _handle_accept(self) -> None:
+        required = [
+            (self.name_edit, "프로파일 이름"),
+            (self.host_edit, "호스트"),
+            (self.username_edit, "사용자명"),
+        ]
+        if not check_required(self, required, self.required_legend):
+            return
         try:
             self.profile_data()
         except ValidationError as exc:

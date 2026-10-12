@@ -126,7 +126,9 @@ def test_unsaved_profile_trial_runs_commands_on_old_firmware(tmp_path, kind):
     assert [item["command"] for item in result.outputs] == ["show version", "show system"]
     assert all("TEST OUTPUT" in item["output"] for item in result.outputs)
     assert result.session_log_dir and "results" in result.session_log_dir
-    assert any("SSH 방식 확인" in event["message"] for event in events)
+    assert any("SSH 방식 확인" in event.get("message", "") for event in events)
+    live = "".join(event["text"] for event in events if event.get("type") == "session")
+    assert "show version" in live and "TEST OUTPUT" in live
     assert marker.exists()
 
 
@@ -224,6 +226,22 @@ def test_profile_dialog_trial_reports_failure_hint(qapp, tmp_path):
             connection_type="ssh", error="TCP 연결 테스트 실패 / 조치: 방화벽을 확인하세요."))
         assert "조치:" in dialog.trial_status_label.text()
         assert dialog.state["commands"][0]["sample"] == before
+    finally:
+        dialog._dirty = False
+        dialog.close()
+
+
+def test_profile_dialog_streams_session_text_live(qapp, tmp_path):
+    from app.ui.dialogs.inspector_profile_dialog import InspectorProfileDialog
+
+    dialog = InspectorProfileDialog(InspectorService(user_data_dir=tmp_path / "inspector"))
+    try:
+        status = dialog.trial_status_label.text()
+        dialog._show_trial_progress({"type": "session", "text": "AXGATE# show system"})
+        dialog._show_trial_progress({"type": "session", "text": " version\r\nOS: 2.1\r\nAXGATE# "})
+        assert dialog.trial_session_view.toPlainText() == "AXGATE# show system version\nOS: 2.1\nAXGATE# "
+        assert dialog.trial_status_label.text() == status
+        assert dialog.trial_session_view.isReadOnly()
     finally:
         dialog._dirty = False
         dialog.close()

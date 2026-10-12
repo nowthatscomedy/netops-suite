@@ -23,6 +23,11 @@ from PySide6.QtWidgets import (
 )
 
 from app.ui.common import make_dialog_intro, polish_dialog
+from app.ui.common.required import (
+    check_required,
+    make_required_legend,
+    required_label,
+)
 from .authoring import (
     ProfileSaveConflictError,
     inspect_profile_save_target,
@@ -148,12 +153,14 @@ class ProfileBuilderDialog(QDialog):
         self.description_edit = QPlainTextEdit()
         self.description_edit.setFixedHeight(110)
         self.description_edit.setPlaceholderText("이 프로파일이 어떤 장비/용도에 쓰이는지 설명")
-        form.addRow("프로파일 ID", self.profile_id_edit)
-        form.addRow("벤더", self.vendor_edit)
-        form.addRow("모델", self.model_edit)
-        form.addRow("펌웨어", self.firmware_edit)
+        form.addRow(required_label("프로파일 ID"), self.profile_id_edit)
+        form.addRow(required_label("벤더"), self.vendor_edit)
+        form.addRow(required_label("모델"), self.model_edit)
+        form.addRow(required_label("펌웨어"), self.firmware_edit)
         form.addRow("설명", self.description_edit)
         layout.addLayout(form)
+        self.required_legend = make_required_legend()
+        layout.addWidget(self.required_legend)
         layout.addStretch(1)
         self.tabs.addTab(tab, "기본 정보")
 
@@ -205,7 +212,7 @@ class ProfileBuilderDialog(QDialog):
             self.variable_auto_increment_combo.addItem(label, value)
         self.variable_description_edit = QLineEdit()
         self.variable_description_edit.setPlaceholderText("예: 관리 VLAN 번호")
-        form.addRow("변수명", self.variable_name_edit)
+        form.addRow(required_label("변수명"), self.variable_name_edit)
         form.addRow("타입", self.variable_type_combo)
         form.addRow("필수 여부", self.variable_required_check)
         form.addRow("기본값", self.variable_default_edit)
@@ -257,7 +264,7 @@ class ProfileBuilderDialog(QDialog):
         self.block_lines_edit = QPlainTextEdit()
         self.block_lines_edit.setMinimumHeight(280)
         self.block_lines_edit.setPlaceholderText("hostname {{ hostname }}\ninterface vlan {{ mgmt_vlan }}\n ip address {{ mgmt_ip }} {{ mgmt_mask }}")
-        form.addRow("블록 이름", self.block_name_edit)
+        form.addRow(required_label("블록 이름"), self.block_name_edit)
         form.addRow("명령어", self.block_lines_edit)
         right.addLayout(form)
         right.addStretch(1)
@@ -536,6 +543,15 @@ class ProfileBuilderDialog(QDialog):
 
     def save_profile(self) -> None:
         self.refresh_preview()
+        required = [
+            (self.profile_id_edit, "프로파일 ID"),
+            (self.vendor_edit, "벤더"),
+            (self.model_edit, "모델"),
+            (self.firmware_edit, "펌웨어"),
+        ]
+        if not check_required(self, required, self.required_legend):
+            self.tabs.setCurrentIndex(0)
+            return
         if self.latest_issues:
             QMessageBox.warning(self, "검토 필요", "오류를 먼저 해결한 뒤 저장하세요.")
             self.tabs.setCurrentIndex(3)

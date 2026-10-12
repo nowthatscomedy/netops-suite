@@ -11,7 +11,14 @@ from PySide6.QtWidgets import (
 )
 
 from app.models.profile_models import IPProfile
-from app.ui.common import make_dialog_intro, polish_dialog
+from app.ui.common import (
+    check_required,
+    make_dialog_intro,
+    make_required_legend,
+    polish_dialog,
+    required_label,
+    set_required_label,
+)
 from app.utils.validators import (
     ValidationError,
     parse_dns_servers,
@@ -55,14 +62,18 @@ class ProfileEditorDialog(QDialog):
         form = QFormLayout()
         form.setVerticalSpacing(8)
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        form.addRow("프로파일 이름", self.name_edit)
+        form.addRow(required_label("프로파일 이름"), self.name_edit)
         form.addRow("모드", self.mode_combo)
         form.addRow("기본 인터페이스", self.interface_edit)
-        form.addRow("로컬 IPv4", self.ip_edit)
-        form.addRow("Prefix / 마스크", self.prefix_edit)
+        self.ip_label = required_label("로컬 IPv4")
+        form.addRow(self.ip_label, self.ip_edit)
+        self.prefix_label = required_label("Prefix / 마스크")
+        form.addRow(self.prefix_label, self.prefix_edit)
         form.addRow("게이트웨이", self.gateway_edit)
         form.addRow("DNS 서버", self.dns_edit)
         layout.addLayout(form)
+        self.required_legend = make_required_legend()
+        layout.addWidget(self.required_legend)
 
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         polish_dialog_button_box(self.buttons)
@@ -75,12 +86,19 @@ class ProfileEditorDialog(QDialog):
 
     def _update_mode_state(self, mode: str) -> None:
         is_static = self.mode_combo.currentData() == "static"
+        set_required_label(self.ip_label, "로컬 IPv4", is_static)
+        set_required_label(self.prefix_label, "Prefix / 마스크", is_static)
         self.ip_edit.setEnabled(is_static)
         self.prefix_edit.setEnabled(is_static)
         self.gateway_edit.setEnabled(is_static)
         self.dns_edit.setEnabled(True)
 
     def _handle_accept(self) -> None:
+        required = [(self.name_edit, "프로파일 이름")]
+        if self.mode_combo.currentData() == "static":
+            required += [(self.ip_edit, "로컬 IPv4"), (self.prefix_edit, "Prefix / 마스크")]
+        if not check_required(self, required, self.required_legend):
+            return
         try:
             self.profile_data()
         except ValidationError as exc:

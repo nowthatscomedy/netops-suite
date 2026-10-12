@@ -18,6 +18,7 @@ from app.ui.common import set_table_minimums
 from app.ui.common.disclosure import CollapsibleSection
 
 from netops_suite.ui.actions import ActionKind, make_action_button
+from netops_suite.ui.icons import icon
 
 class ResultDockWidget(QDockWidget):
     def __init__(self, title: str, on_restore, parent=None) -> None:
@@ -29,6 +30,16 @@ class ResultDockWidget(QDockWidget):
         if not self._closing_from_restore and self._on_restore is not None:
             self._on_restore(from_dock_close=True)
         super().closeEvent(event)
+
+
+RESULT_TITLES = {"ping": "Ping 결과", "tcp": "포트 확인 결과 (TCPing)"}
+
+
+class _FocusHandle:
+    """Marks a result panel that is shown in the main window's large view."""
+
+    def __init__(self, host) -> None:
+        self.host = host
 
 
 class ResultDockMixin:
@@ -77,9 +88,25 @@ class ResultDockMixin:
         button_row.addWidget(detail_check)
         setattr(self, f"{key}_detail_columns_check", detail_check)
         button_row.addStretch(1)
+        focus_button = make_action_button(
+            "크게 보기",
+            ActionKind.OPEN,
+            tooltip="결과 표를 작업 영역 전체에 펼쳐 봅니다. 다시 누르면 원래 자리로 돌아옵니다.",
+            object_name=f"{key}ResultFocusButton",
+        )
+        focus_button.setIcon(icon("panels-top-left", "#344054", 16))
+        focus_button.clicked.connect(
+            lambda _checked=False, mode=key: self.set_result_dock_visible(
+                mode, not self.is_result_dock_visible(mode)
+            )
+        )
+        button_row.addWidget(focus_button)
+        setattr(self, f"{key}_result_focus_button", focus_button)
         result_layout.addLayout(button_row)
 
-        placeholder = QLabel("결과 표 분리됨. 보기 메뉴에서 복원할 수 있습니다.")
+        placeholder = QLabel(
+            "결과를 크게 보는 중입니다. 결과 화면의 '원래 화면으로'나 Esc를 누르면 여기로 돌아옵니다."
+        )
         placeholder.setAlignment(Qt.AlignCenter)
         placeholder.setWordWrap(True)
         placeholder.setStyleSheet(
@@ -117,6 +144,9 @@ class ResultDockMixin:
 
     def _detach_result_panel(self, key: str) -> None:
         main_window = self.window()
+        if callable(getattr(main_window, "show_result_focus", None)):
+            self._focus_result_panel(key, main_window)
+            return
         if not isinstance(main_window, QMainWindow):
             QMessageBox.warning(self, "분리 실패", "메인 창을 찾지 못해 결과 표를 분리할 수 없습니다.")
             return
@@ -158,6 +188,24 @@ class ResultDockMixin:
         self._result_splitters[key].setSizes([40, 200])
         self.result_dock_visibility_changed.emit(key, True)
 
+    def _focus_result_panel(self, key: str, main_window) -> None:
+        """Move the panel into the main window's full work-area result view."""
+        panel = self._result_panels[key]
+        self._result_host_layouts[key].removeWidget(panel)
+        panel.setParent(None)
+        self._result_placeholders[key].show()
+        self._result_hosts[key].setMaximumHeight(60)
+        self._floating_result_docks[key] = _FocusHandle(main_window)
+        self._set_focus_button_text(key, focused=True)
+        main_window.show_result_focus(key, RESULT_TITLES.get(key, key), panel)
+        self._result_splitters[key].setSizes([60, 200])
+        self.result_dock_visibility_changed.emit(key, True)
+
+    def _set_focus_button_text(self, key: str, *, focused: bool) -> None:
+        button = getattr(self, f"{key}_result_focus_button", None)
+        if button is not None:
+            button.setText("원래 자리로" if focused else "크게 보기")
+
     def _attach_result_panel(self, key: str, from_dock_close: bool = False) -> None:
         result_host = self._result_hosts[key]
         host_layout = self._result_host_layouts[key]
@@ -165,7 +213,14 @@ class ResultDockMixin:
         placeholder = self._result_placeholders[key]
         dock = self._floating_result_docks.get(key)
 
-        if dock is not None:
+        if isinstance(dock, _FocusHandle):
+            returned = dock.host.release_result_focus(key)
+            if returned is not None:
+                panel = returned
+                self._result_panels[key] = panel
+            self._floating_result_docks[key] = None
+            self._set_focus_button_text(key, focused=False)
+        elif dock is not None:
             current_widget = dock.widget()
             if current_widget is not None and current_widget is not panel:
                 panel = current_widget
@@ -191,7 +246,9 @@ class ResultDockMixin:
                 self._detach_result_panel(key)
             else:
                 dock = self._floating_result_docks[key]
-                if dock is not None:
+                if isinstance(dock, _FocusHandle):
+                    dock.host.show_result_focus(key, RESULT_TITLES.get(key, key), None)
+                elif dock is not None:
                     dock.show()
                     dock.raise_()
             return

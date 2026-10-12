@@ -29,6 +29,7 @@ from app.ui.common import (
     make_visible_checkbox,
     set_table_minimums,
 )
+from app.ui.common.required import check_required, required_label
 from app.utils.file_utils import open_in_explorer
 
 
@@ -80,7 +81,7 @@ class TftpDiagnosticsMixin:
             self.tftp_client_local_browse_button,
         )
 
-        form.addWidget(QLabel("호스트"), 0, 0)
+        form.addWidget(required_label("호스트"), 0, 0)
         form.addWidget(self.tftp_client_host_edit, 0, 1)
         form.addWidget(QLabel("포트"), 0, 2)
         form.addWidget(self.tftp_client_port_edit, 0, 3)
@@ -216,7 +217,7 @@ class TftpDiagnosticsMixin:
         form.addWidget(self.tftp_server_bind_warning_label, 3, 0, 1, 4)
         form.addWidget(QLabel("포트"), 0, 2)
         form.addWidget(self.tftp_server_port_edit, 0, 3)
-        form.addWidget(QLabel("공유 루트"), 1, 0)
+        form.addWidget(required_label("공유 루트"), 1, 0)
         root_row = QWidget()
         root_layout = QHBoxLayout(root_row)
         root_layout.setContentsMargins(0, 0, 0, 0)
@@ -502,6 +503,8 @@ class TftpDiagnosticsMixin:
         self._apply_tftp_support_label(self.tftp_server_support_label, support)
         if not support.success:
             self._show_tftp_support_warning("TFTP 서버 준비 필요", support)
+            return
+        if not check_required(self, [(self.tftp_server_root_edit, "공유 루트")], title="서버 시작 전 확인"):
             return
         root = self.tftp_server_root_edit.text().strip() or "(공유 루트 미입력)"
         access = "읽기 전용" if self.tftp_server_readonly_check.isChecked() else "읽기/쓰기 가능"

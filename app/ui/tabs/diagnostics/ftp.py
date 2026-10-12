@@ -38,6 +38,7 @@ from app.ui.common import (
 )
 from app.ui.dialogs.ftp_profile_dialog import FtpProfileDialog
 from app.ui.common.disclosure import CollapsibleSection
+from app.ui.common.required import check_required, mark_missing, required_label
 from app.utils.file_utils import open_in_explorer
 from app.utils.validators import (
     default_ftp_port,
@@ -351,6 +352,7 @@ class FtpDiagnosticsMixin:
         label.setWordWrap(True)
         label.setStyleSheet("color:#b42318;")
         if field is not None:
+            mark_missing(field)
             field.setFocus()
 
     def _validate_transfer_host(self, protocol: str) -> bool:
@@ -458,7 +460,7 @@ class FtpDiagnosticsMixin:
 
         form.addWidget(QLabel("프로토콜"), 0, 0)
         form.addWidget(self.ftp_client_protocol_combo, 0, 1)
-        form.addWidget(QLabel("호스트"), 0, 2)
+        form.addWidget(required_label("호스트"), 0, 2)
         form.addWidget(self.ftp_client_host_edit, 0, 3)
 
         form.addWidget(QLabel("포트"), 1, 0)
@@ -668,7 +670,7 @@ class FtpDiagnosticsMixin:
 
         form.addWidget(QLabel("포트"), 1, 0)
         form.addWidget(self.ftp_server_port_edit, 1, 1)
-        form.addWidget(QLabel("공유 루트"), 1, 2)
+        form.addWidget(required_label("공유 루트"), 1, 2)
         root_row = QWidget()
         root_row_layout = QHBoxLayout(root_row)
         root_row_layout.setContentsMargins(0, 0, 0, 0)
@@ -1260,6 +1262,8 @@ class FtpDiagnosticsMixin:
         self._apply_ftp_support_label(self.ftp_server_support_label, support)
         if not support.success:
             self._show_ftp_support_warning("FTP 서버 준비 필요", support)
+            return
+        if not check_required(self, [(self.ftp_server_root_edit, "공유 루트")], title="서버 시작 전 확인"):
             return
         protocol = str(self.ftp_server_protocol_combo.currentData() or "ftp").upper()
         root = self.ftp_server_root_edit.text().strip() or "(공유 루트 미입력)"

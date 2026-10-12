@@ -780,7 +780,19 @@ class OffscreenQaHarness:
         self._paste(dialog.trial_ip_edit, "192.0.2.10")
         self._paste(dialog.trial_username_edit, "admin")
         self._paste(dialog.trial_password_edit, "CHANGE_ME_PASSWORD")
-        # The trial result is injected: offscreen QA never logs in to a device.
+        # The trial session and result are injected: offscreen QA never logs in to a device.
+        dialog._show_trial_progress(
+            {
+                "type": "session",
+                "text": (
+                    "연결 시도 1\nSSH 알고리즘 협상 실패: 격리된 레거시 SSH로 한 번 전환\n"
+                    "레거시 SSH 연결: ssh-rsa\n\nC9300#terminal length 0\nC9300#show version\n"
+                    "Cisco IOS XE Software, Version 17.09.04\ncisco C9300-24T processor\n"
+                    "Processor board ID FOC1234ABCD\nC9300#show inventory\n"
+                    'NAME: "Chassis", DESCR: "C9300-24T"\nC9300#'
+                ),
+            }
+        )
         dialog._show_trial_result(
             ProfileTrialResult(
                 connection_type="ssh",
@@ -829,6 +841,69 @@ class OffscreenQaHarness:
             dialog.trial_run_button,
             dialog.trial_result_view,
         ):
+            self._assert_control_accessible(control)
+        for object_name in scenario.get("expected_object_names", []):
+            candidates = dialog.findChildren(QWidget, object_name)
+            self._check(
+                any(candidate.isVisibleTo(dialog) for candidate in candidates),
+                f"가이드 캡처 objectName 표시: {object_name}",
+            )
+
+    def _capture_handler_inspector_profile_columns(self, scenario: dict) -> None:
+        from PySide6.QtGui import QTextCursor
+
+        window = self._require_window()
+        self._navigate_main(3)
+        dialog = InspectorProfileDialog(window.inspector_tab.service, window)
+        width, height = scenario["viewport"]
+        dialog.resize(width, height)
+        dialog.show()
+        self._active_capture_widget = dialog
+
+        def close_dialog() -> None:
+            dialog._dirty = False
+            dialog.close()
+
+        self._post_capture = close_dialog
+        self._flush()
+        self._paste(dialog.vendor_edit, "Cisco")
+        self._paste(dialog.os_edit, "IOS-XE")
+        dialog.state["commands"][0]["sample"] = (
+            "Cisco IOS XE Software, Version 17.09.04\n"
+            "cisco C9300-24T (X86) processor with 1419044K/6147K bytes of memory.\n"
+            "Processor board ID FOC1234ABCD\n"
+            "Configuration register is 0x102\n"
+        )
+        dialog._load_command(0)
+        dialog.tabs.setCurrentWidget(dialog.column_tab)
+        self._check(
+            dialog.tabs.tabText(dialog.tabs.currentIndex()) == "5. Excel 컬럼",
+            "값 고르기 단계 번호 표시",
+        )
+        dialog.column_command_combo.setCurrentText("show version")
+        dialog._refresh_extraction_preview()
+        self._flush()
+        view = dialog.column_output_view
+        text = view.toPlainText()
+        start = text.index("1419044K")
+        cursor = view.textCursor()
+        cursor.setPosition(start)
+        cursor.setPosition(start + len("1419044K"), QTextCursor.MoveMode.KeepAnchor)
+        view.setTextCursor(cursor)
+        self._click(dialog.pick_value_button)
+        self._paste(dialog.column_name_edit, "메모리(KB)")
+        column = dialog.state["columns"][-1]
+        self._check(column["name"] == "메모리(KB)", "제안된 컬럼 이름 바꾸기")
+        self._check(
+            dialog._extract_column_value(column, text) == "1419044K",
+            "드래그한 값으로 추출 규칙 자동 생성",
+        )
+        self._check(
+            not dialog.rule_section.content.isVisible(),
+            "추출 규칙 세부 설정은 기본으로 접힘",
+        )
+        self._check(dialog.next_step_button.text() == "다음: 확인·저장", "다음 단계 안내")
+        for control in (view, dialog.pick_value_button, dialog.column_name_edit):
             self._assert_control_accessible(control)
         for object_name in scenario.get("expected_object_names", []):
             candidates = dialog.findChildren(QWidget, object_name)
@@ -1454,7 +1529,7 @@ class OffscreenQaHarness:
             "백업 명령을 점검 명령과 분리해 편집",
         )
 
-        self._click_tab(dialog, 4)
+        self._click_tab(dialog, 3)
         self._check(
             dialog.tabs.currentWidget() is dialog.trial_tab,
             "저장 전 장비로 시험 탭 제공",

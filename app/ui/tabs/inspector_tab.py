@@ -41,6 +41,7 @@ from app.ui.common import (
     set_inline_status,
     set_table_minimums,
 )
+from app.ui.common.required import mark_missing, required_label
 from app.ui.dialogs.inspector_profile_dialog import InspectorProfileDialog
 from app.ui.common.disclosure import (
     CollapsibleSection,
@@ -176,6 +177,9 @@ class InspectorTab(QWidget):
         self.inventory_path_edit = QLineEdit()
         self.inventory_path_edit.textChanged.connect(self._handle_inventory_changed)
         inventory_row = QHBoxLayout()
+        # The label sits above the row so the path lines up with the controls below.
+        self.inventory_path_label = required_label("장비 목록 Excel")
+        self.inventory_path_label.setBuddy(self.inventory_path_edit)
         inventory_row.addWidget(self.inventory_path_edit, 1)
         self.inventory_button = make_action_button(
             "선택",
@@ -193,6 +197,7 @@ class InspectorTab(QWidget):
         )
         self.sample_button.clicked.connect(self._create_sample_inventory)
         inventory_row.addWidget(self.inventory_button)
+        inventory_layout.addWidget(self.inventory_path_label)
         inventory_layout.addLayout(inventory_row)
 
         sample_row = QHBoxLayout()
@@ -226,7 +231,7 @@ class InspectorTab(QWidget):
         self.inventory_password_fields = QWidget()
         password_layout = QFormLayout(self.inventory_password_fields)
         password_layout.setContentsMargins(0, 0, 0, 0)
-        password_layout.addRow("Excel 암호", self.inventory_password_edit)
+        password_layout.addRow(required_label("Excel 암호"), self.inventory_password_edit)
         inventory_layout.addWidget(self.inventory_password_fields)
         self.inventory_password_fields.hide()
         self.inventory_password_check.toggled.connect(self._toggle_inventory_password)
@@ -277,7 +282,7 @@ class InspectorTab(QWidget):
         self.command_text_edit.setTabChangesFocus(True)
         self.command_text_edit.setFixedHeight(104)
         self.command_text_edit.textChanged.connect(self._handle_command_changed)
-        command_layout.addRow("실행할 명령", self.command_text_edit)
+        command_layout.addRow(required_label("실행할 명령"), self.command_text_edit)
 
         self.command_path_edit = QLineEdit()
         self.command_path_edit.setPlaceholderText("사용자 명령 모드에서만 필요합니다")
@@ -293,7 +298,7 @@ class InspectorTab(QWidget):
         )
         self.command_button.clicked.connect(self._pick_command_file)
         command_row.addWidget(self.command_button)
-        command_layout.addRow("사용자 명령 파일", self.command_file_row)
+        command_layout.addRow(required_label("사용자 명령 파일"), self.command_file_row)
         self.command_file_label = command_layout.labelForField(self.command_file_row)
         self.command_text_label = command_layout.labelForField(self.command_text_edit)
 
@@ -1006,6 +1011,7 @@ class InspectorTab(QWidget):
                 "warning",
                 "대상 장비 목록 Excel 파일을 먼저 선택하세요.",
             )
+            mark_missing(self.inventory_path_edit)
             return
         mode = self.mode_combo.currentData()
         command_path = self.command_path_edit.text().strip()
@@ -1014,6 +1020,11 @@ class InspectorTab(QWidget):
                 self.validation_status_label,
                 "warning",
                 self._missing_command_message(),
+            )
+            mark_missing(
+                self.command_text_edit
+                if self._uses_inline_commands()
+                else self.command_path_edit
             )
             return
         try:
@@ -1087,6 +1098,7 @@ class InspectorTab(QWidget):
                 "warning",
                 "대상 장비 목록 Excel 파일을 먼저 선택하세요.",
             )
+            mark_missing(self.inventory_path_edit)
             return
         mode = self.mode_combo.currentData()
         if mode == "custom_commands" and not self._has_command_input():
@@ -1094,6 +1106,11 @@ class InspectorTab(QWidget):
                 self.validation_status_label,
                 "warning",
                 self._missing_command_message(),
+            )
+            mark_missing(
+                self.command_text_edit
+                if self._uses_inline_commands()
+                else self.command_path_edit
             )
             return
         if not self._inventory_validated:

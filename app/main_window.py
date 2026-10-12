@@ -17,6 +17,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QScrollArea,
+    QSizePolicy,
+    QStackedWidget,
     QStatusBar,
     QTabWidget,
     QToolButton,
@@ -28,6 +30,7 @@ from app.app_state import AppState
 from app.guides import GuideCatalog, GuideDialog, QuickHelpPanel
 from app.models.update_models import DownloadedUpdate, UpdateCheckResult
 from app.ui.common import JobRunner, confirm_risky_action, make_menu_button
+from app.ui.common.result_focus import ResultFocusView
 from app.ui.home import HomePage
 from app.ui.tabs.config_builder_tab import ConfigBuilderTab
 from app.ui.tabs.diagnostics_tab import DiagnosticsTab
@@ -185,9 +188,9 @@ class MainWindow(QMainWindow):
         self.view_menu = QMenu("보기", self)
         self.toggle_log_view_action = QAction("애플리케이션 로그", self)
         self.toggle_log_view_action.setCheckable(True)
-        self.ping_result_view_action = QAction("Ping 결과 표", self)
+        self.ping_result_view_action = QAction("Ping 결과 크게 보기", self)
         self.ping_result_view_action.setCheckable(True)
-        self.tcp_result_view_action = QAction("포트 확인 결과 창 (TCPing)", self)
+        self.tcp_result_view_action = QAction("포트 확인 결과 크게 보기 (TCPing)", self)
         self.tcp_result_view_action.setCheckable(True)
         self.view_menu.addAction(self.toggle_log_view_action)
         self.view_menu.addSeparator()
@@ -251,36 +254,47 @@ class MainWindow(QMainWindow):
         utility_row.setSpacing(6)
         self.restart_admin_action = QAction("관리자", self)
         self.restart_admin_action.setToolTip("관리자 권한으로 다시 실행")
+        self.restart_admin_action.setIcon(icon("shield-check", "#b7cbea", 18))
         self.admin_button = QToolButton()
-        self.admin_button.setObjectName("sideUtilityButton")
         self.admin_button.setDefaultAction(self.restart_admin_action)
-        self.view_button = make_menu_button("보기", self.view_menu, "로그와 분리된 결과 표를 표시합니다.")
-        self.view_button.setObjectName("sideUtilityButton")
-        self.view_button.setMinimumHeight(28)
-        self.view_button.setMaximumHeight(32)
+        self.view_button = make_menu_button(
+            "보기", self.view_menu, "앱 로그를 열거나 Ping·포트 확인 결과를 크게 봅니다."
+        )
+        self.view_button.setIcon(icon("panels-top-left", "#b7cbea", 18))
         self.view_button.installEventFilter(self)
         self.guide_action = QAction("도움말", self)
         self.guide_action.setToolTip("현재 작업의 짧은 안내를 엽니다 (F1)")
         self.guide_action.setShortcut(QKeySequence("F1"))
         self.guide_action.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
+        self.guide_action.setIcon(icon("circle-question-mark", "#b7cbea", 18))
         self.addAction(self.guide_action)
         self.guide_button = QToolButton()
-        self.guide_button.setObjectName("sideUtilityButton")
         self.guide_button.setAccessibleName("사용자 가이드")
         self.guide_button.setDefaultAction(self.guide_action)
-        self.guide_button.setMinimumHeight(28)
-        self.guide_button.setMaximumHeight(32)
-        utility_row.addWidget(self.guide_button)
-        utility_row.addWidget(self.admin_button)
-        utility_row.addWidget(self.view_button)
-        utility_row.addStretch(1)
+        # Same size, icon above text, equal width: the three never drift apart.
+        for button in (self.guide_button, self.admin_button, self.view_button):
+            button.setObjectName("sideUtilityButton")
+            button.setProperty("utilityTile", True)
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+            button.setIconSize(QSize(18, 18))
+            button.setFixedHeight(52)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            utility_row.addWidget(button, 1)
         nav_layout.addLayout(utility_row)
 
         content_panel = QFrame()
         content_panel.setObjectName("workspacePanel")
         content_layout = QVBoxLayout(content_panel)
         content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.addWidget(self.tab_widget)
+        # The result view replaces the current page instead of opening small docks.
+        self.result_focus_view = ResultFocusView()
+        self.result_focus_view.return_requested.connect(self._return_result_focus)
+        self.result_focus_view.return_all_requested.connect(self.close_result_focus)
+        self.content_stack = QStackedWidget()
+        self.content_stack.setObjectName("workspaceStack")
+        self.content_stack.addWidget(self.tab_widget)
+        self.content_stack.addWidget(self.result_focus_view)
+        content_layout.addWidget(self.content_stack)
 
         shell = QWidget()
         shell.setObjectName("appShell")
@@ -387,6 +401,8 @@ class MainWindow(QMainWindow):
             page_key, tool_key = "wireless", None
         if page_key not in self._MAIN_PAGE_KEYS:
             return False
+        if self.is_result_focus_visible():
+            self.close_result_focus()
         if page_key == "diagnostics" and tool_key:
             if tool_key not in self.diagnostics_tab._diagnostic_tool_index_by_key:
                 return False
@@ -855,6 +871,32 @@ class MainWindow(QMainWindow):
             self.log_dock.show()
             self.log_dock.raise_()
 
+    def show_result_focus(self, key: str, title: str, panel: QWidget | None) -> None:
+        """Show a result panel across the work area; ``None`` re-selects it."""
+        if panel is not None:
+            self.result_focus_view.add_panel(key, title, panel)
+        else:
+            self.result_focus_view.select(key)
+        self.content_stack.setCurrentWidget(self.result_focus_view)
+        self.result_focus_view.back_button.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def release_result_focus(self, key: str) -> QWidget | None:
+        panel = self.result_focus_view.take_panel(key)
+        if not self.result_focus_view.keys():
+            self.content_stack.setCurrentWidget(self.tab_widget)
+        return panel
+
+    def is_result_focus_visible(self) -> bool:
+        return self.content_stack.currentWidget() is self.result_focus_view
+
+    def _return_result_focus(self, key: str) -> None:
+        self.diagnostics_tab.set_result_dock_visible(key, False)
+
+    def close_result_focus(self) -> None:
+        for key in self.result_focus_view.keys():
+            self.diagnostics_tab.set_result_dock_visible(key, False)
+        self.content_stack.setCurrentWidget(self.tab_widget)
+
     def _sync_result_dock_action(self, key: str, visible: bool) -> None:
         action = self.ping_result_view_action if key == "ping" else self.tcp_result_view_action
         action.blockSignals(True)
@@ -887,11 +929,12 @@ class MainWindow(QMainWindow):
         tcp_result_visible = bool(window_state.get("tcp_result_dock_visible", False))
 
         self._set_log_dock_visible(log_visible)
-        self.diagnostics_tab.set_result_dock_visible("ping", ping_result_visible)
-        self.diagnostics_tab.set_result_dock_visible("tcp", tcp_result_visible)
+        # Older versions saved detached result docks. The large result view is
+        # opened on request only, so the app always starts on a normal page.
+        del ping_result_visible, tcp_result_visible
         self._sync_log_dock_state()
-        self._sync_result_dock_action("ping", ping_result_visible)
-        self._sync_result_dock_action("tcp", tcp_result_visible)
+        self._sync_result_dock_action("ping", self.diagnostics_tab.is_result_dock_visible("ping"))
+        self._sync_result_dock_action("tcp", self.diagnostics_tab.is_result_dock_visible("tcp"))
 
     def activate_startup_loading(self) -> None:
         if self._startup_activated:

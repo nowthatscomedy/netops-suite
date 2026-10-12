@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import codecs
 import contextlib
 import hashlib
 import importlib.util
@@ -12,7 +13,7 @@ import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from threading import Event, RLock
+from threading import Event, RLock, Thread
 from typing import Any, Literal
 
 import yaml
@@ -927,13 +928,28 @@ class InspectorService:
             inspector.trial_profile = trial_profile
             inspector.keep_command_outputs = True
             emit(f"{target['ip']}에 로그인해 명령 {len(cleaned)}개 실행 중")
-            _device, outcome = inspector._connect_to_device(
-                target,
-                inspection_mode=False,
-                backup_mode=False,
-                session_log_suffix="profile_test",
-                custom_commands=cleaned,
+            session_log = Path(inspector.session_log_dir) / (
+                f"{target['ip']}_{target['vendor']}_{target['os']}_profile_test.log"
             )
+            stop_tail = Event()
+            tail = Thread(
+                target=self._tail_session_log,
+                args=(session_log, stop_tail, progress_callback),
+                name="ProfileTrialSessionTail",
+                daemon=True,
+            )
+            tail.start()
+            try:
+                _device, outcome = inspector._connect_to_device(
+                    target,
+                    inspection_mode=False,
+                    backup_mode=False,
+                    session_log_suffix="profile_test",
+                    custom_commands=cleaned,
+                )
+            finally:
+                stop_tail.set()
+                tail.join(timeout=5)
             session_dir = Path(inspector.session_log_dir)
             if session_dir.is_dir():
                 result.session_log_dir = str(session_dir.resolve())
@@ -945,6 +961,39 @@ class InspectorService:
                     for item in outcome.get("command_outputs", [])
                 ]
         return result
+
+    @staticmethod
+    def _tail_session_log(
+        path: Path, stop: Event, progress_callback: Any | None
+    ) -> None:
+        """Stream what the session log records, so the CLI shows up live."""
+        if progress_callback is None:
+            return
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        position = 0
+        while True:
+            finished = stop.wait(0.25)
+            data = b""
+            try:
+                with path.open("rb") as stream:
+                    stream.seek(0, os.SEEK_END)
+                    if stream.tell() < position:
+                        # Netmiko reopens the log in write mode after connecting.
+                        position = 0
+                    stream.seek(position)
+                    data = stream.read()
+                    position += len(data)
+            except OSError:
+                pass
+            text = decoder.decode(data, final=finished)
+            if text:
+                event = {"type": "session", "text": text}
+                if hasattr(progress_callback, "emit"):
+                    progress_callback.emit(event)
+                else:
+                    progress_callback(event)
+            if finished:
+                return
 
     def run(
         self,

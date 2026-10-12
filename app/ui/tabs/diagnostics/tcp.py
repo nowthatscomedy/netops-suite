@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from app.models.result_models import TcpCheckResult
 from app.ui.common import fit_wrapped_label_height, make_empty_state, make_inline_status, set_inline_status
 from app.ui.common.disclosure import CollapsibleSection
+from app.ui.common.required import mark_missing, required_label
 from app.utils.parser import parse_port_list, parse_target_entries
 from app.utils.validators import ValidationError
 
@@ -116,9 +117,9 @@ class TcpDiagnosticsMixin:
 
         form.addWidget(self.tcp_targets_edit, 0, 1)
         form.addWidget(self.tcp_targets_help_label, 1, 1)
-        form.addWidget(QLabel("대상 목록"), 0, 0, 2, 1, alignment=Qt.AlignmentFlag.AlignTop)
+        form.addWidget(required_label("대상 목록"), 0, 0, 2, 1, alignment=Qt.AlignmentFlag.AlignTop)
         form.addWidget(self.tcp_ports_edit, 2, 1)
-        form.addWidget(QLabel("포트"), 2, 0)
+        form.addWidget(required_label("포트"), 2, 0)
         form.addWidget(self.tcp_ports_help_label, 3, 1)
         self.tcp_options_section = CollapsibleSection("실행 옵션")
         self.tcp_options_section.content_layout.addLayout(options_row)
@@ -201,6 +202,7 @@ class TcpDiagnosticsMixin:
             if error_widget in (self.tcp_count_edit, self.tcp_timeout_edit):
                 self.tcp_options_section.setExpanded(True)
             set_inline_status(self.tcp_input_error, "error", str(exc))
+            mark_missing(error_widget)
             error_widget.setFocus()
             return
 

@@ -21,6 +21,7 @@ from app.models.network_models import TraceHop
 from app.models.result_models import OperationResult
 from app.ui.common import make_empty_state, make_inline_status, make_table_item, set_inline_status, set_table_minimums
 from app.ui.common.disclosure import CollapsibleSection
+from app.ui.common.required import mark_missing, required_label
 from app.utils.parser import parse_trace_hop_line, parse_trace_hops
 from app.utils.validators import ValidationError, validate_host_input
 
@@ -48,7 +49,7 @@ class TraceDiagnosticsMixin:
         button_row.addWidget(self.trace_cancel_button)
         button_row.addStretch(1)
 
-        form.addRow("대상", self.trace_target_edit)
+        form.addRow(required_label("대상"), self.trace_target_edit)
         self.trace_options_section = CollapsibleSection("실행 옵션")
         self.trace_options_section.content_layout.addWidget(self.trace_no_resolve_check)
         self.trace_options_section.watch(self.trace_no_resolve_check)
@@ -99,6 +100,7 @@ class TraceDiagnosticsMixin:
             target = validate_host_input(self.trace_target_edit.text())
         except ValidationError as exc:
             set_inline_status(self.trace_input_error, "error", str(exc))
+            mark_missing(self.trace_target_edit)
             self.trace_target_edit.setFocus()
             return
 

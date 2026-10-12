@@ -34,6 +34,7 @@ from app.ui.common import (
     make_table_log_splitter,
     set_table_minimums,
 )
+from app.ui.common.required import required_label
 from app.utils.validators import ValidationError, calculate_subnet_details, validate_ipv4
 
 
@@ -109,8 +110,8 @@ class ToolsDiagnosticsMixin:
         self.subnet_calc_interface_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.subnet_calc_refresh_button = make_action_button("목록", ActionKind.REFRESH, tooltip="어댑터 목록을 불러옵니다.")
         self.subnet_calc_use_selected_button = make_action_button("자동 입력", ActionKind.UTILITY, tooltip="선택한 어댑터 값을 입력합니다.")
-        subnet_form.addRow("IPv4", self.subnet_calc_ip_edit)
-        subnet_form.addRow("프리픽스 / 마스크", self.subnet_calc_prefix_edit)
+        subnet_form.addRow(required_label("IPv4"), self.subnet_calc_ip_edit)
+        subnet_form.addRow(required_label("프리픽스 / 마스크"), self.subnet_calc_prefix_edit)
 
         interface_row = QHBoxLayout()
         interface_row.addWidget(self.subnet_calc_interface_combo, 1)
@@ -288,7 +289,7 @@ class ToolsDiagnosticsMixin:
         action_row.addWidget(self.oui_refresh_button)
         action_row.addStretch(1)
 
-        form.addRow("MAC 주소 목록", self.oui_mac_edit)
+        form.addRow(required_label("MAC 주소 목록"), self.oui_mac_edit)
         self.oui_input_error = make_inline_status("error", "")
         form.addRow(self.oui_input_error)
         form.addRow("", action_row)

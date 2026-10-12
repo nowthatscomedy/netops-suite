@@ -452,12 +452,12 @@ def test_vendor_profile_dialog_uses_engineer_friendly_flow(qt_app, tmp_path: Pat
         tabs = [dialog.tabs.tabText(index) for index in range(dialog.tabs.count())]
         assert dialog.windowTitle() == "장비 작업 자동화 프로파일 만들기"
         assert tabs[:6] == [
-            "장비 정보",
-            "점검 명령",
-            "백업 명령",
-            "Excel 컬럼",
-            "장비로 시험",
-            "미리보기/저장",
+            "1. 장비 정보",
+            "2. 점검 명령",
+            "3. 백업 명령",
+            "4. 장비로 시험",
+            "5. Excel 컬럼",
+            "6. 확인·저장",
         ]
         assert "Netmiko" not in "\n".join(tabs[:6])
 
@@ -557,8 +557,9 @@ def test_vendor_profile_dialog_shows_only_fields_for_selected_extraction_method(
     service = InspectorService(user_data_dir=tmp_path / "inspector")
     dialog = InspectorProfileDialog(service)
     try:
-        dialog.tabs.setCurrentIndex(3)
+        dialog.tabs.setCurrentWidget(dialog.column_tab)
         dialog.show()
+        dialog.rule_section.toggle_button.setChecked(True)
         qt_app.processEvents()
 
         dialog.extract_method_combo.setCurrentIndex(

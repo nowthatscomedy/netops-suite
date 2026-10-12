@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.ui.common.required import MISSING_STYLE
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
 
@@ -47,6 +48,9 @@ QToolButton#sideUtilityButton {
 QToolButton#sideUtilityButton:hover, QToolButton#sideUtilityButton:checked { background: #1c2d48; color: #ffffff; }
 QToolButton#sideUtilityButton:focus { border: 1px solid #60a5fa; }
 QToolButton#sideUtilityButton:disabled { color: #637894; }
+QToolButton#sideUtilityButton[utilityTile="true"] { padding: 4px 2px; }
+QToolButton#sideUtilityButton::menu-indicator { image: none; width: 0px; }
+QStackedWidget#resultFocusStack { background: #ffffff; border: 1px solid #dfe6f1; border-radius: 10px; }
 QFrame#homeHero {
     background: #e8effc; border: 1px solid #d4e2fb; border-radius: 14px;
 }
@@ -179,4 +183,4 @@ def apply_app_theme(app: QApplication) -> None:
     }.items():
         palette.setColor(role, QColor(color))
     app.setPalette(palette)
-    app.setStyleSheet(APP_STYLE_SHEET)
+    app.setStyleSheet(APP_STYLE_SHEET + "\n" + MISSING_STYLE)

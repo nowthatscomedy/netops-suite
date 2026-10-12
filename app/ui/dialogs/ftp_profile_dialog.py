@@ -11,7 +11,14 @@ from PySide6.QtWidgets import (
 )
 
 from app.models.ftp_models import FtpProfile
-from app.ui.common import make_dialog_intro, polish_dialog
+from app.ui.common import (
+    check_required,
+    make_dialog_intro,
+    make_required_legend,
+    polish_dialog,
+    required_label,
+    set_required_label,
+)
 from app.utils.validators import (
     ValidationError,
     default_ftp_port,
@@ -68,15 +75,18 @@ class FtpProfileDialog(QDialog):
         form = QFormLayout()
         form.setVerticalSpacing(8)
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        form.addRow("프로파일 이름", self.name_edit)
+        form.addRow(required_label("프로파일 이름"), self.name_edit)
         form.addRow("프로토콜", self.protocol_combo)
-        form.addRow("호스트", self.host_edit)
+        form.addRow(required_label("호스트"), self.host_edit)
         form.addRow("포트", self.port_edit)
-        form.addRow("사용자명", self.username_edit)
+        self.username_label = required_label("사용자명", required=False)
+        form.addRow(self.username_label, self.username_edit)
         form.addRow("기본 원격 경로", self.remote_path_edit)
         form.addRow("", self.passive_check)
         form.addRow("타임아웃(초)", self.timeout_edit)
         layout.addLayout(form)
+        self.required_legend = make_required_legend()
+        layout.addWidget(self.required_legend)
 
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         polish_dialog_button_box(self.buttons)
@@ -87,7 +97,17 @@ class FtpProfileDialog(QDialog):
         self.protocol_combo.currentIndexChanged.connect(self._update_protocol_state)
         self._update_protocol_state()
 
+    def _sftp_selected(self) -> bool:
+        return str(self.protocol_combo.currentData() or "ftp") == "sftp"
+
+    def _required_fields(self):
+        fields = [(self.name_edit, "프로파일 이름"), (self.host_edit, "호스트")]
+        if self._sftp_selected():
+            fields.append((self.username_edit, "사용자명"))
+        return fields
+
     def _update_protocol_state(self) -> None:
+        set_required_label(self.username_label, "사용자명", self._sftp_selected())
         protocol = str(self.protocol_combo.currentData() or "ftp")
         is_passive_supported = protocol in {"ftp", "ftps"}
         self.passive_check.setEnabled(is_passive_supported)
@@ -106,6 +126,8 @@ class FtpProfileDialog(QDialog):
         self.port_edit.setPlaceholderText(str(default_ftp_port(protocol)))
 
     def _handle_accept(self) -> None:
+        if not check_required(self, self._required_fields(), self.required_legend):
+            return
         try:
             self.profile_data()
         except ValidationError as exc:
