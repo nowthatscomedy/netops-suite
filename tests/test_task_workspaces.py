@@ -219,7 +219,7 @@ def test_inspector_profile_creation_is_direct_and_revalidates_inventory(qapp, tm
     qapp.processEvents()
     assert not tab.profile_section.isExpanded()
     assert tab.profile_editor_button.isVisibleTo(tab)
-    assert tab.profile_editor_button.text() == "프로파일 만들기·관리"
+    assert tab.profile_editor_button.text() == "점검 프로파일 만들기·관리"
     tab.inventory_path_edit.setText("devices.xlsx")
     tab._inventory_validated = True
     tab.profile_editor_button.click()
@@ -418,7 +418,7 @@ def test_inspector_successful_validation_still_requires_risk_confirmation(qapp, 
     assert tab._inventory_validated
     assert len(confirmations) == 1
     assert "SSH/Telnet" in confirmations[0]["impact"]
-    assert "사용자 명령" in confirmations[0]["reversibility"]
+    assert "명령 일괄 입력" in confirmations[0]["reversibility"]
     assert not tab._inspector_running
     assert jobs == []
 
@@ -579,7 +579,7 @@ def test_builder_header_profile_actions_reuse_editor_and_keep_cancelled_changes(
     qapp.processEvents()
     button = surface.profile_management_button
     assert button.isVisibleTo(surface)
-    assert button.text() == "프로파일 만들기·관리"
+    assert button.text() == "설정 프로파일 만들기·관리"
     assert button.property("actionKind") == "primary"
     assert surface.rect().contains(QRect(button.mapTo(surface, QPoint()), button.size()))
     assert "profiles" not in builder.advanced_sections

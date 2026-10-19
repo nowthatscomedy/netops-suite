@@ -215,6 +215,53 @@
       "capture_target": "page"
     },
     {
+      "id": "guide_inspector_run_results",
+      "title": "가이드 이미지 - 실행 결과와 백업 비교",
+      "viewport": [
+        1280,
+        800
+      ],
+      "guide_asset": "inspector-run-results.png",
+      "capture_handler": "inspector_run_results",
+      "expected_object_names": [
+        "pageHeader",
+        "inspectorProgressBar",
+        "inspectorSummaryLabel",
+        "inspectorResultTable",
+        "inspectorRetryFailedButton",
+        "inspectorBackupDiffButton"
+      ],
+      "source_paths": [
+        "app/ui/tabs/inspector_tab.py",
+        "app/ui/common/ux.py",
+        "app/ui/common/theme.py",
+        "netops_suite/modules/inspector/backup_compare.py",
+        "netops_suite/modules/inspector/service.py"
+      ],
+      "capture_target": "page"
+    },
+    {
+      "id": "guide_inspector_inventory_editor",
+      "title": "가이드 이미지 - 표에서 장비 목록 만들기",
+      "viewport": [
+        1280,
+        800
+      ],
+      "guide_asset": "inspector-inventory-editor.png",
+      "capture_handler": "inspector_inventory_editor",
+      "expected_object_names": [
+        "inventoryEditorTable",
+        "inventoryEditorStatus",
+        "inventoryEditorSaveButton"
+      ],
+      "source_paths": [
+        "app/ui/dialogs/inventory_editor_dialog.py",
+        "app/ui/common/ux.py",
+        "app/ui/common/theme.py",
+        "netops_suite/ui/actions.py"
+      ]
+    },
+    {
       "id": "guide_inspector_profile_trial",
       "title": "가이드 이미지 - 프로파일 장비로 시험",
       "viewport": [

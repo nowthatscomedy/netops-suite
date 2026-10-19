@@ -173,6 +173,9 @@ class MainWindow(QMainWindow):
         self.inspector_tab = InspectorTab(self.state)
         self._report_startup("장비 설정 생성 화면 구성", "장비 설정 생성 도구를 포함합니다.")
         self.config_builder_tab = ConfigBuilderTab(self.state)
+        self.config_builder_tab.builder_widget.send_to_inspector_requested.connect(
+            self._send_config_cli_to_inspector
+        )
         self._report_startup("설정 화면 구성", "프로그램, 저장 위치, 외부 도구와 설정 관리 화면을 준비합니다.")
         self.settings_tab = SettingsTab(self.state)
         self.home_page = HomePage()
@@ -393,6 +396,14 @@ class MainWindow(QMainWindow):
         if item is not None:
             self.navigate_to(str(item.data(Qt.ItemDataRole.UserRole)))
 
+    def _send_config_cli_to_inspector(self, commands_by_ip: dict, note: str) -> None:
+        """Open device inspection with the config builder's per-device CLI."""
+        if not self.inspector_tab.receive_device_commands(commands_by_ip, note):
+            return
+        self.navigate_to("inspector")
+        self.raise_()
+        self.activateWindow()
+
     def navigate_to(self, page_key: str, tool_key: str | None = None) -> bool:
         """Select an existing workspace without starting a task or recreating it."""
         if page_key == "diagnostics" and tool_key == "transfer":
@@ -440,7 +451,7 @@ class MainWindow(QMainWindow):
             self.interface_tab: self.interface_tab.refresh_button,
             self.diagnostics_tab: self.diagnostics_tab.diagnostic_tool_combo,
             self.wireless_tab: self.wireless_tab.refresh_button,
-            self.inspector_tab: self.inspector_tab.mode_combo,
+            self.inspector_tab: self.inspector_tab.current_mode_button(),
             self.config_builder_tab: self.config_builder_tab.full_editor_button,
             self.settings_tab: self.settings_tab.section_tabs.tabBar(),
             self.home_page: self.home_page.task_buttons["interface"],

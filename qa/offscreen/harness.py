@@ -38,6 +38,7 @@ from app.guides import GuideCatalog
 from app.main_window import MainWindow
 from app.ui.common.theme import apply_app_theme
 from app.ui.dialogs.inspector_profile_dialog import InspectorProfileDialog
+from app.ui.dialogs.inventory_editor_dialog import InventoryEditorDialog
 from netops_suite.modules.config_builder.switch_configurator.profile_builder_dialog import (
     ProfileBuilderDialog,
 )
@@ -654,7 +655,7 @@ class OffscreenQaHarness:
             tab.top_scroll.verticalScrollBar().setValue(0)
 
         self._post_capture = reset_sections
-        self._check(tab.profile_editor_button.text() == "프로파일 만들기·관리", "프로파일 관리 진입점 명칭")
+        self._check(tab.profile_editor_button.text() == "점검 프로파일 만들기·관리", "프로파일 관리 진입점 명칭")
         self._assert_control_accessible(tab.profile_editor_button)
         self._check(tab.supported_toggle_button is tab.profile_section.toggle_button, "지원 장비 목록 펼치기 한 단계")
         for cycle in range(3):
@@ -755,6 +756,145 @@ class OffscreenQaHarness:
             )
         tab.top_scroll.verticalScrollBar().setValue(0)
         self._flush()
+
+    def _capture_handler_inspector_run_results(self, scenario: dict) -> None:
+        """Show a finished backup run with a failure and a changed configuration."""
+        from netops_suite.modules.inspector import InspectorRunRequest, InspectorRunResult
+
+        self._navigate_main(3)
+        tab = self._require_window().inspector_tab
+        if self.runtime_root is None:
+            raise RuntimeError("오프스크린 런타임 폴더가 준비되지 않았습니다.")
+        backup_root = self.runtime_root / "qa_run_results" / "backup"
+        previous = backup_root / "20261014_090000"
+        current = backup_root / "20261015_090000"
+        for folder in (previous, current):
+            folder.mkdir(parents=True, exist_ok=True)
+        (previous / "192.0.2.10_cisco_ios.txt").write_text(
+            "hostname SW-CORE\nvlan 10\n", encoding="utf-8"
+        )
+        (current / "192.0.2.10_cisco_ios.txt").write_text(
+            "! Last configuration change at 09:00\nhostname SW-CORE\nvlan 10\nvlan 20\n",
+            encoding="utf-8",
+        )
+        (previous / "192.0.2.11_cisco_ios.txt").write_text("hostname SW-01\n", encoding="utf-8")
+        (current / "192.0.2.11_cisco_ios.txt").write_text("hostname SW-01\n", encoding="utf-8")
+        (current / "192.0.2.13_cisco_ios.txt").write_text("hostname SW-03\n", encoding="utf-8")
+
+        def reset_results() -> None:
+            tab._clear_result_table()
+            tab.retry_failed_button.hide()
+            tab.backup_diff_button.hide()
+            tab.progress_bar.hide()
+            tab._last_result = None
+            tab._last_request = None
+            tab.summary_label.setText("검증 결과와 실행 진행 상태가 여기에 표시됩니다.")
+            tab.mode_combo.setCurrentIndex(tab.mode_combo.findData("inspection"))
+            tab.inspector_splitter.setSizes([560, 140])
+            tab.top_scroll.verticalScrollBar().setValue(0)
+
+        self._post_capture = reset_results
+        tab.mode_combo.setCurrentIndex(tab.mode_combo.findData("backup"))
+        tab._last_request = InspectorRunRequest(inventory_path="qa_inventory.xlsx", mode="backup")
+        tab._run_progress = {"total": 0, "done": 0, "success": 0, "failed": 0}
+        tab.progress_bar.show()
+        rows = [
+            {"ip": "192.0.2.10", "vendor": "cisco", "os": "ios", "status": "success"},
+            {"ip": "192.0.2.11", "vendor": "cisco", "os": "ios", "status": "success"},
+            {
+                "ip": "192.0.2.12",
+                "vendor": "cisco",
+                "os": "ios",
+                "status": "error",
+                "error_message": "텔넷 로그인 실패: 장비가 계정을 다시 묻습니다. 조치: 계정과 비밀번호를 확인하세요.",
+            },
+            {"ip": "192.0.2.13", "vendor": "cisco", "os": "ios", "status": "success"},
+        ]
+        tab._handle_progress({"type": "progress", "message": "장비 4대를 실행 대기열에 올렸습니다.", "total": 4})
+        for row in rows:
+            tab._handle_progress(
+                {"type": "device_complete", "ip": row["ip"], "success": row["status"] != "error"}
+            )
+        tab._handle_result(
+            InspectorRunResult(
+                mode="backup",
+                devices_total=4,
+                results_total=4,
+                result_excel=None,
+                backup_dir=str(current),
+                session_log_dir=None,
+                results=rows,
+            )
+        )
+        self._flush()
+        self._check(
+            tab.summary_label.text().startswith("백업 완료: 4대 중 3대 성공, 1대 실패"),
+            "완료 요약에 성공·실패 대수 표시",
+        )
+        self._check("변경 1대" in tab.summary_label.text(), "백업 비교 요약 표시")
+        self._check(tab.result_table.rowCount() == 4, "장비별 결과 표 4행")
+        self._check(tab.result_table.item(0, 2).text() == "실패", "실패 장비를 표 맨 위에 표시")
+        self._check(
+            tab.retry_failed_button.text() == "실패한 1대만 다시 실행",
+            "실패한 장비만 다시 실행 버튼",
+        )
+        changed_row = next(
+            row
+            for row in range(tab.result_table.rowCount())
+            if tab.result_table.item(row, 3).text().startswith("변경됨")
+        )
+        tab.result_table.selectRow(changed_row)
+        self._flush()
+        self._check(tab.backup_diff_button.isEnabled(), "변경된 장비를 고르면 변경 내용 보기 활성")
+        for control in (tab.retry_failed_button, tab.backup_diff_button, tab.result_table):
+            self._assert_control_accessible(control)
+        for object_name in scenario.get("expected_object_names", []):
+            candidates = self.window.findChildren(QWidget, object_name)
+            self._check(
+                any(candidate.isVisibleTo(self.window) for candidate in candidates),
+                f"가이드 캡처 objectName 표시: {object_name}",
+            )
+
+    def _capture_handler_inspector_inventory_editor(self, scenario: dict) -> None:
+        window = self._require_window()
+        self._navigate_main(3)
+        tab = window.inspector_tab
+        device_types = [
+            (item["vendor"], item["os"]) for item in getattr(tab, "_sample_profiles", [])
+        ]
+        dialog = InventoryEditorDialog(
+            device_types,
+            window,
+            default_device=("cisco", "ios"),
+            save_dir=self.runtime_root,
+        )
+        width, height = scenario["viewport"]
+        dialog.resize(width, height)
+        dialog.show()
+        self._active_capture_widget = dialog
+        self._post_capture = dialog.reject
+        self._flush()
+        dialog.table.setCurrentCell(0, dialog.column_index["ip"])
+        dialog.paste_clipboard("192.0.2.10\n192.0.2.11\n192.0.2.12\n192.0.2.300")
+        dialog.table.item(0, dialog.column_index["username"]).setText("admin")
+        self._flush()
+        self._check(dialog.table.rowCount() == 4, "IP 목록 붙여넣기로 행 자동 추가")
+        self._check(
+            dialog.row_values(3)["vendor"] == "cisco",
+            "새 행은 위 행의 장비 종류를 따름",
+        )
+        self._check(
+            "4행: IP 형식" in dialog.status_label.text(),
+            "잘못된 IP 즉시 표시",
+        )
+        for control in (dialog.add_row_button, dialog.save_button, dialog.table):
+            self._assert_control_accessible(control)
+        for object_name in scenario.get("expected_object_names", []):
+            candidates = dialog.findChildren(QWidget, object_name)
+            self._check(
+                any(candidate.isVisibleTo(dialog) for candidate in candidates),
+                f"가이드 캡처 objectName 표시: {object_name}",
+            )
 
     def _capture_handler_inspector_profile_trial(self, scenario: dict) -> None:
         from netops_suite.modules.inspector.service import ProfileTrialResult
@@ -1497,7 +1637,7 @@ class OffscreenQaHarness:
         self._paste(dialog.os_edit, "QA-OS")
         self._paste(dialog.os_version_edit, "1.0")
         self._check(
-            dialog.windowTitle() == "장비 작업 자동화 프로파일 만들기",
+            dialog.windowTitle() == "점검 프로파일 만들기",
             "장비 작업 프로파일 창 명칭",
         )
         self._check(
@@ -1572,7 +1712,7 @@ class OffscreenQaHarness:
         self._post_capture = dialog.reject
         self._flush()
 
-        self._check(dialog.windowTitle() == "프로파일 작성", "장비 설정 프로파일 작성 창 명칭")
+        self._check(dialog.windowTitle() == "설정 프로파일 작성", "장비 설정 프로파일 작성 창 명칭")
         self._check(
             all("AI" not in button.text() for button in dialog.findChildren(QPushButton)),
             "장비 설정 프로파일에 AI 초안 버튼 없음",

@@ -39,6 +39,7 @@ from app.utils.file_utils import (
     open_in_explorer,
     storage_mode_label,
 )
+from app.utils.log_format import append_timestamped
 from app.version import __version__
 from netops_suite.ui.actions import ActionKind, make_action_button
 
@@ -732,7 +733,7 @@ class SettingsTab(QWidget):
         self.oui_tool_log.show()
         self._job_runner.start(
             method,
-            on_progress=lambda value: self.oui_tool_log.appendPlainText(str(value)),
+            on_progress=lambda value: append_timestamped(self.oui_tool_log, value),
             on_result=self._handle_oui_operation_result,
             on_error=self._handle_oui_operation_error,
             on_finished=self._finish_oui_operation,
@@ -747,7 +748,7 @@ class SettingsTab(QWidget):
         self.oui_tool_result_label.setText(result.message)
         details = result.details.strip()
         if details:
-            self.oui_tool_log.appendPlainText(f"\n[결과]\n{details}")
+            append_timestamped(self.oui_tool_log, f"\n[결과]\n{details}")
         if self._oui_operation_kind == "update" and result.success:
             service = getattr(self.state, "oui_service", None)
             cache_status = getattr(service, "cache_status", None)
@@ -757,7 +758,7 @@ class SettingsTab(QWidget):
 
     def _handle_oui_operation_error(self, message: str) -> None:
         self.oui_tool_result_label.setText(f"OUI 작업 실패: {message}")
-        self.oui_tool_log.appendPlainText(f"\n[오류] {message}")
+        append_timestamped(self.oui_tool_log, f"\n[오류] {message}")
 
     def _finish_oui_operation(self) -> None:
         self._oui_operation_busy = False
@@ -805,7 +806,7 @@ class SettingsTab(QWidget):
         self._job_runner.start(
             service.install_or_update_managed,
             cancel_event=self._iperf_install_cancel_event,
-            on_progress=lambda value: self.iperf_tool_log.appendPlainText(str(value)),
+            on_progress=lambda value: append_timestamped(self.iperf_tool_log, value),
             on_result=self._finish_iperf_install,
             on_finished=self._finish_iperf_install_job,
             error_title="iperf3 설치 실패",
@@ -813,12 +814,12 @@ class SettingsTab(QWidget):
 
     def _finish_iperf_install(self, result: object) -> None:
         if not isinstance(result, OperationResult):
-            self.iperf_tool_log.appendPlainText("\n[결과] 설치 결과 형식을 확인하지 못했습니다.")
+            append_timestamped(self.iperf_tool_log, "\n[결과] 설치 결과 형식을 확인하지 못했습니다.")
             return
         summary = result.message
         if result.details:
             summary = f"{summary}\n{result.details}"
-        self.iperf_tool_log.appendPlainText(f"\n[결과] {summary}")
+        append_timestamped(self.iperf_tool_log, f"\n[결과] {summary}")
         if result.success:
             self.integration_changed.emit("iperf3")
 

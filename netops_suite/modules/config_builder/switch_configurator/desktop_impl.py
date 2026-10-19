@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -698,6 +699,14 @@ def mask_secret_value(value: Any) -> str:
     return "••••••" if text else ""
 
 
+def _is_ip_address(value: str) -> bool:
+    try:
+        ipaddress.ip_address(str(value).strip())
+    except ValueError:
+        return False
+    return True
+
+
 def is_ip_like_header(header_name: str) -> bool:
     normalized = str(header_name).strip().casefold()
     return normalized.endswith("_ip") or any(keyword in normalized for keyword in IP_LIKE_HEADER_KEYWORDS)
@@ -1304,6 +1313,9 @@ class DeviceFilterProxyModel(QSortFilterProxyModel):
 
 
 class SwitchConfigBuilderWidget(QWidget):
+    # Per-device CLI keyed by management IP, and a note on where the IPs came from.
+    send_to_inspector_requested = Signal(dict, str)
+
     def __init__(
         self,
         profiles_dir: str | Path | None = None,
@@ -1596,9 +1608,13 @@ class SwitchConfigBuilderWidget(QWidget):
 
     def create_profile_management_button(self, parent: QWidget):
         button = make_action_button(
-            "프로파일 만들기·관리",
+            "설정 프로파일 만들기·관리",
             ActionKind.PRIMARY,
-            tooltip="새 프로파일을 만들거나 현재 기준 프로파일을 편집·복사·삭제합니다.",
+            tooltip=(
+                "설정 프로파일은 변수와 명령 블록으로 장비별 설정 명령을 만듭니다. "
+                "새로 만들거나 현재 기준 프로파일을 편집·복사·삭제합니다. "
+                "장비 점검·백업의 '점검 프로파일'과는 다릅니다."
+            ),
             object_name="configBuilderProfileManagementButton",
         )
         button.setParent(parent)
@@ -2035,6 +2051,20 @@ class SwitchConfigBuilderWidget(QWidget):
         self.save_cli_button.setMenu(self.save_cli_menu)
         export_row.addWidget(self.save_cli_button)
         action_layout.addLayout(export_row)
+        self.send_to_inspector_button = make_action_button(
+            "장비 점검으로 보내기",
+            ActionKind.SECONDARY,
+            tooltip=(
+                "만든 장비별 CLI를 장비 점검·백업의 명령 일괄 입력으로 넘깁니다. "
+                "장비 목록에서 IP가 같은 장비에 각자의 CLI를 실행할 수 있습니다."
+            ),
+            object_name="configBuilderSendToInspectorButton",
+        )
+        self.send_to_inspector_button.clicked.connect(self.send_rendered_cli_to_inspector)
+        send_row = QHBoxLayout()
+        send_row.addWidget(self.send_to_inspector_button)
+        send_row.addStretch(1)
+        action_layout.addLayout(send_row)
 
         work_actions = QHBoxLayout()
         self.mark_done_button = make_action_button("적용 완료로 표시", ActionKind.UTILITY)
@@ -3971,6 +4001,8 @@ class SwitchConfigBuilderWidget(QWidget):
             return
         current_source_row = self._current_source_row()
         self.save_cli_button.setEnabled(bool(self.current_rendered))
+        if hasattr(self, "send_to_inspector_button"):
+            self.send_to_inspector_button.setEnabled(bool(self.current_rendered))
         self.save_selected_cli_action.setEnabled(bool(self.current_rendered.get(current_source_row)))
         self.save_all_cli_action.setEnabled(bool(self.current_rendered))
         self.save_each_cli_action.setEnabled(bool(self.current_rendered))
@@ -4043,6 +4075,96 @@ class SwitchConfigBuilderWidget(QWidget):
             QMessageBox.critical(self, "파일 저장 실패", str(exc))
             return False
         return True
+
+    def device_ip_headers(self) -> list[str]:
+        """Columns whose rendered rows hold IP addresses, most likely management IP first."""
+        candidates: list[str] = []
+        for header in self.table_model.headers:
+            values = [
+                str(self.table_model.rows[row].get(header, "")).strip()
+                for row in self.current_rendered
+                if 0 <= row < len(self.table_model.rows)
+            ]
+            if any(_is_ip_address(value) for value in values):
+                candidates.append(header)
+
+        def rank(header: str) -> tuple[int, int]:
+            name = header.casefold()
+            if any(word in name for word in ("mgmt", "manage", "관리", "device_ip", "host_ip", "ssh")):
+                score = 0
+            elif name in {"ip", "ip_address", "ipaddress"}:
+                score = 1
+            elif any(word in name for word in ("gateway", "gw", "mask", "dns", "ntp", "syslog", "peer", "neighbor")):
+                score = 3
+            else:
+                score = 2
+            return score, self.table_model.headers.index(header)
+
+        return sorted(candidates, key=rank)
+
+    def send_rendered_cli_to_inspector(self) -> dict[str, list[str]] | None:
+        if not self.current_rendered:
+            QMessageBox.information(self, "장비 점검으로 보내기", "보낼 CLI가 없습니다. 장비 값을 먼저 입력하세요.")
+            return None
+        headers = self.device_ip_headers()
+        if not headers:
+            QMessageBox.information(
+                self,
+                "장비 점검으로 보내기",
+                "장비에 접속할 IP가 들어 있는 열이 없습니다. 관리 IP 열(예: mgmt_ip)에 장비 IP를 넣으세요.",
+            )
+            return None
+        header = headers[0]
+        if len(headers) > 1:
+            choice, accepted = QInputDialog.getItem(
+                self,
+                "장비 점검으로 보내기",
+                "장비에 접속할 IP가 들어 있는 열을 고르세요.",
+                headers,
+                0,
+                False,
+            )
+            if not accepted:
+                return None
+            header = choice
+        commands_by_ip: dict[str, list[str]] = {}
+        skipped: list[str] = []
+        duplicates: list[str] = []
+        for row_index, rendered in sorted(self.current_rendered.items()):
+            row = self.table_model.rows[row_index] if 0 <= row_index < len(self.table_model.rows) else {}
+            ip = str(row.get(header, "")).strip()
+            if not _is_ip_address(ip):
+                skipped.append(row_display_name(row, row_index + 2))
+                continue
+            if ip in commands_by_ip:
+                duplicates.append(ip)
+                continue
+            commands_by_ip[ip] = rendered.text.splitlines()
+        if duplicates:
+            QMessageBox.warning(
+                self,
+                "장비 점검으로 보내기",
+                f"'{header}' 열에 같은 IP가 여러 행에 있습니다: {', '.join(sorted(set(duplicates)))}\n"
+                "장비마다 다른 IP가 들어 있는 열을 고르세요.",
+            )
+            return None
+        if not commands_by_ip:
+            QMessageBox.information(
+                self,
+                "장비 점검으로 보내기",
+                f"'{header}' 열에 IP 형식 값이 없습니다.",
+            )
+            return None
+        note = f"IP는 '{header}' 열"
+        if skipped:
+            note += f", IP가 없는 {len(skipped)}행 제외"
+        blocked = len(self.table_model.rows) - len(self.current_rendered)
+        if blocked > 0:
+            note += f", 오류로 CLI가 없는 {blocked}행 제외"
+        self.send_to_inspector_requested.emit(commands_by_ip, note)
+        self._append_activity_log(f"장비 점검으로 보내기: {len(commands_by_ip)}대 ({note})")
+        self.statusBar().showMessage(f"장비 {len(commands_by_ip)}대의 CLI를 장비 점검으로 보냈습니다.", 4000)
+        return commands_by_ip
 
     def save_selected_cli(self) -> Path | None:
         source_rows = self._selected_source_rows()

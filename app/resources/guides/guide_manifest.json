@@ -894,7 +894,10 @@
         "netops_suite/modules/inspector_runtime/core/validator.py",
         "netops_suite/modules/inspector_runtime/vendors",
         "app/ui/common/theme.py",
-        "netops_suite/modules/inspector/sample_inventory.py"
+        "netops_suite/modules/inspector/sample_inventory.py",
+        "app/ui/dialogs/inventory_editor_dialog.py",
+        "app/ui/dialogs/backup_diff_dialog.py",
+        "netops_suite/modules/inspector/backup_compare.py"
       ],
       "keywords": [
         "장비 점검",
@@ -926,7 +929,15 @@
         "모델 프로파일",
         "장비 작업 자동화 · 사용자 명령",
         "장비 점검·백업",
-        "장비 점검·백업 · 사용자 명령"
+        "장비 점검·백업 · 사용자 명령",
+        "장비 점검·백업 · 명령 일괄 입력",
+        "명령 일괄 입력",
+        "실패한 장비 다시 실행",
+        "백업 비교",
+        "설정 변경 비교",
+        "공통 계정",
+        "장비 목록 만들기",
+        "장비별 CLI 실행"
       ],
       "risk": "high",
       "qa_capture_ids": [
@@ -941,7 +952,13 @@
         "inspector_custom_commands_1280",
         "inspector_custom_commands_1600",
         "guide_inspector_custom_commands",
-        "card_borders"
+        "card_borders",
+        "guide_inspector_run_results",
+        "guide_inspector_inventory_editor",
+        "inspector_run_results_1024",
+        "inspector_run_results_1280",
+        "inspector_run_results_1600",
+        "inspector_inventory_editor_1024"
       ],
       "capability_ids": [
         "inspector",
@@ -982,7 +999,9 @@
         "XLSX로 설정 생성",
         "CLI 설정 생성",
         "장비 설정 생성",
-        "설정 명령 만들기"
+        "설정 명령 만들기",
+        "장비 점검으로 보내기",
+        "설정 프로파일"
       ],
       "risk": "medium",
       "qa_capture_ids": [

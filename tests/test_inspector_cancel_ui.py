@@ -190,7 +190,7 @@ def test_inspector_run_buttons_restore_after_worker_finishes(
         assert not tab.cancel_button.isEnabled()
         if outcome == "success":
             assert warnings == []
-            assert tab.summary_label.text().startswith("완료:")
+            assert tab.summary_label.text().startswith("점검 완료:")
         else:
             assert warnings == ["장비 연결 실패"]
             assert tab.summary_label.text() == "장비 점검 실패"

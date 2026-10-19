@@ -36,6 +36,7 @@ from app.ui.common import (
 )
 from app.ui.common.required import required_label
 from app.utils.validators import ValidationError, calculate_subnet_details, validate_ipv4
+from app.utils.log_format import append_timestamped, timestamp_lines
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
@@ -581,7 +582,7 @@ class ToolsDiagnosticsMixin:
             timeout_ms,
             workers,
             cancel_event=self.arp_cancel_event,
-            on_progress=self.arp_output.appendPlainText,
+            on_progress=lambda value: append_timestamped(self.arp_output, value),
             on_result=self._finish_arp_scan,
             on_finished=lambda: self._set_arp_running(False),
             error_title="ARP 스캔 실패",
@@ -593,13 +594,13 @@ class ToolsDiagnosticsMixin:
         self._populate_arp_table(entries, detection_map)
         if self.arp_output.toPlainText().strip():
             self.arp_output.appendPlainText("")
-            self.arp_output.appendPlainText(f"[결과] {result.message}")
+            append_timestamped(self.arp_output, f"[결과] {result.message}")
         else:
-            self.arp_output.setPlainText(result.message)
+            self.arp_output.setPlainText(timestamp_lines(result.message))
         if detection_lines and (entries or result.success):
             self.arp_output.appendPlainText("")
             for line in detection_lines:
-                self.arp_output.appendPlainText(line)
+                append_timestamped(self.arp_output, line)
 
     def _populate_arp_table(self, entries: list[ArpScanEntry], detection_map: dict[str, tuple[str, QColor | None]]) -> None:
         self.arp_table.setRowCount(0)
@@ -798,7 +799,7 @@ class ToolsDiagnosticsMixin:
         output_widget.clear()
         self._start_worker(
             self.state.oui_service.refresh_cache,
-            on_progress=output_widget.appendPlainText,
+            on_progress=lambda value: append_timestamped(output_widget, value),
             on_result=lambda result, widget=output_widget: self._finish_oui_refresh(result, widget),
             error_title="OUI 캐시 업데이트 실패",
         )
@@ -807,11 +808,11 @@ class ToolsDiagnosticsMixin:
         self._refresh_oui_status_labels()
         if output_widget.toPlainText().strip():
             output_widget.appendPlainText("")
-            output_widget.appendPlainText(f"[결과] {result.message}")
+            append_timestamped(output_widget, f"[결과] {result.message}")
             if result.details:
-                output_widget.appendPlainText(result.details)
+                append_timestamped(output_widget, result.details)
         else:
-            output_widget.setPlainText(result.message + ("\n\n" + result.details if result.details else ""))
+            output_widget.setPlainText(timestamp_lines(result.message + ("\n\n" + result.details if result.details else "")))
 
     def _refresh_oui_status_labels(self) -> None:
         summary = self.state.oui_service.cache_summary()

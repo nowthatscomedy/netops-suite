@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from app.models.network_models import PublicIperfServer
 from app.models.result_models import OperationResult
 from app.utils.validators import ValidationError
+from app.utils.log_format import append_timestamped, timestamp_lines
 from app.ui.common.disclosure import CollapsibleSection
 
 
@@ -594,7 +595,7 @@ class IperfDiagnosticsMixin:
             )
             self.iperf_server_listen_label.setText(listen_text)
             self.iperf_server_listen_label.show()
-            self.iperf_output.appendPlainText(f"[서버] {listen_text}")
+            append_timestamped(self.iperf_output, f"[서버] {listen_text}")
 
         self._start_worker(
             self.state.iperf_service.run_test,
@@ -607,7 +608,7 @@ class IperfDiagnosticsMixin:
             self.iperf_udp_check.isChecked(),
             self.iperf_ipv6_check.isChecked(),
             cancel_event=self.iperf_cancel_event,
-            on_progress=self.iperf_output.appendPlainText,
+            on_progress=lambda value: append_timestamped(self.iperf_output, value),
             on_result=self._finish_iperf,
             on_finished=self._finish_iperf_operation,
             error_title="iperf3 실행 실패",
@@ -616,11 +617,11 @@ class IperfDiagnosticsMixin:
     def _finish_iperf(self, result: OperationResult) -> None:
         if self.iperf_output.toPlainText().strip():
             self.iperf_output.appendPlainText("")
-            self.iperf_output.appendPlainText(f"[결과] {result.message}")
+            append_timestamped(self.iperf_output, f"[결과] {result.message}")
             if result.details and not result.success:
-                self.iperf_output.appendPlainText(result.details)
+                append_timestamped(self.iperf_output, result.details)
         else:
-            self.iperf_output.setPlainText(result.message + ("\n\n" + result.details if result.details else ""))
+            self.iperf_output.setPlainText(timestamp_lines(result.message + ("\n\n" + result.details if result.details else "")))
 
     def _finish_iperf_operation(self) -> None:
         self.iperf_cancel_event = None

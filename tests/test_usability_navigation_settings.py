@@ -35,7 +35,7 @@ def test_view_button_tab_focus_enters_each_current_page(
             window.interface_tab.refresh_button,
             window.diagnostics_tab.diagnostic_tool_combo,
             window.wireless_tab.refresh_button,
-            window.inspector_tab.mode_combo,
+            window.inspector_tab.current_mode_button(),
             window.config_builder_tab.full_editor_button,
             window.settings_tab.section_tabs.tabBar(),
             window.home_page.task_buttons["interface"],

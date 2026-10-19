@@ -91,7 +91,7 @@ class ProfileBuilderDialog(QDialog):
         self.preview_timer.setSingleShot(True)
         self.preview_timer.timeout.connect(self.refresh_preview)
 
-        self.setWindowTitle("프로파일 편집" if profile else "프로파일 작성")
+        self.setWindowTitle("설정 프로파일 편집" if profile else "설정 프로파일 작성")
         self.resize(1080, 820)
         self._build_ui()
         self._load_state_into_widgets()

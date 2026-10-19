@@ -450,7 +450,7 @@ def test_vendor_profile_dialog_uses_engineer_friendly_flow(qt_app, tmp_path: Pat
     dialog = InspectorProfileDialog(service)
     try:
         tabs = [dialog.tabs.tabText(index) for index in range(dialog.tabs.count())]
-        assert dialog.windowTitle() == "장비 작업 자동화 프로파일 만들기"
+        assert dialog.windowTitle() == "점검 프로파일 만들기"
         assert tabs[:6] == [
             "1. 장비 정보",
             "2. 점검 명령",
@@ -825,7 +825,7 @@ def test_vendor_profile_dialog_opens_without_telnetlib3(
     monkeypatch.setattr(builtins, "__import__", guarded_import)
     dialog = InspectorProfileDialog(service)
     try:
-        assert dialog.windowTitle() == "장비 작업 자동화 프로파일 만들기"
+        assert dialog.windowTitle() == "점검 프로파일 만들기"
         assert dialog.profiles
     finally:
         dialog.close()
@@ -1374,7 +1374,7 @@ def test_config_builder_full_editor_keeps_advanced_controls_available(
         builder.advanced_toggle_button.click()
         assert set(builder.advanced_sections) == {"blocks", "filter", "rows", "columns", "file"}
         assert window.profile_management_button.isVisibleTo(window)
-        assert window.profile_management_button.text() == "프로파일 만들기·관리"
+        assert window.profile_management_button.text() == "설정 프로파일 만들기·관리"
         for section in builder.advanced_sections.values():
             assert not section.isExpanded()
             section.setExpanded(True)
@@ -1486,7 +1486,7 @@ def test_inspector_tab_buttons_use_clear_workflow_labels(qt_app, tmp_path: Path)
         assert tab.open_result_button.isHidden()
         assert not tab.profile_section.isExpanded()
         assert not tab.execution_options_section.isExpanded()
-        assert tab.profile_editor_button.text() == "프로파일 만들기·관리"
+        assert tab.profile_editor_button.text() == "점검 프로파일 만들기·관리"
         assert not has_ancestor(tab.profile_editor_button, profile_group)
         # The button lives in the page header row, next to the help button.
         assert tab.profile_editor_button.parentWidget().objectName() == "pageHeader"
@@ -1494,7 +1494,7 @@ def test_inspector_tab_buttons_use_clear_workflow_labels(qt_app, tmp_path: Path)
         assert not has_ancestor(tab.profile_editor_button, validation_group)
         assert tab.supported_toggle_button is tab.profile_section.toggle_button
         assert has_ancestor(tab.supported_table, profile_group)
-        assert "사용자 프로파일" in tab.profile_editor_button.toolTip()
+        assert "점검 프로파일" in tab.profile_editor_button.toolTip()
         assert "지원 제조사(vendor) 목록 로드 실패" not in tab.supported_label.text()
         assert tab.supported_table.minimumHeight() >= 160
         assert tab.log_view.minimumHeight() >= 140
@@ -1506,14 +1506,14 @@ def test_inspector_tab_buttons_use_clear_workflow_labels(qt_app, tmp_path: Path)
         assert tab.inventory_password_fields.isHidden()
         assert not tab.command_path_edit.isEnabled()
         assert not tab.command_button.isEnabled()
-        assert "사용자 명령 모드" in tab.command_path_edit.placeholderText()
+        assert "명령 일괄 입력" in tab.command_path_edit.placeholderText()
         tab.inventory_path_edit.setText(str(tmp_path / "inventory.xlsx"))
         assert tab.run_button.isEnabled()
         tab.mode_combo.setCurrentIndex(tab.mode_combo.findData("custom_commands"))
         assert not tab.command_fields.isHidden()
         assert tab.command_path_edit.isEnabled()
         assert tab.command_button.isEnabled()
-        assert "사용자 명령 파일" in tab.command_path_edit.placeholderText()
+        assert "명령 파일" in tab.command_path_edit.placeholderText()
         assert not tab.run_button.isEnabled()
         tab.command_file_radio.setChecked(True)
         tab.command_path_edit.setText(str(tmp_path / "commands.txt"))

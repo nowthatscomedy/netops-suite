@@ -194,9 +194,15 @@ class InspectorProfileDialog(QDialog):
         parent=None,
         *,
         exports_dir: str | Path | None = None,
+        inventory_rows: list[dict[str, Any]] | None = None,
+        initial_device: tuple[str, str] | None = None,
     ) -> None:
         super().__init__(parent)
         self.service = service
+        # Devices from the inspector's chosen list, offered on the trial tab.
+        self.inventory_rows = [
+            row for row in (inventory_rows or []) if str(row.get("ip", "")).strip()
+        ]
         self.exports_dir = (
             Path(exports_dir)
             if exports_dir is not None
@@ -225,11 +231,13 @@ class InspectorProfileDialog(QDialog):
         self.preview_timer.setSingleShot(True)
         self.preview_timer.timeout.connect(self.refresh_preview)
 
-        self.setWindowTitle("장비 작업 자동화 프로파일 만들기")
+        self.setWindowTitle("점검 프로파일 만들기")
         self.resize(1120, 780)
         self._build_ui()
         self._load_profile_choices()
         self._load_state()
+        if initial_device is not None:
+            self._apply_initial_device(*initial_device)
         self.refresh_preview()
         self._loading_state = False
         self._dirty = False
@@ -358,6 +366,8 @@ class InspectorProfileDialog(QDialog):
         else:
             self.next_step_button.hide()
         self.trial_shortcut_button.setVisible(current is not self.trial_tab)
+        if current is self.trial_tab and not self._trial_running:
+            self._sort_trial_devices()
 
     def _go_to_next_step(self) -> None:
         steps = self._step_tabs()
@@ -500,6 +510,12 @@ class InspectorProfileDialog(QDialog):
         self.profile_scope_combo.currentIndexChanged.connect(
             self._on_profile_scope_changed
         )
+
+    def _apply_initial_device(self, vendor: str, os_name: str) -> None:
+        """Start a new profile for a device type the inventory needs."""
+        self.vendor_edit.setText(vendor)
+        self.os_edit.setText(os_name)
+        self._sort_trial_devices()
 
     def _on_profile_scope_changed(self, _index: int | None = None) -> None:
         model_specific = self.profile_scope_combo.currentData() == "model"
@@ -867,6 +883,18 @@ class InspectorProfileDialog(QDialog):
         form = QFormLayout()
         form.setVerticalSpacing(8)
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        self.trial_device_combo = NoWheelComboBox()
+        self.trial_device_combo.setObjectName("profileTrialDeviceCombo")
+        self.trial_device_combo.setAccessibleName("장비 목록에서 시험할 장비 고르기")
+        self.trial_device_combo.setToolTip(
+            "장비 점검 화면에서 고른 장비 목록의 장비입니다. 고르면 IP·포트·계정·비밀번호를 채웁니다."
+        )
+        self.trial_device_combo.currentIndexChanged.connect(self._fill_trial_from_inventory)
+        self._populate_trial_devices()
+        if self.inventory_rows:
+            form.addRow("장비 목록에서 고르기", self.trial_device_combo)
+        else:
+            self.trial_device_combo.hide()
         self.trial_ip_edit = QLineEdit()
         self.trial_ip_edit.setObjectName("profileTrialIpEdit")
         self.trial_ip_edit.setPlaceholderText("예: 192.168.0.10")
@@ -933,7 +961,10 @@ class InspectorProfileDialog(QDialog):
         layout.addLayout(buttons)
 
         self.trial_status_label = make_inline_status(
-            "info", "장비 IP와 계정을 입력한 뒤 시험 실행을 누르세요."
+            "info",
+            "장비 목록에서 장비를 고르거나 IP와 계정을 입력한 뒤 시험 실행을 누르세요."
+            if self.inventory_rows
+            else "장비 IP와 계정을 입력한 뒤 시험 실행을 누르세요.",
         )
         self.trial_status_label.setObjectName("profileTrialStatus")
         layout.addWidget(self.trial_status_label)
@@ -970,6 +1001,73 @@ class InspectorProfileDialog(QDialog):
         layout.addWidget(output_split, 1)
         self.tabs.addTab(tab, "4. 장비로 시험")
 
+    def _trial_device_label(self, row: dict[str, Any]) -> str:
+        device = " / ".join(
+            str(row.get(key, "")).strip()
+            for key in ("vendor", "os", "model")
+            if str(row.get(key, "")).strip()
+        )
+        return f"{row.get('ip', '')}  ({device})" if device else str(row.get("ip", ""))
+
+    def _populate_trial_devices(self) -> None:
+        self.trial_device_combo.blockSignals(True)
+        self.trial_device_combo.clear()
+        self.trial_device_combo.addItem("직접 입력", -1)
+        for index, row in enumerate(self.inventory_rows):
+            self.trial_device_combo.addItem(self._trial_device_label(row), index)
+        self.trial_device_combo.blockSignals(False)
+
+    def _sort_trial_devices(self) -> None:
+        """Put devices of the profile's vendor/OS first in the picker."""
+        if not self.inventory_rows:
+            return
+        vendor = self.vendor_edit.text().strip().casefold()
+        os_name = self.os_edit.text().strip().casefold()
+        current = self.trial_device_combo.currentData()
+        selected = (
+            self.inventory_rows[current]
+            if isinstance(current, int) and 0 <= current < len(self.inventory_rows)
+            else None
+        )
+        self.inventory_rows.sort(
+            key=lambda row: (
+                str(row.get("vendor", "")).strip().casefold() != vendor
+                or str(row.get("os", "")).strip().casefold() != os_name
+            )
+        )
+        self._populate_trial_devices()
+        if selected is not None:
+            position = self.trial_device_combo.findData(self.inventory_rows.index(selected))
+            self.trial_device_combo.blockSignals(True)
+            self.trial_device_combo.setCurrentIndex(max(position, 0))
+            self.trial_device_combo.blockSignals(False)
+
+    def _fill_trial_from_inventory(self, _index: int | None = None) -> None:
+        index = self.trial_device_combo.currentData()
+        if not isinstance(index, int) or not 0 <= index < len(self.inventory_rows):
+            return
+        row = self.inventory_rows[index]
+        connection = str(row.get("connection_type", "") or "").strip().lower()
+        if connection in {"ssh", "telnet"}:
+            position = self.connection_combo.findData(connection)
+            if position >= 0:
+                self.connection_combo.setCurrentIndex(position)
+        self.trial_ip_edit.setText(str(row.get("ip", "")).strip())
+        try:
+            port = int(float(str(row.get("port", "") or 0)))
+        except ValueError:
+            port = 0
+        if 1 <= port <= 65535:
+            self.trial_port_spin.setValue(port)
+        self.trial_username_edit.setText(str(row.get("username", "") or ""))
+        self.trial_password_edit.setText(str(row.get("password", "") or ""))
+        self.trial_enable_edit.setText(str(row.get("enable_password", "") or ""))
+        set_inline_status(
+            self.trial_status_label,
+            "info",
+            f"장비 목록의 {row.get('ip', '')} 정보를 채웠습니다. 시험 실행을 누르세요.",
+        )
+
     def _sync_trial_port(self, _index: int | None = None) -> None:
         defaults = {"ssh": 22, "telnet": 23}
         current = self.trial_port_spin.value()
@@ -1001,6 +1099,7 @@ class InspectorProfileDialog(QDialog):
             not running and self.connection_combo.currentData() == "ssh"
         )
         for widget in (
+            self.trial_device_combo,
             self.trial_ip_edit,
             self.trial_port_spin,
             self.trial_username_edit,

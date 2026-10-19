@@ -31,6 +31,7 @@ from app.ui.common import (
 )
 from app.ui.common.required import check_required, required_label
 from app.utils.file_utils import open_in_explorer
+from app.utils.log_format import timestamp_lines
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
@@ -424,6 +425,7 @@ class TftpDiagnosticsMixin:
         if kind == "log":
             message = str(event.get("message", "") or "")
             if message:
+                message = timestamp_lines(message)
                 self._tftp_client_logs.append(message)
                 self.tftp_client_log_output.appendPlainText(message)
             self._update_tftp_client_activity_state()
@@ -541,6 +543,7 @@ class TftpDiagnosticsMixin:
         if kind == "server_log":
             message = str(event.get("message", "") or "")
             if message:
+                message = timestamp_lines(message)
                 self._tftp_server_logs.append(message)
                 self.tftp_server_log_output.appendPlainText(message)
             self._update_tftp_server_activity_state()

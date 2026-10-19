@@ -40,6 +40,7 @@ from app.ui.dialogs.ftp_profile_dialog import FtpProfileDialog
 from app.ui.common.disclosure import CollapsibleSection
 from app.ui.common.required import check_required, mark_missing, required_label
 from app.utils.file_utils import open_in_explorer
+from app.utils.log_format import timestamp_lines
 from app.utils.validators import (
     default_ftp_port,
     validate_ftp_host,
@@ -1190,6 +1191,7 @@ class FtpDiagnosticsMixin:
         if kind == "log":
             message = str(event.get("message", "") or "")
             if message:
+                message = timestamp_lines(message)
                 self._ftp_client_logs.append(message)
                 self.ftp_client_log_output.appendPlainText(message)
                 self._update_ftp_client_activity_visibility()
@@ -1304,6 +1306,7 @@ class FtpDiagnosticsMixin:
         if kind == "server_log":
             message = str(event.get("message", "") or "")
             if message:
+                message = timestamp_lines(message)
                 self._ftp_server_logs.append(message)
                 self.ftp_server_log_output.appendPlainText(message)
                 self._update_ftp_server_log_visibility()

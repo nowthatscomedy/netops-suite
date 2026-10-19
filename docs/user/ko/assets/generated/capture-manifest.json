@@ -37,10 +37,10 @@
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "f53484cd7edd6e4fad758352241d9ccc39f2c06afee6cb3f823c736857bd2ab1",
+        "value": "8466b87ab7314b6691d971d7ff9e87b4a04ccde80dc1d19dec0259a7d7b912f4",
         "contract_sha256": "28102dc753364702ae7ec90db2abdbfd67eaeb234c2fe000d1f539342640be49",
         "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
-        "sources_sha256": "c5710a306184bcbfecd8b065f4a03a2e6af665b14a847bcb7315e27d346470de",
+        "sources_sha256": "ff1e848479e6e43dd0c9291722551837a37b5a971d08416151d6736ee1cb4f0c",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -102,8 +102,8 @@
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 55807,
-            "sha256": "8b481d46783607cbad19ae3870142193eb213ffacf5c4659f6f56b9888480281"
+            "size": 56315,
+            "sha256": "8bb6e09fe157ba20432ced1cc3c08506a5ad4708783757adefe7198f114a246d"
           },
           {
             "path": "app/ui/common/disclosure.py",
@@ -226,10 +226,10 @@
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "bdaad4add8390d2847db089b88f591eda9173442485b9ca9dbd3da8634d35856",
+        "value": "59c18e9ef6a4597fcd5473378db3d4706d3d51a3e0363d2609990837fc9b8154",
         "contract_sha256": "388101f3149abcc937642bbcb3d8949b8ad77d187f62dd1311529f44624c8670",
         "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
-        "sources_sha256": "6672a26b071b624626dd260b4cd6a3a160e05470d22dca80c9f8e68dbbdbc5cc",
+        "sources_sha256": "e5eb4baa0a1debf9703ba8bbb5c74c33c9e6122eebc25e5ba845c95d0827a638",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -294,8 +294,8 @@
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 55807,
-            "sha256": "8b481d46783607cbad19ae3870142193eb213ffacf5c4659f6f56b9888480281"
+            "size": 56315,
+            "sha256": "8bb6e09fe157ba20432ced1cc3c08506a5ad4708783757adefe7198f114a246d"
           },
           {
             "path": "app/ui/common/disclosure.py",
@@ -427,10 +427,10 @@
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "b34c3693ff4ab961b7de611ba2e4c20174e0f5641c1dce7456a9c7269718fa65",
+        "value": "8134cfaf1b98ef44bb308508c6c4c3cd69e95adc3466b175e0447b3221e7f344",
         "contract_sha256": "bc5d527095c6c726a5c385ca1328a8cba381eacb427b32e3a9cc7b1413e1d52e",
         "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
-        "sources_sha256": "89f9a8849fdcd3662b18053a09d6559c5a32ed39e235bfac9104fbc4e6c50114",
+        "sources_sha256": "77f02e32ccbbcff5bb7b285994ca3da7ebd4e88f6f666871ad1d43cf548f8604",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -493,8 +493,8 @@
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 55807,
-            "sha256": "8b481d46783607cbad19ae3870142193eb213ffacf5c4659f6f56b9888480281"
+            "size": 56315,
+            "sha256": "8bb6e09fe157ba20432ced1cc3c08506a5ad4708783757adefe7198f114a246d"
           },
           {
             "path": "app/ui/common/disclosure.py",
@@ -611,14 +611,14 @@
         "assets/icons/lucide/folder-sync.svg",
         "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "994916b45b30cb364bcff963f08bc69450250a58d2ec75bdad07a1b6c53ed611",
+      "png_sha256": "f4e5d1bc46506b6593a2bf69555546e58f2a59e12171986ef8934c034129ab2a",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "d624eefd92c12075cb906bc382fa1f6abb8aa6d78f1247cb23582a9850d1bb27",
+        "value": "1186bea3a27032193ba9ac93892b0187ba5eb6009a2183209034f6a19e9fd7b7",
         "contract_sha256": "dba6c52901a70cfa06450c59f649d6aa1613d0473012c8f97c10615883b387a7",
         "handler_sha256": "3931fc613d6ce32d77017938cbfe72541cb4c2d195b7a86f687e550284dedec2",
-        "sources_sha256": "9b6f2c194658325b11dda67ab337fa90c880bd084e85f99a24a95f7504d14b2b",
+        "sources_sha256": "65620ea63f6c4aab2d31ae6f83686cc74c5883b26092245ca5120b3e74fe7be4",
         "capture_handler": {
           "name": "wireless_expanded",
           "source": "qa/offscreen/harness.py",
@@ -680,8 +680,8 @@
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 55807,
-            "sha256": "8b481d46783607cbad19ae3870142193eb213ffacf5c4659f6f56b9888480281"
+            "size": 56315,
+            "sha256": "8bb6e09fe157ba20432ced1cc3c08506a5ad4708783757adefe7198f114a246d"
           },
           {
             "path": "app/ui/common/disclosure.py",
@@ -953,14 +953,14 @@
         "assets/icons/lucide/book-open.svg",
         "assets/icons/lucide/server.svg"
       ],
-      "png_sha256": "e641577507726c82f6efc0f43c8f911b264a6a7f474aee2afb2197669700d1ca",
+      "png_sha256": "f21b3487999193bec82ebd9d3d64450190c49d3e9ceb47e359004afbf7482c4d",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "a60f3b0ce3a3ba1c47134e402fed85364f217a8bd9b96267677761c6c08286dd",
+        "value": "3b2ea9b6a18286738e87319b725713440b754b9fb73902168927ead51bc46bda",
         "contract_sha256": "cd7b3b4e6f4ddfe69ffe2f007c7f69a67136c0050134f0e6b5ac9556c6ec82ed",
         "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
-        "sources_sha256": "8f5ba83e69e3dcc3522aac7c6947a8233bac2b0e1ba65468737949498968506c",
+        "sources_sha256": "824db51a50352cc31817b1ca737974c623d0ddaa8609d3423862a9bd48cce371",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -1026,8 +1026,8 @@
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 55807,
-            "sha256": "8b481d46783607cbad19ae3870142193eb213ffacf5c4659f6f56b9888480281"
+            "size": 56315,
+            "sha256": "8bb6e09fe157ba20432ced1cc3c08506a5ad4708783757adefe7198f114a246d"
           },
           {
             "path": "app/ui/common/disclosure.py",
@@ -1046,8 +1046,8 @@
           },
           {
             "path": "app/ui/tabs/inspector_tab.py",
-            "size": 64472,
-            "sha256": "baefedca359d87036f3f5363394f22b9e2f934f2221d3060b510a9ab4e77b1c7"
+            "size": 97869,
+            "sha256": "620b49d99dd87c7297ddfa80b3b4f240c33e74c6d67e3ac1111a94db449296aa"
           },
           {
             "path": "assets/icons/lucide/activity.svg",
@@ -1145,14 +1145,14 @@
         "netops_suite/modules/inspector/service.py",
         "netops_suite/modules/inspector_runtime/core/command_patterns.py"
       ],
-      "png_sha256": "1cf02a4ca362ddcf2a51ea502e5b884a5b6f00fdbea3d59e9b008a50bb5b195c",
+      "png_sha256": "23383a6a54661c4b7b1ed478e6e9baa509fb6ed076612ea2d5f46f713f2acb75",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "3b2ea29fc6e6d34439df3987d0f1918cfcb9151616d46e599fc39dc1fa2dee4e",
+        "value": "d11cf18c503305d16bf0ecfe49b2ed55692ace84cc97e1960a638467c5651fef",
         "contract_sha256": "dd8fd8ba67eb5660d4f57b20cd3aced0b293d41b4dac24f9496ebf07636846a7",
         "handler_sha256": "6577bde7b9deb61303ec28e3e8d82c7b4363a29551155ef50f1198f3a270d7f7",
-        "sources_sha256": "f724326d2adce4458cf080e4a0756e843687a01dfd294a7d827630e195de45fe",
+        "sources_sha256": "0f95f1cad1a6be9b8b2f8ec5ac62cd7bc74ffe987f334c762e031a0d6bc2affd",
         "capture_handler": {
           "name": "inspector_custom_commands",
           "source": "qa/offscreen/harness.py",
@@ -1214,13 +1214,13 @@
           },
           {
             "path": "app/ui/tabs/inspector_tab.py",
-            "size": 64472,
-            "sha256": "baefedca359d87036f3f5363394f22b9e2f934f2221d3060b510a9ab4e77b1c7"
+            "size": 97869,
+            "sha256": "620b49d99dd87c7297ddfa80b3b4f240c33e74c6d67e3ac1111a94db449296aa"
           },
           {
             "path": "netops_suite/modules/inspector/service.py",
-            "size": 63137,
-            "sha256": "e85610307aa4f019a2f2eb9802c54479268a4f9339667f712c43518fcfdf11c4"
+            "size": 71237,
+            "sha256": "d1f04c8fb4864b83c6b71cd8955cc86593bfb61ca57b7e7079dd6daaedc12efe"
           },
           {
             "path": "netops_suite/modules/inspector_runtime/core/command_patterns.py",
@@ -1256,6 +1256,243 @@
       ]
     },
     {
+      "scenario_id": "guide_inspector_run_results",
+      "file": "inspector-run-results.png",
+      "viewport": [
+        1280,
+        800
+      ],
+      "capture_handler": "inspector_run_results",
+      "expected_object_names": [
+        "pageHeader",
+        "inspectorProgressBar",
+        "inspectorSummaryLabel",
+        "inspectorResultTable",
+        "inspectorRetryFailedButton",
+        "inspectorBackupDiffButton"
+      ],
+      "source_paths": [
+        "app/ui/tabs/inspector_tab.py",
+        "app/ui/common/ux.py",
+        "app/ui/common/theme.py",
+        "netops_suite/modules/inspector/backup_compare.py",
+        "netops_suite/modules/inspector/service.py"
+      ],
+      "png_sha256": "b3e99fb9cb47d4510e284fcea83af21b0c783d6dc2108485c75a8b59b74db228",
+      "fingerprint": {
+        "schema_version": 1,
+        "algorithm": "sha256",
+        "value": "e416b2d52acf18ddda66f15b5cce37a47c73455cdc72fbf95f495a718677a933",
+        "contract_sha256": "334aac2f7fa6fa398a08ec57b77853d6d876be48b7e80211df8650e96daa7814",
+        "handler_sha256": "d92b7f0881fed52a5a635dfa0f1a5ca6380deb31c293f35501fa55ecadb38dae",
+        "sources_sha256": "0009f562343044d03c6e99216662dd8803d5234e5e79a1392fb641284686def8",
+        "capture_handler": {
+          "name": "inspector_run_results",
+          "source": "qa/offscreen/harness.py",
+          "class": "OffscreenQaHarness",
+          "methods": [
+            {
+              "name": "_run_scenario",
+              "sha256": "2e2e07f023176c4fce56e1e4111186abf52b6e0dde38c26ec450d396367bf033"
+            },
+            {
+              "name": "_navigate_main",
+              "sha256": "a0d0f34ae36804abfef147bd2e6b1a0b3495766e6ac59223333b5bfaca2f6104"
+            },
+            {
+              "name": "_click_list_row",
+              "sha256": "fce7fa43f62fc7711910e023b0aa7504394e6bb641172e06bbfedcf9b8b29c52"
+            },
+            {
+              "name": "_flush",
+              "sha256": "bcd282c4e94affd1369c8101f75cc94d4d3cb34a12b33290f5fd30b7a3d7140c"
+            },
+            {
+              "name": "_capture",
+              "sha256": "cce82fd5c9e929eac3d0dada4bacaefad09e16b5e9d6712e86c24415516ca3bc"
+            },
+            {
+              "name": "_capture_handler_inspector_run_results",
+              "sha256": "33b579e0da1d51279a1cbd818d786d1fee982dd6e034378ecafbb718c8cf31b2"
+            }
+          ]
+        },
+        "viewport": [
+          1280,
+          800
+        ],
+        "expected_object_names": [
+          "pageHeader",
+          "inspectorProgressBar",
+          "inspectorSummaryLabel",
+          "inspectorResultTable",
+          "inspectorRetryFailedButton",
+          "inspectorBackupDiffButton"
+        ],
+        "source_paths": [
+          "app/ui/tabs/inspector_tab.py",
+          "app/ui/common/ux.py",
+          "app/ui/common/theme.py",
+          "netops_suite/modules/inspector/backup_compare.py",
+          "netops_suite/modules/inspector/service.py"
+        ],
+        "source_files": [
+          {
+            "path": "app/ui/common/theme.py",
+            "size": 11013,
+            "sha256": "e7c94bf2dd758682e053b69f0722195fdb1a1e4946941c74be5062f257fb7b3d"
+          },
+          {
+            "path": "app/ui/common/ux.py",
+            "size": 8214,
+            "sha256": "1f03c949729e17d2e195f005bfd047314fc58a76f9c050a2a26e21dd3d2b2c45"
+          },
+          {
+            "path": "app/ui/tabs/inspector_tab.py",
+            "size": 97869,
+            "sha256": "620b49d99dd87c7297ddfa80b3b4f240c33e74c6d67e3ac1111a94db449296aa"
+          },
+          {
+            "path": "netops_suite/modules/inspector/backup_compare.py",
+            "size": 4441,
+            "sha256": "5e7b7c8defaf49e6f274aca1c8b3cece15e70e27fb329430d0ef751081e8b19e"
+          },
+          {
+            "path": "netops_suite/modules/inspector/service.py",
+            "size": 71237,
+            "sha256": "d1f04c8fb4864b83c6b71cd8955cc86593bfb61ca57b7e7079dd6daaedc12efe"
+          }
+        ]
+      },
+      "checks": [
+        "메인 화면 3 이동",
+        "완료 요약에 성공·실패 대수 표시",
+        "백업 비교 요약 표시",
+        "장비별 결과 표 4행",
+        "실패 장비를 표 맨 위에 표시",
+        "실패한 장비만 다시 실행 버튼",
+        "변경된 장비를 고르면 변경 내용 보기 활성",
+        "조작부 전체 높이 및 클릭 영역: inspectorRetryFailedButton (위젯 171×32, 가시 171×32)",
+        "조작부 전체 높이 및 클릭 영역: inspectorBackupDiffButton (위젯 104×32, 가시 104×32)",
+        "조작부 전체 높이 및 클릭 영역: 장비별 실행 결과 (위젯 1008×181, 가시 1008×181)",
+        "가이드 캡처 objectName 표시: pageHeader",
+        "가이드 캡처 objectName 표시: inspectorProgressBar",
+        "가이드 캡처 objectName 표시: inspectorSummaryLabel",
+        "가이드 캡처 objectName 표시: inspectorResultTable",
+        "가이드 캡처 objectName 표시: inspectorRetryFailedButton",
+        "가이드 캡처 objectName 표시: inspectorBackupDiffButton"
+      ]
+    },
+    {
+      "scenario_id": "guide_inspector_inventory_editor",
+      "file": "inspector-inventory-editor.png",
+      "viewport": [
+        1280,
+        800
+      ],
+      "capture_handler": "inspector_inventory_editor",
+      "expected_object_names": [
+        "inventoryEditorTable",
+        "inventoryEditorStatus",
+        "inventoryEditorSaveButton"
+      ],
+      "source_paths": [
+        "app/ui/dialogs/inventory_editor_dialog.py",
+        "app/ui/common/ux.py",
+        "app/ui/common/theme.py",
+        "netops_suite/ui/actions.py"
+      ],
+      "png_sha256": "e0e64f0a74d18860c877fcb4fa0c21c5726e591c397d1e519f6778424adf7ac1",
+      "fingerprint": {
+        "schema_version": 1,
+        "algorithm": "sha256",
+        "value": "dedb1c2de738aea213c760d0e50e2a1f363128c2fc2f3f7a40f838d2013e3393",
+        "contract_sha256": "b7133112cd5b953a9bd8f8c847edf8e7111366f52a2f8fc8beb7bd7b63eaece0",
+        "handler_sha256": "4ff0821255423c097a2b5e8f68fb4f52087fb1cb4eb326ce5b7b900fc9f5a0fe",
+        "sources_sha256": "0dc0ebf26d25818dd208d6ee7ab538c0bb4f04ad5e203e2d61b1dd572c29e808",
+        "capture_handler": {
+          "name": "inspector_inventory_editor",
+          "source": "qa/offscreen/harness.py",
+          "class": "OffscreenQaHarness",
+          "methods": [
+            {
+              "name": "_run_scenario",
+              "sha256": "2e2e07f023176c4fce56e1e4111186abf52b6e0dde38c26ec450d396367bf033"
+            },
+            {
+              "name": "_navigate_main",
+              "sha256": "a0d0f34ae36804abfef147bd2e6b1a0b3495766e6ac59223333b5bfaca2f6104"
+            },
+            {
+              "name": "_click_list_row",
+              "sha256": "fce7fa43f62fc7711910e023b0aa7504394e6bb641172e06bbfedcf9b8b29c52"
+            },
+            {
+              "name": "_flush",
+              "sha256": "bcd282c4e94affd1369c8101f75cc94d4d3cb34a12b33290f5fd30b7a3d7140c"
+            },
+            {
+              "name": "_capture",
+              "sha256": "cce82fd5c9e929eac3d0dada4bacaefad09e16b5e9d6712e86c24415516ca3bc"
+            },
+            {
+              "name": "_capture_handler_inspector_inventory_editor",
+              "sha256": "40ed6df0e535a1627ddfece1c834d0a3a2e71e63a2be96ba95493a960f0da7c2"
+            }
+          ]
+        },
+        "viewport": [
+          1280,
+          800
+        ],
+        "expected_object_names": [
+          "inventoryEditorTable",
+          "inventoryEditorStatus",
+          "inventoryEditorSaveButton"
+        ],
+        "source_paths": [
+          "app/ui/dialogs/inventory_editor_dialog.py",
+          "app/ui/common/ux.py",
+          "app/ui/common/theme.py",
+          "netops_suite/ui/actions.py"
+        ],
+        "source_files": [
+          {
+            "path": "app/ui/common/theme.py",
+            "size": 11013,
+            "sha256": "e7c94bf2dd758682e053b69f0722195fdb1a1e4946941c74be5062f257fb7b3d"
+          },
+          {
+            "path": "app/ui/common/ux.py",
+            "size": 8214,
+            "sha256": "1f03c949729e17d2e195f005bfd047314fc58a76f9c050a2a26e21dd3d2b2c45"
+          },
+          {
+            "path": "app/ui/dialogs/inventory_editor_dialog.py",
+            "size": 20170,
+            "sha256": "44acc443365741b606a96e29def7d1764ea5da91708247f19ba43e3d3a115e55"
+          },
+          {
+            "path": "netops_suite/ui/actions.py",
+            "size": 6061,
+            "sha256": "2cee4bdc38270aa4c6610a4a48bd2a18bc05399156b3b3fb6d60d522e22da4dd"
+          }
+        ]
+      },
+      "checks": [
+        "메인 화면 3 이동",
+        "IP 목록 붙여넣기로 행 자동 추가",
+        "새 행은 위 행의 장비 종류를 따름",
+        "잘못된 IP 즉시 표시",
+        "조작부 전체 높이 및 클릭 영역: 행 추가 (위젯 84×32, 가시 84×32)",
+        "조작부 전체 높이 및 클릭 영역: inventoryEditorSaveButton (위젯 100×32, 가시 100×32)",
+        "조작부 전체 높이 및 클릭 영역: inventoryEditorTable (위젯 1248×597, 가시 1248×597)",
+        "가이드 캡처 objectName 표시: inventoryEditorTable",
+        "가이드 캡처 objectName 표시: inventoryEditorStatus",
+        "가이드 캡처 objectName 표시: inventoryEditorSaveButton"
+      ]
+    },
+    {
       "scenario_id": "guide_inspector_profile_trial",
       "file": "inspector-profile-trial.png",
       "viewport": [
@@ -1285,10 +1522,10 @@
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "7e06d30d1ec96faf3469e787bcf0c4bf38ebd5958900eb93e8445ac9579aa5cd",
+        "value": "4c9bef7c456657a57a6a71e36ca80e3f8d2ba2a51fb7175698291820a1c206d0",
         "contract_sha256": "6c720423406a3323689c4219416c490053fb68f26bff97a4e5e7d8d0eaf8851e",
         "handler_sha256": "bee93e87db1acf41d69eec95cdfd14ad98f9810ad846adb8515530a8d8f6d02b",
-        "sources_sha256": "b1ad3c856f7e2bfc9b3ae605f3c08ae9a81f8f2ba07163ba249ae13821c90db4",
+        "sources_sha256": "e1f026db6430f2122e0eeee9f83d8ba62473486b06f1e2c565cafb4b28374806",
         "capture_handler": {
           "name": "inspector_profile_trial",
           "source": "qa/offscreen/harness.py",
@@ -1360,8 +1597,8 @@
           },
           {
             "path": "app/ui/dialogs/inspector_profile_dialog.py",
-            "size": 90842,
-            "sha256": "dc607f71457f746deaa4f023737b6a3314c7b763180d54d331e18a2e8b9e336a"
+            "size": 95625,
+            "sha256": "15693b9cedcb63a486fa1e3543618a7a47d4dbca437eb1c5724fcbe83963117b"
           },
           {
             "path": "netops_suite/modules/inspector/extraction_suggest.py",
@@ -1370,8 +1607,8 @@
           },
           {
             "path": "netops_suite/modules/inspector/service.py",
-            "size": 63137,
-            "sha256": "e85610307aa4f019a2f2eb9802c54479268a4f9339667f712c43518fcfdf11c4"
+            "size": 71237,
+            "sha256": "d1f04c8fb4864b83c6b71cd8955cc86593bfb61ca57b7e7079dd6daaedc12efe"
           },
           {
             "path": "netops_suite/modules/inspector_runtime/core/ssh_diagnostics.py",
@@ -1428,10 +1665,10 @@
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "246d7b7051f76ecb9d88c9f6fa767afd289c629eca29e79339a2b6d3b04ad3ec",
+        "value": "52da9700fd062dd419525c296d1a5e8edf9ea0aef4f5bff940262632bb929287",
         "contract_sha256": "b9174d7bda373357f46e580eb16e6db8fbbd1a07302866d3d005abf9701cbcec",
         "handler_sha256": "1c0c7b70b039b1b2836a6a90e0964374401843553ca87ce290ee9f41c746d4af",
-        "sources_sha256": "0e50ed5e77759f811250d30d926ad3719a5c1f268facdcfb89adae04ad757237",
+        "sources_sha256": "37bf241f5737bffc8b9043f911c0bfa2422f5978b7b96b69578de122c5a2e038",
         "capture_handler": {
           "name": "inspector_profile_columns",
           "source": "qa/offscreen/harness.py",
@@ -1499,8 +1736,8 @@
           },
           {
             "path": "app/ui/dialogs/inspector_profile_dialog.py",
-            "size": 90842,
-            "sha256": "dc607f71457f746deaa4f023737b6a3314c7b763180d54d331e18a2e8b9e336a"
+            "size": 95625,
+            "sha256": "15693b9cedcb63a486fa1e3543618a7a47d4dbca437eb1c5724fcbe83963117b"
           },
           {
             "path": "netops_suite/modules/inspector/extraction_suggest.py",
@@ -1560,14 +1797,14 @@
         "assets/icons/lucide/folder-sync.svg",
         "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "7ac05639d58e694a8c9d0c33fe59ad8492e56fc7b6e81175ce3cd9f042f48f90",
+      "png_sha256": "cc44abd270133e1ef7c87abada551d0a4a410ad0b6b65cb2e30f6bfa5f3c0aa6",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "e9286fd8a468fdcccb6cf6966b0f083ae37851f92d3d5e66357c97fd4735ab0a",
+        "value": "b29b8705691e4b0a8b0d481b89a335a4fe20aae02a26472c649f1cf4ed9d49fd",
         "contract_sha256": "28e2ab76d4fd3f5292572ae4a801c59131e79e58c0b93bf77a47448306f85485",
         "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
-        "sources_sha256": "fe7b2b5e6f3a11303eba4c869b9d5b6f2f9334195e4041aab4a5e3544e4ee64b",
+        "sources_sha256": "f2a4d6bf5af7a71202bfd01e8f5c7faafd5410ee75dd03f45d61a9c64c2146a4",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -1632,8 +1869,8 @@
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 55807,
-            "sha256": "8b481d46783607cbad19ae3870142193eb213ffacf5c4659f6f56b9888480281"
+            "size": 56315,
+            "sha256": "8bb6e09fe157ba20432ced1cc3c08506a5ad4708783757adefe7198f114a246d"
           },
           {
             "path": "app/ui/common/disclosure.py",
@@ -1697,8 +1934,8 @@
           },
           {
             "path": "netops_suite/modules/config_builder/switch_configurator/desktop_impl.py",
-            "size": 214792,
-            "sha256": "45f21cac5467910955fce9ee0ea2c4a4d435d852d8db08c417fa17421c07c609"
+            "size": 220260,
+            "sha256": "c5509d0abb65f7e8c37300b61fe21c35a2d52b3be235929ba1411996346f7e4a"
           },
           {
             "path": "netops_suite/ui/actions.py",
@@ -1757,14 +1994,14 @@
         "assets/icons/lucide/folder-sync.svg",
         "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "b6c26a29d803cff334c8831bfac99c4c90de43ad2cb28545070d1d22922a4789",
+      "png_sha256": "373d3829012036ad18259172a0a35a3170b4075256a147807919de74f1e11e68",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "973ae92ce0e0d9c164d550b4c9ef2be89a1a32696dcb7faa8e833752bf324f1f",
+        "value": "af410b04274fac294a8f6855d9c7b167f0a9fbfec63475c049ac83de9ef25bbd",
         "contract_sha256": "c4bb5c84a454a4f2f74835c7718fa4ee387042f3cbcb38744c21b33d72601c43",
         "handler_sha256": "322c3562ccd21e0f326bf8c1f1f8e9d6856807351b3557142aa1dffbe4ca40de",
-        "sources_sha256": "31fec4d41c7829d8b606d66602b7c459f0db07f723e146e898d802b52457d041",
+        "sources_sha256": "7bc1d5c052c6c5ca8796dc39181ce030940ecb81c24cf2766ac03a8d713c5874",
         "capture_handler": {
           "name": "settings_storage",
           "source": "qa/offscreen/harness.py",
@@ -1827,8 +2064,8 @@
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 55807,
-            "sha256": "8b481d46783607cbad19ae3870142193eb213ffacf5c4659f6f56b9888480281"
+            "size": 56315,
+            "sha256": "8bb6e09fe157ba20432ced1cc3c08506a5ad4708783757adefe7198f114a246d"
           },
           {
             "path": "app/ui/common/disclosure.py",
@@ -1847,8 +2084,8 @@
           },
           {
             "path": "app/ui/tabs/settings_tab.py",
-            "size": 51761,
-            "sha256": "9842fbcfd0c9a2f54991cf8acdd878f29517cb820d09c88b164b580f7e0401ed"
+            "size": 51827,
+            "sha256": "6b10b2f6f8b4f41aa22b5b99d3117bc657f261b28b8bbae2445403fcf2cfbdb5"
           },
           {
             "path": "assets/icons/lucide/activity.svg",
@@ -1946,14 +2183,14 @@
         "assets/icons/lucide/folder-sync.svg",
         "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "a92a5d98be806626c78275e96e78f83ad2f2d1d48a7d33b74717cc1a61bb2e4b",
+      "png_sha256": "1b581e56f1535dea87a87ce70ca3ac249e15a3ac200176bd668d0ebf67a0fa5e",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "91f110a5fd144daaf38f23c51b3e3e88dca1593bcc2a67923bef6a6c0352ce81",
+        "value": "79b9aaa3100ccc276739166b8851b5e2a61c705d74c558e5b195ff1413cc8ff9",
         "contract_sha256": "2a96152ccd67b615179630c8b5ba7b4ed6c26984cc9c457b8bc607d93ef6d3ef",
         "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
-        "sources_sha256": "39a4796f9e8a3eeae766eda1edb7203dfaea3f31494f701a293c741170188d13",
+        "sources_sha256": "fd8668e2618864c6c472142f8fe88dca119bd861f36fc1a2c60f70300109c15c",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -2013,8 +2250,8 @@
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 55807,
-            "sha256": "8b481d46783607cbad19ae3870142193eb213ffacf5c4659f6f56b9888480281"
+            "size": 56315,
+            "sha256": "8bb6e09fe157ba20432ced1cc3c08506a5ad4708783757adefe7198f114a246d"
           },
           {
             "path": "app/ui/common/disclosure.py",
@@ -2125,10 +2362,10 @@
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "982213420f43a1a5a7e8e00fafbd33626d9c7873dba1df8d3203d5baa37d18a3",
+        "value": "5879dde7d0768c48dd4ef1b57c38b366f8cdee2cf9e4edba490bb255d7d596bd",
         "contract_sha256": "d340b6de95a717639cf573a7bdf9d129101a67157c37acf0521e2a58f5ece03c",
         "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
-        "sources_sha256": "a5a6e40968c04147fdfd8f20730bf36462e9dd31d1db36176e5bce4d9cdbace0",
+        "sources_sha256": "ed61f4b7356adfda52aa919e22094417d6ed8aed82ba256f87977c80342896bb",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -2191,8 +2428,8 @@
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 55807,
-            "sha256": "8b481d46783607cbad19ae3870142193eb213ffacf5c4659f6f56b9888480281"
+            "size": 56315,
+            "sha256": "8bb6e09fe157ba20432ced1cc3c08506a5ad4708783757adefe7198f114a246d"
           },
           {
             "path": "app/ui/common/disclosure.py",
@@ -2206,18 +2443,18 @@
           },
           {
             "path": "app/ui/tabs/diagnostics/ftp.py",
-            "size": 75243,
-            "sha256": "e2bbad74a1648b9c0ad8441e032b5a6727e8ad96f467a7333be811e21da94d40"
+            "size": 75394,
+            "sha256": "e4c6c6611121ad5684cbc950ff42fc9650535d01e2293cf0146c581864cb30a1"
           },
           {
             "path": "app/ui/tabs/diagnostics/scp.py",
-            "size": 41186,
-            "sha256": "3e9339caaadc614ef8fae40596492dd2eaa22d6ddde4cd5f19753c6d6b5f4a68"
+            "size": 41337,
+            "sha256": "955f7a298bbe0b496f2b26dc5ae6f411a686511dff2e6bc33b596b9d126d461d"
           },
           {
             "path": "app/ui/tabs/diagnostics/tftp.py",
-            "size": 33759,
-            "sha256": "a6ba55f05655318b70e50a87709001ca035cf411bb74f9a8fb7da91fc5e6fb1c"
+            "size": 33910,
+            "sha256": "50b5239cdac58db1b4771c7b0b5ded8c22fd5b85b718a1b025649a8a209e1aa0"
           },
           {
             "path": "app/ui/tabs/transfer_tab.py",
@@ -2312,14 +2549,14 @@
         "assets/icons/lucide/folder-sync.svg",
         "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "d6395db100b5afa6bebbd2d5f51115c10c62bcad4be59fc78374c3623c6e35ed",
+      "png_sha256": "fbfe1dba5bb640589c1ca1a7545849202c532ed1a91ec891dde1326e7a4ff81f",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "bc4d08f9be1b9415a39708f1d8b4c59bc80e9816ce72c15fabb31e998f3a2997",
+        "value": "ac16d9ecb98c08ec2df806b794f808633a604990238682464ee76bf67ba88c5d",
         "contract_sha256": "d49b374db76ae18b79ff948a911719ad50b4b5835fefd803c7315da3544b0eb8",
         "handler_sha256": "5cddeb00bd5a88316a63d18fc1fd736cc15471ce83146b4f703ea2eb2bb568de",
-        "sources_sha256": "265fec4ca0773b937840384178834b7fed60172d26b11f3b85a2f7931bb3cf51",
+        "sources_sha256": "44a510d858bb1bf8867489bb2bc24529f43338776317ec727c2cf4e9c4741bdc",
         "capture_handler": {
           "name": "context_help",
           "source": "qa/offscreen/harness.py",
@@ -2386,8 +2623,8 @@
           },
           {
             "path": "app/main_window.py",
-            "size": 55807,
-            "sha256": "8b481d46783607cbad19ae3870142193eb213ffacf5c4659f6f56b9888480281"
+            "size": 56315,
+            "sha256": "8bb6e09fe157ba20432ced1cc3c08506a5ad4708783757adefe7198f114a246d"
           },
           {
             "path": "app/ui/common/theme.py",

@@ -121,3 +121,24 @@ def test_diagnostic_input_error_outlines_the_field(qapp):
     label, field = QLabel(), QLineEdit()
     DiagnosticsTab._show_diagnostic_input_error(label, field, "대상을 입력해 주세요.")
     assert field.property("missingRequired")
+
+
+def test_inspector_inventory_label_appears_once(qapp, tmp_path):
+    from types import SimpleNamespace
+
+    from PySide6.QtWidgets import QGroupBox
+
+    from app.ui.tabs.inspector_tab import InspectorTab
+
+    state = SimpleNamespace(thread_pool=None, paths=SimpleNamespace(data_root=tmp_path))
+    tab = InspectorTab(state)
+    try:
+        group = tab.findChild(QGroupBox, "inspectorInventoryGroup")
+        labels = [
+            label for label in group.findChildren(QLabel)
+            if label.text().startswith("장비 목록 Excel")
+        ]
+        assert labels == [tab.inventory_path_label]
+        assert "장비 목록 Excel (필수)" in _required_names(group)
+    finally:
+        tab.close()

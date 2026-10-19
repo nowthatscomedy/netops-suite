@@ -28,6 +28,7 @@ from app.ui.dialogs.scp_profile_dialog import ScpProfileDialog
 from app.ui.common.disclosure import CollapsibleSection
 from app.ui.common.required import check_required, required_label
 from app.utils.file_utils import open_in_explorer
+from app.utils.log_format import timestamp_lines
 
 
 from netops_suite.ui.actions import ActionKind, make_action_button
@@ -534,6 +535,7 @@ class ScpDiagnosticsMixin:
         if kind == "log":
             message = str(event.get("message", "") or "")
             if message:
+                message = timestamp_lines(message)
                 self._scp_client_logs.append(message)
                 self.scp_client_log_output.appendPlainText(message)
                 self._update_scp_client_activity_visibility()
@@ -652,6 +654,7 @@ class ScpDiagnosticsMixin:
         if kind == "server_log":
             message = str(event.get("message", "") or "")
             if message:
+                message = timestamp_lines(message)
                 self._scp_server_logs.append(message)
                 self.scp_server_log_output.appendPlainText(message)
                 self._update_scp_server_log_visibility()

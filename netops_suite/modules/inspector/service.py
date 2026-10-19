@@ -48,6 +48,15 @@ class InspectorRunRequest:
     max_workers: int = 10
     # Run only the first N devices, to try a job before the whole list.
     device_limit: int | None = None
+    # Run only these IPs, for example the devices that failed last time.
+    only_ips: tuple[str, ...] | None = None
+    # Account values typed in the app; they fill blank inventory cells only.
+    default_credentials: dict[str, str] | None = None
+    # Per-device CLI handed over from the config builder, keyed by IP.
+    commands_by_ip: dict[str, list[str]] | None = None
+
+
+INVENTORY_CREDENTIAL_COLUMNS = ("username", "password", "enable_password")
 
 
 @dataclass(slots=True)
@@ -84,6 +93,25 @@ class CustomCommandValidationSummary:
     variable_names: tuple[str, ...]
     preview_device: str | None = None
     preview_commands: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class DeviceCommandValidationSummary:
+    """Per-device CLI matched against an inventory."""
+
+    matched_ips: tuple[str, ...]
+    missing_ips: tuple[str, ...] = ()
+    skipped_ips: tuple[str, ...] = ()
+    preview_device: str | None = None
+    preview_commands: tuple[str, ...] = ()
+
+    @property
+    def command_count(self) -> int:
+        return len(self.preview_commands)
+
+    @property
+    def variable_names(self) -> tuple[str, ...]:
+        return ()
 
 
 class InspectorService:
@@ -739,16 +767,107 @@ class InspectorService:
         )
 
     def load_inventory(
-        self, path: str, password: str | None = None
+        self,
+        path: str,
+        password: str | None = None,
+        default_credentials: dict[str, str] | None = None,
     ) -> list[dict[str, Any]]:
         self._ensure_runtime_modules_current()
         with self._runtime_import_path():
             from core.file_handler import read_excel_file
-            from core.validator import validate_dataframe
+            from core.validator import normalize_device_dataframe, validate_dataframe
 
             df = read_excel_file(path, password)
+            if default_credentials:
+                df = self._fill_default_credentials(
+                    normalize_device_dataframe(df), default_credentials
+                )
             validated = validate_dataframe(df)
             return validated.to_dict("records")
+
+    def load_inventory_rows(
+        self,
+        path: str,
+        password: str | None = None,
+        default_credentials: dict[str, str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Read inventory rows without validating vendor/OS or addresses.
+
+        The inventory editor and the profile trial use this, because a list
+        for a device that has no profile yet must still open.
+        """
+        self._ensure_runtime_modules_current()
+        with self._runtime_import_path():
+            from core.file_handler import read_excel_file
+            from core.validator import normalize_device_dataframe
+
+            df = normalize_device_dataframe(read_excel_file(path, password))
+            if default_credentials:
+                df = self._fill_default_credentials(df, default_credentials)
+            rows: list[dict[str, Any]] = []
+            for record in df.to_dict("records"):
+                rows.append(
+                    {
+                        str(key): self._cell_text(value)
+                        for key, value in record.items()
+                        if str(key)
+                    }
+                )
+            return rows
+
+    @staticmethod
+    def _cell_text(value: object) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, float):
+            if value != value:  # NaN
+                return ""
+            if value.is_integer():
+                return str(int(value))
+        text = str(value).strip()
+        return "" if text.casefold() in {"nan", "nat", "none"} else text
+
+    @classmethod
+    def _fill_default_credentials(cls, df, defaults: dict[str, str]):
+        """Put app-entered account values into blank credential cells only."""
+        filled = df.copy()
+        for column in INVENTORY_CREDENTIAL_COLUMNS:
+            value = str(defaults.get(column) or "")
+            if not value:
+                continue
+            if column not in filled.columns:
+                filled[column] = value
+                continue
+            series = filled[column].astype(object)
+            blank = series.map(lambda cell: cls._cell_text(cell) == "")
+            filled[column] = series.where(~blank, value)
+        return filled
+
+    def unsupported_inventory_profiles(
+        self, rows: list[dict[str, Any]]
+    ) -> list[tuple[str, str]]:
+        """Vendor/OS pairs in the rows that no profile covers yet."""
+        self._ensure_runtime_modules_current()
+        pairs: list[tuple[str, str]] = []
+        with self._runtime_import_path():
+            from core.profile_resolver import (
+                normalize_profile_part,
+                resolve_device_profile,
+            )
+            from vendors import INSPECTION_COMMANDS
+
+            for row in rows:
+                vendor = normalize_profile_part(row.get("vendor", ""))
+                os_name = normalize_profile_part(row.get("os", ""))
+                if not vendor or not os_name:
+                    continue
+                profile = resolve_device_profile(vendor, os_name, row.get("model", ""))
+                supported = os_name in INSPECTION_COMMANDS.get(vendor, {})
+                if supported or profile.model_matched:
+                    continue
+                if (vendor, os_name) not in pairs:
+                    pairs.append((vendor, os_name))
+        return pairs
 
     def inventory_profile_warnings(
         self, devices: list[dict[str, Any]]
@@ -821,6 +940,46 @@ class InspectorService:
         devices: list[dict[str, Any]],
     ) -> CustomCommandValidationSummary:
         return self.validate_custom_commands(self.read_command_file(path), devices)
+
+    @staticmethod
+    def clean_device_commands(lines: list[str]) -> list[str]:
+        """Drop blank lines and '!' separator lines from a rendered CLI."""
+        cleaned: list[str] = []
+        for line in lines:
+            text = str(line).rstrip()
+            if not text.strip() or set(text.strip()) == {"!"}:
+                continue
+            cleaned.append(text)
+        return cleaned
+
+    def validate_device_commands(
+        self,
+        commands_by_ip: dict[str, list[str]],
+        devices: list[dict[str, Any]],
+    ) -> DeviceCommandValidationSummary:
+        """Match per-device CLI to inventory rows by IP."""
+        normalized = {
+            str(ip).strip(): self.clean_device_commands(lines)
+            for ip, lines in commands_by_ip.items()
+            if str(ip).strip()
+        }
+        inventory_ips = [str(device.get("ip", "")).strip() for device in devices]
+        matched = [ip for ip in inventory_ips if normalized.get(ip)]
+        if not matched:
+            raise ValueError(
+                "장비 목록에 설정 명령 만들기에서 받은 장비 IP가 하나도 없습니다. "
+                "같은 IP가 들어 있는 장비 목록을 선택하세요."
+            )
+        missing = [ip for ip in normalized if ip not in inventory_ips]
+        skipped = [ip for ip in inventory_ips if ip not in normalized]
+        preview_ip = matched[0]
+        return DeviceCommandValidationSummary(
+            matched_ips=tuple(matched),
+            missing_ips=tuple(missing),
+            skipped_ips=tuple(skipped),
+            preview_device=preview_ip,
+            preview_commands=tuple(normalized[preview_ip]),
+        )
 
     def probe_ssh_device(self, host: str, port: int = 22, timeout: float = 5.0):
         """Read the algorithms an SSH server offers, without logging in."""
@@ -1020,9 +1179,40 @@ class InspectorService:
 
             emit({"type": "running", "message": "대상 장비 목록을 불러오는 중입니다."})
             settings = load_settings()
-            devices = self.load_inventory(
-                request.inventory_path, request.inventory_password
-            )
+            if request.default_credentials:
+                devices = self.load_inventory(
+                    request.inventory_path,
+                    request.inventory_password,
+                    request.default_credentials,
+                )
+            else:
+                devices = self.load_inventory(
+                    request.inventory_path, request.inventory_password
+                )
+            device_commands: dict[str, list[str]] | None = None
+            if request.mode == "custom_commands" and request.commands_by_ip:
+                device_commands = {
+                    str(ip).strip(): self.clean_device_commands(lines)
+                    for ip, lines in request.commands_by_ip.items()
+                }
+                devices = [
+                    device
+                    for device in devices
+                    if device_commands.get(str(device.get("ip", "")).strip())
+                ]
+                if not devices:
+                    raise ValueError(
+                        "장비 목록에 설정 명령 만들기에서 받은 장비 IP가 없습니다."
+                    )
+            if request.only_ips:
+                wanted = {str(ip).strip() for ip in request.only_ips}
+                devices = [
+                    device
+                    for device in devices
+                    if str(device.get("ip", "")).strip() in wanted
+                ]
+                if not devices:
+                    raise ValueError("다시 실행할 장비가 장비 목록에 없습니다.")
             if request.device_limit:
                 devices = devices[: request.device_limit]
             self._raise_if_cancelled(cancel_event)
@@ -1035,7 +1225,7 @@ class InspectorService:
                 commands = self.read_command_file(request.command_path)
 
             prepared_custom_commands = None
-            if request.mode == "custom_commands":
+            if request.mode == "custom_commands" and device_commands is None:
                 prepared_custom_commands = prepare_custom_commands(commands, devices)
 
             inspector = NetworkInspector(
@@ -1056,6 +1246,7 @@ class InspectorService:
                 {
                     "type": "progress",
                     "message": f"장비 {len(devices)}대를 실행 대기열에 올렸습니다.",
+                    "total": len(devices),
                 }
             )
 
@@ -1090,10 +1281,17 @@ class InspectorService:
                     column_aliases=settings.column_aliases,
                 )
             elif request.mode == "custom_commands":
-                assert prepared_custom_commands is not None
-                inspector.run_custom_commands(
-                    prepared_custom_commands.commands_by_device
-                )
+                if device_commands is not None:
+                    commands_by_device = {
+                        str(device["ip"]).strip(): device_commands[
+                            str(device["ip"]).strip()
+                        ]
+                        for device in devices
+                    }
+                else:
+                    assert prepared_custom_commands is not None
+                    commands_by_device = prepared_custom_commands.commands_by_device
+                inspector.run_custom_commands(commands_by_device)
                 self._raise_if_cancelled(cancel_event)
                 result_excel = inspector.output_excel.replace(
                     "inspection_results", "command_results"

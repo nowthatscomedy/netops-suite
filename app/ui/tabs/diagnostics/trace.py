@@ -22,6 +22,7 @@ from app.models.result_models import OperationResult
 from app.ui.common import make_empty_state, make_inline_status, make_table_item, set_inline_status, set_table_minimums
 from app.ui.common.disclosure import CollapsibleSection
 from app.ui.common.required import mark_missing, required_label
+from app.utils.log_format import append_timestamped, timestamp_lines
 from app.utils.parser import parse_trace_hop_line, parse_trace_hops
 from app.utils.validators import ValidationError, validate_host_input
 
@@ -105,6 +106,7 @@ class TraceDiagnosticsMixin:
             return
 
         self.trace_output.clear()
+        self._trace_raw_lines: list[str] = []
         self.trace_table.setRowCount(0)
         self.trace_row_map.clear()
         self.trace_splitter.show()
@@ -126,7 +128,8 @@ class TraceDiagnosticsMixin:
         )
 
     def _handle_trace_progress(self, line: str) -> None:
-        self.trace_output.appendPlainText(line)
+        self._trace_raw_lines.append(line)
+        append_timestamped(self.trace_output, line)
         hop = parse_trace_hop_line(line)
         if hop is not None:
             self._upsert_trace_hop(hop)
@@ -134,8 +137,9 @@ class TraceDiagnosticsMixin:
     def _finish_trace(self, mode: str, result: OperationResult) -> None:
         self.trace_status_label.setText(f"{mode}: {result.message}")
         if result.details and not self.trace_output.toPlainText().strip():
-            self.trace_output.setPlainText(result.details)
-        for hop in parse_trace_hops(result.details or self.trace_output.toPlainText()):
+            self.trace_output.setPlainText(timestamp_lines(result.details))
+        raw_text = result.details or "\n".join(getattr(self, "_trace_raw_lines", []))
+        for hop in parse_trace_hops(raw_text):
             self._upsert_trace_hop(hop)
 
     def _set_trace_running(self, running: bool) -> None:
