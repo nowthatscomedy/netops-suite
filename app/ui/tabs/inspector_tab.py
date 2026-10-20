@@ -1685,6 +1685,9 @@ class InspectorTab(QWidget):
                 f"{mode} 완료: {total}대 중 {total - len(failed)}대 성공, "
                 f"{len(failed)}대 실패했습니다."
             )
+        rerun = result.devices_run
+        if rerun is not None and rerun < total:
+            summary = f"다시 실행한 {rerun}대의 결과를 원래 결과 Excel에 합쳤습니다. " + summary
         self._backup_comparisons = self._compare_backups(result, rows)
         changed = [c for c in self._backup_comparisons.values() if c.status == "changed"]
         if self._backup_comparisons:
@@ -1849,13 +1852,23 @@ class InspectorTab(QWidget):
                 "장비 목록 Excel은 지금 파일을 다시 읽습니다."
             ),
             reversibility="점검·백업은 장비 설정을 변경하지 않습니다. 명령 일괄 입력은 같은 명령을 다시 보냅니다.",
-            output_location="새 결과 Excel과 세션 로그가 결과 폴더에 따로 만들어집니다.",
+            output_location=(
+                "새 파일을 만들지 않고 방금 만든 결과 Excel에서 다시 실행한 장비의 행만 새 결과로 바꿉니다. "
+                "백업 파일과 세션 로그도 같은 폴더에 덮어씁니다."
+            ),
             question="실패한 장비만 다시 실행할까요?",
             confirm_text="다시 실행",
         ):
             return
+        previous = self._last_result
         self._start_run(
-            replace(self._last_request, only_ips=tuple(failed), device_limit=None)
+            replace(
+                self._last_request,
+                only_ips=tuple(failed),
+                device_limit=None,
+                run_stamp=(previous.run_stamp or None) if previous else None,
+                merge_results=list(previous.results) if previous else None,
+            )
         )
 
     def _handle_error(self, text: str) -> None:

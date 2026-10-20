@@ -54,6 +54,11 @@ class InspectorRunRequest:
     default_credentials: dict[str, str] | None = None
     # Per-device CLI handed over from the config builder, keyed by IP.
     commands_by_ip: dict[str, list[str]] | None = None
+    # Rerun into an earlier run: reuse its timestamp so the result Excel,
+    # backups and session logs land in the same files and folders, and keep
+    # its rows for the devices that are not rerun.
+    run_stamp: str | None = None
+    merge_results: list[dict[str, Any]] | None = None
 
 
 INVENTORY_CREDENTIAL_COLUMNS = ("username", "password", "enable_password")
@@ -68,6 +73,10 @@ class InspectorRunResult:
     backup_dir: str | None
     session_log_dir: str | None
     results: list[dict[str, Any]]
+    run_stamp: str = ""
+    # Devices actually contacted in this run; less than devices_total when
+    # failed devices were rerun into an earlier result.
+    devices_run: int | None = None
 
 
 @dataclass(slots=True)
@@ -1168,7 +1177,7 @@ class InspectorService:
             else:
                 progress_callback(event)
 
-        run_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_stamp = request.run_stamp or datetime.now().strftime("%Y%m%d_%H%M%S")
         self._raise_if_cancelled(cancel_event)
         self._ensure_runtime_modules_current()
         with self._runtime_import_path(), self._working_directory():
@@ -1189,6 +1198,7 @@ class InspectorService:
                 devices = self.load_inventory(
                     request.inventory_path, request.inventory_password
                 )
+            all_devices = list(devices)
             device_commands: dict[str, list[str]] | None = None
             if request.mode == "custom_commands" and request.commands_by_ip:
                 device_commands = {
@@ -1251,11 +1261,22 @@ class InspectorService:
             )
 
             column_order: list[str] | None = None
+            merging = request.merge_results is not None
+            column_devices = all_devices if merging else devices
             if request.mode in {"inspection", "inspection_backup"}:
                 column_order = resolve_inspection_column_order(
-                    inspector.get_available_inspection_columns(devices),
-                    inspector.get_device_profile_keys(devices),
+                    inspector.get_available_inspection_columns(column_devices),
+                    inspector.get_device_profile_keys(column_devices),
                     settings,
+                )
+
+            def merged_results() -> list[dict[str, Any]]:
+                if not merging:
+                    return inspector.results
+                return self.merge_retry_results(
+                    request.merge_results or [],
+                    inspector.results,
+                    [str(device.get("ip", "")).strip() for device in all_devices],
                 )
 
             if request.mode == "backup":
@@ -1265,7 +1286,7 @@ class InspectorService:
                     "inspection_results", "backup_summary"
                 )
                 save_results_to_excel(
-                    inspector.results,
+                    merged_results(),
                     result_excel,
                     column_order=column_order,
                     column_aliases=settings.column_aliases,
@@ -1275,7 +1296,7 @@ class InspectorService:
                 self._raise_if_cancelled(cancel_event)
                 result_excel = inspector.output_excel
                 save_results_to_excel(
-                    inspector.results,
+                    merged_results(),
                     result_excel,
                     column_order=column_order,
                     column_aliases=settings.column_aliases,
@@ -1297,7 +1318,7 @@ class InspectorService:
                     "inspection_results", "command_results"
                 )
                 save_results_to_excel(
-                    inspector.results,
+                    merged_results(),
                     result_excel,
                     column_aliases=settings.column_aliases,
                 )
@@ -1306,17 +1327,18 @@ class InspectorService:
                 self._raise_if_cancelled(cancel_event)
                 result_excel = inspector.output_excel
                 save_results_to_excel(
-                    inspector.results,
+                    merged_results(),
                     result_excel,
                     column_order=column_order,
                     column_aliases=settings.column_aliases,
                 )
 
             emit({"type": "done", "message": "장비 점검 작업이 완료되었습니다."})
+            final_results = list(merged_results())
             return InspectorRunResult(
                 mode=request.mode,
-                devices_total=len(devices),
-                results_total=len(inspector.results),
+                devices_total=len(final_results) if merging else len(devices),
+                results_total=len(final_results),
                 result_excel=str(Path(result_excel).resolve())
                 if result_excel
                 else None,
@@ -1326,8 +1348,32 @@ class InspectorService:
                 session_log_dir=str(Path(inspector.session_log_dir).resolve())
                 if Path(inspector.session_log_dir).exists()
                 else None,
-                results=list(inspector.results),
+                results=final_results,
+                run_stamp=run_stamp,
+                devices_run=len(devices),
             )
+
+    @staticmethod
+    def merge_retry_results(
+        previous: list[dict[str, Any]],
+        rerun: list[dict[str, Any]],
+        device_order: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Replace the rerun devices' rows in an earlier result, keeping the rest."""
+        rerun_by_ip = {str(row.get("ip", "")).strip(): row for row in rerun}
+        merged: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for row in previous:
+            ip = str(row.get("ip", "")).strip()
+            merged.append(rerun_by_ip.get(ip, row))
+            seen.add(ip)
+        merged.extend(row for ip, row in rerun_by_ip.items() if ip not in seen)
+        if device_order:
+            position = {ip: index for index, ip in enumerate(device_order)}
+            merged.sort(
+                key=lambda row: position.get(str(row.get("ip", "")).strip(), len(position))
+            )
+        return merged
 
     @staticmethod
     def _raise_if_cancelled(cancel_event: Event | None) -> None:

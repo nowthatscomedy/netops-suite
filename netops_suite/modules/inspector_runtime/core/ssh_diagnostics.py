@@ -192,13 +192,17 @@ _HINTS: tuple[tuple[tuple[str, ...], str], ...] = (
         "장비가 교체됐는지 확인한 뒤 값을 고치세요.",
     ),
     (
-        ("no acceptable", "공통 알고리즘", "incompatible ssh peer", "호환성 오류"),
-        "장비가 지원하는 SSH 방식이 맞지 않습니다. 프로파일 만들기의 '장비로 시험'에서 "
-        "SSH 진단을 실행하면 장비가 제공하는 방식을 볼 수 있습니다.",
+        ("비밀번호가 비어", "password 칸이 비어"),
+        "장비 목록 Excel의 password 칸에 비밀번호를 넣으세요. 비밀번호 없이 열리는 장비만 비워 둡니다.",
     ),
     (
         ("authentication", "인증 실패", "auth failed"),
         "계정 또는 비밀번호를 확인하세요. 장비에 따라 로그인 후 enable 비밀번호가 따로 필요합니다.",
+    ),
+    (
+        ("no acceptable", "공통 알고리즘", "incompatible ssh peer", "ssh 호환성 오류"),
+        "장비가 지원하는 SSH 방식이 맞지 않습니다. 프로파일 만들기의 '장비로 시험'에서 "
+        "SSH 진단을 실행하면 장비가 제공하는 방식을 볼 수 있습니다.",
     ),
     (
         ("pattern not detected", "프롬프트", "prompt"),

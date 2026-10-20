@@ -64,7 +64,8 @@ class ScpDiagnosticsMixin:
         self.scp_client_host_edit = QLineEdit()
         self.scp_client_host_edit.setPlaceholderText("예: 192.168.0.10 또는 scp.example.com")
         self.scp_client_port_edit = QLineEdit()
-        self.scp_client_port_edit.setPlaceholderText("예: 22")
+        self.scp_client_port_edit.setPlaceholderText("22")
+        self.scp_client_port_edit.setToolTip("장비 SSH 포트입니다. 명령줄 scp -P 값과 같습니다. 비우면 22를 씁니다.")
         self.scp_client_username_edit = QLineEdit()
         self.scp_client_username_edit.setPlaceholderText("예: operator")
         self.scp_client_password_edit = QLineEdit()
@@ -113,9 +114,8 @@ class ScpDiagnosticsMixin:
         local_row_layout.addWidget(self.scp_client_local_browse_button)
         form.addWidget(local_row, 3, 1, 1, 3)
         connection_layout.addLayout(form)
-        self._fold_transfer_options(form, connection_layout, "scp", [
-            self.scp_client_port_edit, self.scp_client_timeout_edit,
-        ])
+        # Firewalls often move SSH off 22 (`scp -P 2222`), so the port stays visible.
+        self._fold_transfer_options(form, connection_layout, "scp", [self.scp_client_timeout_edit])
 
         self.scp_client_remote_sources_edit = QPlainTextEdit()
         self.scp_client_remote_sources_edit.setTabChangesFocus(True)
@@ -123,7 +123,7 @@ class ScpDiagnosticsMixin:
             "SCP 다운로드 원격 경로 목록"
         )
         self.scp_client_remote_sources_edit.setPlaceholderText(
-            "다운로드할 원격 경로를 한 줄에 하나씩 입력하세요.\n예:\n./config.cfg\n/var/log/messages"
+            "받을 원격 파일이나 폴더를 한 줄에 하나씩 입력하세요. * 와일드카드도 쓸 수 있습니다.\n예:\n/var/log/messages\n/tmp/rotate/*.tar.gz"
         )
         self.scp_client_remote_sources_edit.setMaximumHeight(100)
         connection_layout.addWidget(QLabel("다운로드 원격 경로"))
@@ -570,7 +570,7 @@ class ScpDiagnosticsMixin:
             result.size_text,
             result.progress_text,
             result.duration_text,
-            result.status,
+            f"{result.status}: {result.error}" if result.error else result.status,
         ]
         for column, value in enumerate(values):
             item = make_table_item(value)
@@ -581,6 +581,7 @@ class ScpDiagnosticsMixin:
                     item.setForeground(QColor("#ef6c00"))
                 elif result.status == "오류":
                     item.setForeground(QColor("#b71c1c"))
+                    item.setToolTip(result.error)
             self.scp_transfer_table.setItem(row, column, item)
         self._update_scp_client_activity_visibility()
 

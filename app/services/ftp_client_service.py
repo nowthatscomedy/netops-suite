@@ -120,7 +120,14 @@ class FtpClientService:
             transport = paramiko.Transport((validated_host, validated_port))
             transport.banner_timeout = validated_timeout
             transport.connect(username=validated_username, password=password)
-            client = paramiko.SFTPClient.from_transport(transport)
+            try:
+                client = paramiko.SFTPClient.from_transport(transport)
+            except paramiko.SSHException as exc:
+                transport.close()
+                raise RuntimeError(
+                    "로그인은 됐지만 장비가 SFTP를 열어 주지 않았습니다. SFTP를 지원하지 않는 장비일 수 있습니다. "
+                    "전송 방식을 SCP로 바꿔 받아 보세요. SCP는 명령줄 scp -O와 같은 방식이라 SFTP가 없어도 됩니다."
+                ) from exc
             cwd, entries = self._sftp_list_directory(client, target_path)
             session = _FtpClientSession(
                 protocol="sftp",

@@ -131,6 +131,25 @@ def test_transfer_profiles_options_and_logs_are_optional(qapp, tmp_path):
         assert not getattr(tab, f"{protocol}_client_log_section").isExpanded()
 
 
+def test_scp_port_stays_visible_outside_folded_options(qapp, tmp_path):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    assert not tab.scp_options_section.isAncestorOf(tab.scp_client_port_edit)
+    assert tab.scp_options_section.isAncestorOf(tab.scp_client_timeout_edit)
+    assert "scp -P" in tab.scp_client_port_edit.toolTip()
+
+
+def test_scp_failed_row_shows_the_reason(qapp, tmp_path):
+    from app.models.scp_models import ScpTransferResult
+
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    tab._upsert_scp_transfer_result(
+        ScpTransferResult("다운로드", "/secui/tmp/x.tar.gz", "C:/Temp", status="오류", error="No such file or directory")
+    )
+    status = tab.scp_transfer_table.item(0, 7)
+    assert status.text() == "오류: No such file or directory"
+    assert status.toolTip() == "No such file or directory"
+
+
 def test_explicit_numeric_defaults_do_not_count_as_changed(qapp, tmp_path):
     tab = DiagnosticsTab(build_fake_state(tmp_path))
     tab.ping_count_edit.setText("4")

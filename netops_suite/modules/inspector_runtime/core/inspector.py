@@ -10,7 +10,7 @@ import traceback
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import sys
-from paramiko.ssh_exception import IncompatiblePeer
+from paramiko.ssh_exception import AuthenticationException, IncompatiblePeer
 from core.legacy_ssh import LegacySSHError, validate_legacy_device
 from core.ssh_diagnostics import with_action_hint
 
@@ -632,6 +632,17 @@ class NetworkInspector:
             summary["command_outputs"] = list(command_outputs)
         return summary
     
+    @staticmethod
+    def _ssh_stop_message(device: dict, error: Exception) -> str:
+        """Name the real reason a deterministic SSH failure stopped retries."""
+        text = str(error)
+        if "인증 실패" in text or isinstance(error, AuthenticationException):
+            message = f"SSH 인증 실패 (자동 재시도 중단): {text}"
+            if not str(device.get("password", "") or "").strip():
+                message += " 장비 목록의 password 칸이 비어 있습니다."
+            return message
+        return f"SSH 호환성 오류 (자동 재시도 중단): {text}"
+
     def _test_tcping(self, ip: str, port: int, timeout: int = 5) -> bool:
         """TCP 연결 테스트를 수행합니다."""
         try:
@@ -827,7 +838,7 @@ class NetworkInspector:
                     except Exception as e:
                         self.logger.error("커스텀 핸들러 실행 실패 (%s): %s", device['ip'], e)
                         if isinstance(e, (LegacySSHError, IncompatiblePeer)):
-                            return device, {"error": f"SSH 호환성 오류 (자동 재시도 중단): {e}"}
+                            return device, {"error": self._ssh_stop_message(device, e)}
                         retry_count += 1
                         
                         with open(session_log_file, 'a', encoding='utf-8') as log:
@@ -1012,7 +1023,7 @@ class NetworkInspector:
                             return device, inspection_results
                     except Exception as e:
                         if isinstance(e, (LegacySSHError, IncompatiblePeer)):
-                            return device, {"error": f"SSH 호환성 오류 (자동 재시도 중단): {e}"}
+                            return device, {"error": self._ssh_stop_message(device, e)}
                         retry_count += 1
                         self.logger.warning("Netmiko 연결 시도 %d 실패 (%s): %s", retry_count, device['ip'], e)
                         if retry_count >= self.max_retries:

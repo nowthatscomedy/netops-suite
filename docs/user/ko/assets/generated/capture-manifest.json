@@ -611,7 +611,7 @@
         "assets/icons/lucide/folder-sync.svg",
         "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "f4e5d1bc46506b6593a2bf69555546e58f2a59e12171986ef8934c034129ab2a",
+      "png_sha256": "a644a875f1e5b2dec52ec0cf8bb3dba08e0ed623a33144f1d2a1b594b5f5303a",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
@@ -957,10 +957,10 @@
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "3b2ea9b6a18286738e87319b725713440b754b9fb73902168927ead51bc46bda",
+        "value": "b4e902b8ea24636df536cbc3ef1647a4ef886b4f1c279d982a8c4d0fc5fbc4d5",
         "contract_sha256": "cd7b3b4e6f4ddfe69ffe2f007c7f69a67136c0050134f0e6b5ac9556c6ec82ed",
         "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
-        "sources_sha256": "824db51a50352cc31817b1ca737974c623d0ddaa8609d3423862a9bd48cce371",
+        "sources_sha256": "a921f9dffba5ac1875fe3f68d0de223bfd2443ba760a3832be743743194c1c81",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -1046,8 +1046,8 @@
           },
           {
             "path": "app/ui/tabs/inspector_tab.py",
-            "size": 97869,
-            "sha256": "620b49d99dd87c7297ddfa80b3b4f240c33e74c6d67e3ac1111a94db449296aa"
+            "size": 98487,
+            "sha256": "1f7458e1d887c72f11208b54e41c06016486c564e6d1a07d33d8aae91d8427e8"
           },
           {
             "path": "assets/icons/lucide/activity.svg",
@@ -1145,14 +1145,14 @@
         "netops_suite/modules/inspector/service.py",
         "netops_suite/modules/inspector_runtime/core/command_patterns.py"
       ],
-      "png_sha256": "23383a6a54661c4b7b1ed478e6e9baa509fb6ed076612ea2d5f46f713f2acb75",
+      "png_sha256": "8f5360f29dad06f4f8e552cb36b6859663e92ab9c190286400568d6833e9ce13",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "d11cf18c503305d16bf0ecfe49b2ed55692ace84cc97e1960a638467c5651fef",
+        "value": "8c15d075646136d913a8dd5884c23f52edd089351e0e1aeba807c6e89098e85f",
         "contract_sha256": "dd8fd8ba67eb5660d4f57b20cd3aced0b293d41b4dac24f9496ebf07636846a7",
         "handler_sha256": "6577bde7b9deb61303ec28e3e8d82c7b4363a29551155ef50f1198f3a270d7f7",
-        "sources_sha256": "0f95f1cad1a6be9b8b2f8ec5ac62cd7bc74ffe987f334c762e031a0d6bc2affd",
+        "sources_sha256": "8a6a6dec82be2a7caf1dae41eef5e6223b41714425a86a3dec301fb04bde8bf4",
         "capture_handler": {
           "name": "inspector_custom_commands",
           "source": "qa/offscreen/harness.py",
@@ -1214,13 +1214,13 @@
           },
           {
             "path": "app/ui/tabs/inspector_tab.py",
-            "size": 97869,
-            "sha256": "620b49d99dd87c7297ddfa80b3b4f240c33e74c6d67e3ac1111a94db449296aa"
+            "size": 98487,
+            "sha256": "1f7458e1d887c72f11208b54e41c06016486c564e6d1a07d33d8aae91d8427e8"
           },
           {
             "path": "netops_suite/modules/inspector/service.py",
-            "size": 71237,
-            "sha256": "d1f04c8fb4864b83c6b71cd8955cc86593bfb61ca57b7e7079dd6daaedc12efe"
+            "size": 73359,
+            "sha256": "d5e924a1e9bf5f1c2eccf5c92f7d59033fcd8017fbfe2958132455311b3ecbac"
           },
           {
             "path": "netops_suite/modules/inspector_runtime/core/command_patterns.py",
@@ -1282,10 +1282,10 @@
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "e416b2d52acf18ddda66f15b5cce37a47c73455cdc72fbf95f495a718677a933",
+        "value": "0ac54513898ac76d57088215066d95b3efb8b3c5795fb614ee74c38d1f2e5632",
         "contract_sha256": "334aac2f7fa6fa398a08ec57b77853d6d876be48b7e80211df8650e96daa7814",
         "handler_sha256": "d92b7f0881fed52a5a635dfa0f1a5ca6380deb31c293f35501fa55ecadb38dae",
-        "sources_sha256": "0009f562343044d03c6e99216662dd8803d5234e5e79a1392fb641284686def8",
+        "sources_sha256": "2283bb8bb8fec80285aec512f8df9c2e234483911dbccedf53598832ab273d9c",
         "capture_handler": {
           "name": "inspector_run_results",
           "source": "qa/offscreen/harness.py",
@@ -1349,8 +1349,8 @@
           },
           {
             "path": "app/ui/tabs/inspector_tab.py",
-            "size": 97869,
-            "sha256": "620b49d99dd87c7297ddfa80b3b4f240c33e74c6d67e3ac1111a94db449296aa"
+            "size": 98487,
+            "sha256": "1f7458e1d887c72f11208b54e41c06016486c564e6d1a07d33d8aae91d8427e8"
           },
           {
             "path": "netops_suite/modules/inspector/backup_compare.py",
@@ -1359,8 +1359,8 @@
           },
           {
             "path": "netops_suite/modules/inspector/service.py",
-            "size": 71237,
-            "sha256": "d1f04c8fb4864b83c6b71cd8955cc86593bfb61ca57b7e7079dd6daaedc12efe"
+            "size": 73359,
+            "sha256": "d5e924a1e9bf5f1c2eccf5c92f7d59033fcd8017fbfe2958132455311b3ecbac"
           }
         ]
       },
@@ -1522,10 +1522,10 @@
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "4c9bef7c456657a57a6a71e36ca80e3f8d2ba2a51fb7175698291820a1c206d0",
+        "value": "4fc55e177f9fa85da84f11c5b820edfd1b8942073d010a1a50344d0f07b826d1",
         "contract_sha256": "6c720423406a3323689c4219416c490053fb68f26bff97a4e5e7d8d0eaf8851e",
         "handler_sha256": "bee93e87db1acf41d69eec95cdfd14ad98f9810ad846adb8515530a8d8f6d02b",
-        "sources_sha256": "e1f026db6430f2122e0eeee9f83d8ba62473486b06f1e2c565cafb4b28374806",
+        "sources_sha256": "13cd8e62f67847ccbe6b7b8a4ba6621fb91c397f4107ffa075f7c674f0874e4e",
         "capture_handler": {
           "name": "inspector_profile_trial",
           "source": "qa/offscreen/harness.py",
@@ -1607,13 +1607,13 @@
           },
           {
             "path": "netops_suite/modules/inspector/service.py",
-            "size": 71237,
-            "sha256": "d1f04c8fb4864b83c6b71cd8955cc86593bfb61ca57b7e7079dd6daaedc12efe"
+            "size": 73359,
+            "sha256": "d5e924a1e9bf5f1c2eccf5c92f7d59033fcd8017fbfe2958132455311b3ecbac"
           },
           {
             "path": "netops_suite/modules/inspector_runtime/core/ssh_diagnostics.py",
-            "size": 8715,
-            "sha256": "f30651d4536b0bfe02f05a3ef6bf00d299e16946cda4aca58985caf9f5a3634e"
+            "size": 8932,
+            "sha256": "eae56a047782240a298eb11d13d9ca874bab7902f00ea5f18399a55b3e82e494"
           },
           {
             "path": "netops_suite/modules/inspector_runtime/vendors/base.py",
@@ -1994,7 +1994,7 @@
         "assets/icons/lucide/folder-sync.svg",
         "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "373d3829012036ad18259172a0a35a3170b4075256a147807919de74f1e11e68",
+      "png_sha256": "69ced288e89c3499e88b9815a40c7c25de89e2cb7b9725c044458455516e2044",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
@@ -2183,7 +2183,7 @@
         "assets/icons/lucide/folder-sync.svg",
         "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "1b581e56f1535dea87a87ce70ca3ac249e15a3ac200176bd668d0ebf67a0fa5e",
+      "png_sha256": "e9e1cd2f3ac0c686bce4be20752c6581d76ed07d50df899ebc5e747723990151",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
@@ -2362,10 +2362,10 @@
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "5879dde7d0768c48dd4ef1b57c38b366f8cdee2cf9e4edba490bb255d7d596bd",
+        "value": "7fe690281b20d10d95efd2d44843daafa969f369aad540577c10644c2338b4dd",
         "contract_sha256": "d340b6de95a717639cf573a7bdf9d129101a67157c37acf0521e2a58f5ece03c",
         "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
-        "sources_sha256": "ed61f4b7356adfda52aa919e22094417d6ed8aed82ba256f87977c80342896bb",
+        "sources_sha256": "f9c3a50bb27fdb36f07a937db6ae092e486b02a720c06b3bd1421075a77ccd00",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -2448,8 +2448,8 @@
           },
           {
             "path": "app/ui/tabs/diagnostics/scp.py",
-            "size": 41337,
-            "sha256": "955f7a298bbe0b496f2b26dc5ae6f411a686511dff2e6bc33b596b9d126d461d"
+            "size": 41670,
+            "sha256": "6dcd45ada25c97d7c81b15b3f8de833dcd08eafe8dc8dc236b880b20a032fca1"
           },
           {
             "path": "app/ui/tabs/diagnostics/tftp.py",
@@ -2549,7 +2549,7 @@
         "assets/icons/lucide/folder-sync.svg",
         "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "fbfe1dba5bb640589c1ca1a7545849202c532ed1a91ec891dde1326e7a4ff81f",
+      "png_sha256": "4445f38a04c5507081e1f128e67638e9f46712cbf2c1467fb2ff73555e3ec4ba",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",

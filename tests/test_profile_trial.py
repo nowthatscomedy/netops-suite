@@ -94,6 +94,10 @@ def test_probe_reports_closed_port():
     ("Error reading SSH protocol banner", "동시 접속"),
     ("SSH 호환성 오류 (자동 재시도 중단): Incompatible ssh peer (no acceptable host key)", "SSH 진단"),
     ("레거시 SSH 인증 실패: 계정 정보를 확인하세요.", "비밀번호"),
+    # The reported case: an auth failure in the legacy runtime is not an algorithm problem.
+    ("SSH 인증 실패 (자동 재시도 중단): 레거시 SSH 인증 실패: 계정 정보를 확인하세요.", "계정 또는 비밀번호"),
+    ("SSH 인증 실패 (자동 재시도 중단): 레거시 SSH 인증 실패: 계정 정보를 확인하세요. "
+     "장비 목록의 password 칸이 비어 있습니다.", "password 칸에 비밀번호"),
     ("SSH host key 지문이 일치하지 않아 인증 전에 중단했습니다.", "ssh_host_key_sha256"),
     ("Pattern not detected: 'switch#' in output.", "device_type"),
 ])

@@ -295,3 +295,20 @@ def test_other_connection_errors_do_not_trigger_automatic_downgrade(monkeypatch,
     forbidden.assert_not_called()
 
 
+
+
+@pytest.mark.parametrize("password,extra", [("", "password 칸이 비어"), ("secret", None)])
+def test_legacy_auth_failure_is_reported_as_auth_not_compatibility(tmp_path, monkeypatch, password, extra):
+    monkeypatch.chdir(tmp_path)
+    inspector = inspector_module.NetworkInspector("test.xlsx", inspection_only=True, max_retries=3)
+    monkeypatch.setattr(inspector, "_test_tcping", lambda *_: True)
+    handler = Mock()
+    handler.connect.side_effect = LegacySSHError("레거시 SSH 인증 실패: 계정 정보를 확인하세요.")
+    monkeypatch.setattr(inspector_module, "get_custom_handler", Mock(return_value=handler))
+    _, result = inspector._connect_to_device(
+        device(password=password), inspection_mode=True, backup_mode=False
+    )
+    assert result["error"].startswith("SSH 인증 실패 (자동 재시도 중단)")
+    assert "호환성" not in result["error"]
+    assert (extra in result["error"]) if extra else ("비어" not in result["error"])
+    assert handler.connect.call_count == 1

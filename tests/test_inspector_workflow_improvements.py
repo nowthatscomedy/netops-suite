@@ -115,6 +115,75 @@ def test_inventory_rows_open_lists_for_devices_without_a_profile(tmp_path: Path)
     assert service.unsupported_inventory_profiles(rows) == [("acme", "acmeos")]
 
 
+def test_rerun_of_failed_devices_updates_the_original_result_excel(
+    tmp_path: Path, monkeypatch
+):
+    inventory = _write_inventory(tmp_path / "devices.xlsx", [_device(), _device("192.0.2.20")])
+    service = _service(tmp_path)
+    service._ensure_runtime_modules_current()
+    with service._runtime_import_path():
+        from core.inspector import NetworkInspector
+
+    attempts: list[str] = []
+
+    def flaky_run_device(self, device, commands, session_log_suffix=None):
+        del self, commands, session_log_suffix
+        ip = str(device["ip"])
+        attempts.append(ip)
+        failed = ip == "192.0.2.20" and attempts.count(ip) == 1
+        return {
+            "ip": device["ip"],
+            "vendor": device["vendor"],
+            "os": device["os"],
+            "status": "error" if failed else "success",
+            "error_message": "인증 실패" if failed else "",
+            "inspection_results": {},
+        }
+
+    monkeypatch.setattr(NetworkInspector, "_run_custom_commands_device", flaky_run_device)
+    request = InspectorRunRequest(
+        inventory_path=str(inventory), mode="custom_commands", commands=["show version"]
+    )
+    first = service.run(request)
+    assert [row["status"] for row in first.results] == ["success", "error"]
+    excel_files = sorted((tmp_path / "runs").glob("*.xlsx"))
+    assert len(excel_files) == 1
+
+    from dataclasses import replace
+
+    second = service.run(
+        replace(
+            request,
+            only_ips=("192.0.2.20",),
+            run_stamp=first.run_stamp,
+            merge_results=list(first.results),
+        )
+    )
+    assert attempts == ["192.0.2.10", "192.0.2.20", "192.0.2.20"]
+    assert second.result_excel == first.result_excel
+    assert second.devices_run == 1
+    assert second.devices_total == 2
+    assert [row["ip"] for row in second.results] == ["192.0.2.10", "192.0.2.20"]
+    assert [row["status"] for row in second.results] == ["success", "success"]
+    assert sorted((tmp_path / "runs").glob("*.xlsx")) == excel_files
+    saved = pd.read_excel(second.result_excel, dtype=str)
+    assert len(saved) == 2
+    assert not saved.astype(str).apply(lambda column: column.str.contains("인증 실패")).any().any()
+
+
+def test_merge_retry_results_keeps_order_and_untouched_rows():
+    merged = InspectorService.merge_retry_results(
+        [{"ip": "a", "status": "success"}, {"ip": "b", "status": "error"}, {"ip": "c", "status": "error"}],
+        [{"ip": "c", "status": "success"}, {"ip": "b", "status": "error", "error_message": "again"}],
+        ["a", "b", "c"],
+    )
+    assert merged == [
+        {"ip": "a", "status": "success"},
+        {"ip": "b", "status": "error", "error_message": "again"},
+        {"ip": "c", "status": "success"},
+    ]
+
+
 def test_only_ips_reruns_just_the_failed_devices(tmp_path: Path, monkeypatch):
     inventory = _write_inventory(tmp_path / "devices.xlsx", [_device(), _device("192.0.2.20")])
     service = _service(tmp_path)
@@ -341,6 +410,7 @@ def test_run_shows_progress_failed_devices_and_reruns_only_them(
         qapp.processEvents()
         assert service.requests[-1].only_ips == ("192.0.2.20",)
         assert service.requests[-1].mode == "inspection"
+        assert service.requests[-1].merge_results == service.results
     finally:
         tab.close()
 

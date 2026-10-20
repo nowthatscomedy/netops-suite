@@ -3,7 +3,9 @@ from __future__ import annotations
 import hashlib
 import logging
 import posixpath
+import re
 import shlex
+import socket
 import time
 from pathlib import Path
 
@@ -26,6 +28,10 @@ from app.utils.validators import (
 
 class ScpTransferCancelled(RuntimeError):
     pass
+
+
+class _ReportedScpFailure(RuntimeError):
+    """A download failure already shown as its own row in the results."""
 
 
 class ScpClientService:
@@ -167,18 +173,31 @@ class ScpClientService:
                 for remote_source in normalized_sources:
                     if cancel_event is not None and cancel_event.is_set():
                         raise ScpTransferCancelled()
-                    channel = transport.open_session()
-                    channel.settimeout(validated_timeout)
-                    channel.exec_command(f"scp -f {self._quote_remote(remote_source)}")
-                    result = self._receive_file(
-                        channel=channel,
-                        remote_source=remote_source,
-                        local_root=local_root,
-                        progress_callback=progress_callback,
-                        cancel_event=cancel_event,
-                    )
-                    results.append(result)
-                    self._close_channel(channel)
+                    received: list[ScpTransferResult] = []
+                    try:
+                        channel = transport.open_session()
+                        channel.settimeout(validated_timeout)
+                        # Same remote command as OpenSSH `scp -O -r`, so no SFTP subsystem is needed.
+                        channel.exec_command(f"scp -r -f {self._quote_remote_source(remote_source)}")
+                        try:
+                            self._receive_sources(
+                                channel=channel,
+                                remote_source=remote_source,
+                                local_root=local_root,
+                                results=received,
+                                progress_callback=progress_callback,
+                                cancel_event=cancel_event,
+                            )
+                        finally:
+                            self._close_channel(channel)
+                    except ScpTransferCancelled:
+                        results.extend(received)
+                        raise
+                    except _ReportedScpFailure:
+                        pass
+                    except Exception as exc:  # noqa: BLE001 - one failed path must not stop the rest
+                        received.append(self._failed_download(remote_source, local_root, exc, progress_callback))
+                    results.extend(received)
             except ScpTransferCancelled:
                 return OperationResult(
                     True,
@@ -186,9 +205,14 @@ class ScpClientService:
                     payload={"results": results, "host_key_fingerprint": fingerprint},
                 )
 
+            completed = sum(1 for item in results if item.status == "완료")
+            failed = sum(1 for item in results if item.status == "오류")
+            message = f"{completed}개 파일 다운로드를 마쳤습니다."
+            if failed:
+                message += f" {failed}건은 받지 못했습니다. 결과 표의 상태와 로그를 확인하세요."
             return OperationResult(
-                True,
-                f"{sum(1 for item in results if item.status == '완료')}개 파일 다운로드를 마쳤습니다.",
+                completed > 0 or not failed,
+                message,
                 payload={"results": results, "host_key_fingerprint": fingerprint},
             )
         finally:
@@ -204,18 +228,122 @@ class ScpClientService:
     ):
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        client.connect(
-            hostname=host,
-            port=port,
-            username=username,
-            password=password,
-            timeout=timeout_seconds,
-            banner_timeout=timeout_seconds,
-            auth_timeout=timeout_seconds,
-            look_for_keys=False,
-            allow_agent=False,
-        )
+        try:
+            client.connect(
+                hostname=host,
+                port=port,
+                username=username,
+                password=password,
+                timeout=timeout_seconds,
+                banner_timeout=timeout_seconds,
+                auth_timeout=timeout_seconds,
+                look_for_keys=False,
+                allow_agent=False,
+            )
+        except Exception as exc:
+            client.close()
+            raise RuntimeError(self._connection_failure_message(host, port, exc)) from exc
         return client
+
+    def _connection_failure_message(self, host: str, port: int, exc: Exception) -> str:
+        endpoint = f"{host}:{port}"
+        port_hint = (
+            "장비의 SSH 포트가 맞는지 확인하세요. 명령줄에서 scp -P 2222처럼 포트를 지정했다면 "
+            "포트 칸에도 같은 번호를 입력합니다."
+        )
+        if paramiko is not None and isinstance(exc, paramiko.AuthenticationException):
+            return f"{endpoint} 로그인에 실패했습니다. 사용자명과 비밀번호를 확인하세요."
+        refused = isinstance(exc, ConnectionRefusedError) or (
+            paramiko is not None and isinstance(exc, paramiko.ssh_exception.NoValidConnectionsError)
+        )
+        if refused:
+            return f"{endpoint}에서 연결을 거부했습니다. {port_hint}"
+        if isinstance(exc, (TimeoutError, socket.timeout)):
+            return (
+                f"{endpoint}에서 제한 시간 안에 응답이 없습니다. {port_hint} "
+                "중간 방화벽이 이 PC에서 장비로 나가는 그 포트를 허용하는지도 확인하세요."
+            )
+        if paramiko is not None and isinstance(exc, paramiko.SSHException):
+            return f"{endpoint}와 SSH 연결을 맺지 못했습니다: {exc}"
+        return f"{endpoint}에 연결하지 못했습니다: {exc or exc.__class__.__name__}"
+
+    def _quote_remote_source(self, value: str) -> str:
+        """Quote a download path but leave `*` and `?` to the remote shell, as `scp -O` does."""
+        parts = re.split(r"([*?]+)", self._normalize_remote_path(value))
+        return "".join(part if not part or part[0] in "*?" else shlex.quote(part) for part in parts)
+
+    def _receive_sources(self, channel, remote_source: str, local_root: Path, results: list, progress_callback, cancel_event) -> None:
+        remote_base = posixpath.dirname(remote_source.rstrip("/"))
+        directories: list[str] = []
+        remote_errors = 0
+        channel.sendall(b"\x00")
+        while True:
+            code = channel.recv(1)
+            if not code:
+                break
+            value = code[0]
+            if value in {1, 2}:
+                # 1 is a per-file warning (for example a missing path); 2 ends the transfer.
+                message = self._read_line(channel) or "SCP 원격 오류"
+                remote_errors += 1
+                results.append(self._failed_download(remote_source, local_root, RuntimeError(message), progress_callback))
+                if value == 2:
+                    break
+                continue
+            control = chr(value)
+            payload = self._read_line(channel)
+            if control == "T":
+                channel.sendall(b"\x00")
+            elif control == "D":
+                directories.append(self._safe_remote_name(payload.split(" ", 2)[-1]))
+                local_root.joinpath(*directories).mkdir(parents=True, exist_ok=True)
+                channel.sendall(b"\x00")
+            elif control == "E":
+                if directories:
+                    directories.pop()
+                channel.sendall(b"\x00")
+            elif control == "C":
+                mode, size_text, filename = (payload.split(" ", 2) + ["", ""])[:3]
+                if not mode.isdigit() or not size_text.isdigit():
+                    raise RuntimeError("SCP 파일 헤더를 해석하지 못했습니다.")
+                name = self._safe_remote_name(filename)
+                self._receive_file(
+                    channel=channel,
+                    remote_source=posixpath.join(remote_base, *directories, name),
+                    local_path=local_root.joinpath(*directories, name),
+                    size=int(size_text),
+                    results=results,
+                    progress_callback=progress_callback,
+                    cancel_event=cancel_event,
+                )
+            else:
+                raise RuntimeError("SCP 서버가 파일 전송 헤더를 보내지 않았습니다.")
+        if not results and not remote_errors:
+            raise RuntimeError("원격 장비가 보낸 파일이 없습니다. 경로를 확인하세요.")
+
+    def _download_error_text(self, exc: Exception) -> str:
+        if isinstance(exc, (TimeoutError, socket.timeout)):
+            return "원격 장비 응답 시간이 초과되었습니다. 경로를 확인하거나 타임아웃(초)을 늘려 보세요."
+        return str(exc) or exc.__class__.__name__
+
+    def _safe_remote_name(self, name: str) -> str:
+        text = str(name or "")
+        if not text or text in {".", ".."} or any(char in text for char in '/\\:\0'):
+            raise RuntimeError(f"원격 장비가 안전하지 않은 파일 이름을 보냈습니다: {text!r}")
+        return text
+
+    def _failed_download(self, remote_source: str, local_root: Path, exc: Exception, progress_callback) -> ScpTransferResult:
+        message = self._download_error_text(exc)
+        result = ScpTransferResult(
+            action="다운로드",
+            source_path=remote_source,
+            target_path=str(local_root),
+            status="오류",
+            error=message,
+        )
+        self._emit_transfer(progress_callback, result)
+        self._emit_log(progress_callback, f"[SCP 다운로드 실패] {remote_source}: {message}")
+        return result
 
     def _send_file(self, channel, local_path: Path, remote_path: str, progress_callback, cancel_event) -> ScpTransferResult:
         size = local_path.stat().st_size
@@ -256,20 +384,7 @@ class ScpClientService:
         self._emit_log(progress_callback, f"[SCP 업로드 완료] {remote_path}")
         return result
 
-    def _receive_file(self, channel, remote_source: str, local_root: Path, progress_callback, cancel_event) -> ScpTransferResult:
-        channel.sendall(b"\x00")
-        control, payload = self._read_command(channel)
-        while control == "T":
-            channel.sendall(b"\x00")
-            control, payload = self._read_command(channel)
-        if control != "C":
-            raise RuntimeError("SCP 서버가 파일 전송 헤더를 보내지 않았습니다.")
-
-        mode, size_text, filename = payload.split(" ", 2)
-        if control == "C" and not mode.isdigit():
-            raise RuntimeError("SCP 파일 헤더를 해석하지 못했습니다.")
-        size = int(size_text)
-        local_path = local_root / filename
+    def _receive_file(self, channel, remote_source: str, local_path: Path, size: int, results: list, progress_callback, cancel_event) -> None:
         result = ScpTransferResult(
             action="다운로드",
             source_path=remote_source,
@@ -277,35 +392,44 @@ class ScpClientService:
             size_bytes=size,
             status="진행 중",
         )
-
+        results.append(result)
         self._emit_log(progress_callback, f"[SCP 다운로드 시작] {remote_source} -> {local_path}")
-        local_path.parent.mkdir(parents=True, exist_ok=True)
-        channel.sendall(b"\x00")
         started = time.perf_counter()
         transferred = 0
-        with local_path.open("wb") as handle:
-            while transferred < size:
-                if cancel_event is not None and cancel_event.is_set():
-                    handle.close()
-                    local_path.unlink(missing_ok=True)
-                    raise ScpTransferCancelled()
-                chunk = channel.recv(min(self._CHUNK_SIZE, size - transferred))
-                if not chunk:
-                    raise RuntimeError("SCP 다운로드 중 연결이 종료되었습니다.")
-                handle.write(chunk)
-                transferred += len(chunk)
-                result.transferred_bytes = transferred
-                result.duration_seconds = time.perf_counter() - started
-                self._emit_transfer(progress_callback, result)
-
-        self._expect_ok(channel)
-        channel.sendall(b"\x00")
+        try:
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            channel.sendall(b"\x00")
+            with local_path.open("wb") as handle:
+                while transferred < size:
+                    if cancel_event is not None and cancel_event.is_set():
+                        raise ScpTransferCancelled()
+                    chunk = channel.recv(min(self._CHUNK_SIZE, size - transferred))
+                    if not chunk:
+                        raise RuntimeError("SCP 다운로드 중 연결이 종료되었습니다.")
+                    handle.write(chunk)
+                    transferred += len(chunk)
+                    result.transferred_bytes = transferred
+                    result.duration_seconds = time.perf_counter() - started
+                    self._emit_transfer(progress_callback, result)
+            self._expect_ok(channel)
+            channel.sendall(b"\x00")
+        except ScpTransferCancelled:
+            local_path.unlink(missing_ok=True)
+            result.status = "중지"
+            self._emit_transfer(progress_callback, result)
+            raise
+        except Exception as exc:
+            local_path.unlink(missing_ok=True)
+            result.status = "오류"
+            result.error = self._download_error_text(exc)
+            self._emit_transfer(progress_callback, result)
+            self._emit_log(progress_callback, f"[SCP 다운로드 실패] {remote_source}: {result.error}")
+            raise _ReportedScpFailure(result.error) from exc
         result.transferred_bytes = size
         result.duration_seconds = time.perf_counter() - started
         result.status = "완료"
         self._emit_transfer(progress_callback, result)
         self._emit_log(progress_callback, f"[SCP 다운로드 완료] {local_path}")
-        return result
 
     def _read_command(self, channel) -> tuple[str, str]:
         code = channel.recv(1)
