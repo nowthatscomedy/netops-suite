@@ -30,6 +30,7 @@ class UpdateCheckResult:
     asset: ReleaseAsset | None = None
     checksum_asset: ReleaseAsset | None = None
     verification_source: str = ""
+    package_kind: str = "installer"
 
 
 @dataclass(slots=True)
@@ -40,3 +41,4 @@ class DownloadedUpdate:
     checksum_path: Path | None
     sha256: str
     verification_source: str = ""
+    package_kind: str = "installer"

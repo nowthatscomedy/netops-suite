@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app import portable_update
 from app.app_state import AppState
 from app.guides import GuideCatalog, GuideDialog, QuickHelpPanel
 from app.models.update_models import DownloadedUpdate, UpdateCheckResult
@@ -41,6 +42,7 @@ from app.ui.tabs.transfer_tab import TransferTab
 from app.ui.tabs.wireless_tab import WirelessTab
 from app.utils.admin import relaunch_as_admin
 from app.utils.app_icon import load_app_icon
+from app.utils.file_utils import is_portable_copy
 from app.version import __version__
 from netops_suite.ui.icons import PAGE_ICONS, icon
 
@@ -953,6 +955,7 @@ class MainWindow(QMainWindow):
         self._startup_activated = True
         QTimer.singleShot(0, self._start_visible_tab_initial_load)
         QTimer.singleShot(0, self._maybe_show_first_run_guide)
+        QTimer.singleShot(0, self._show_portable_update_result)
 
     def _handle_main_tab_changed(self, index: int) -> None:
         self._refresh_context_help()
@@ -994,6 +997,27 @@ class MainWindow(QMainWindow):
         config["ui_state"] = ui_state
         self.state.save_app_config(config)
 
+    def _portable_update_result_file(self):
+        return self.state.paths.data_root / portable_update.RESULT_FILENAME
+
+    def _show_portable_update_result(self) -> None:
+        result = portable_update.read_and_clear_result(self._portable_update_result_file())
+        if not result:
+            return
+        message = str(result.get("message", "") or "")
+        if result.get("success"):
+            self.settings_tab.set_update_status(message)
+            self.statusBar().showMessage(message)
+            return
+        title = "포터블 업데이트 실패"
+        self.settings_tab.set_update_status(title, message)
+        self.statusBar().showMessage(title)
+        QMessageBox.warning(
+            self,
+            title,
+            "새 버전으로 교체하지 못해 이전 버전을 그대로 실행했습니다.\n\n" + message,
+        )
+
     def _maybe_check_updates_on_startup(self) -> None:
         update_config = dict(self.state.app_config.get("update", {}) or {})
         if not update_config.get("check_on_startup", False):
@@ -1015,6 +1039,7 @@ class MainWindow(QMainWindow):
             self.state.update_service.check_for_updates,
             __version__,
             dict(update_config),
+            portable=is_portable_copy(self.state.paths.root),
             on_progress=self._handle_update_progress,
             on_result=lambda result, manual=manual: self._handle_update_check_result(result, manual),
             on_finished=self._finish_update_check,
@@ -1077,19 +1102,30 @@ class MainWindow(QMainWindow):
         ]
         if result.release_name:
             message_lines.append(f"릴리즈: {result.release_name}")
+        portable = result.package_kind == "portable"
         if result.asset:
-            message_lines.append(f"설치 파일: {result.asset.name}")
+            label = "포터블 파일" if portable else "설치 파일"
+            message_lines.append(f"{label}: {result.asset.name}")
         if result.verification_source == "github_release_digest":
             message_lines.append("무결성 검증: GitHub Releases SHA-256 digest")
         elif result.verification_source == "checksum_asset":
             message_lines.append("무결성 검증: 릴리즈 체크섬 파일 SHA-256")
-        message_lines.extend(
-            [
-                "게시자 신뢰: 설치 프로그램 실행 전 Windows 코드서명 정보를 확인하세요.",
-                "",
-                "다운로드 및 검증을 마치면 설치 프로그램을 실행할 수 있습니다.",
-            ]
-        )
+        if portable:
+            message_lines.extend(
+                [
+                    "",
+                    "포터블 실행이라 설치 프로그램 대신 이 폴더의 프로그램 파일을 새 버전으로 바꿉니다.",
+                    "data 폴더의 설정과 결과는 그대로 유지되고 관리자 권한은 필요 없습니다.",
+                ]
+            )
+        else:
+            message_lines.extend(
+                [
+                    "게시자 신뢰: 설치 프로그램 실행 전 Windows 코드서명 정보를 확인하세요.",
+                    "",
+                    "다운로드 및 검증을 마치면 설치 프로그램을 실행할 수 있습니다.",
+                ]
+            )
 
         if QMessageBox.question(self, "업데이트 발견", "\n".join(message_lines)) != QMessageBox.Yes:
             return
@@ -1124,6 +1160,10 @@ class MainWindow(QMainWindow):
         self.settings_tab.set_update_status("업데이트 파일 검증을 완료했습니다.", "\n".join(details))
         self.statusBar().showMessage("업데이트 파일 검증 완료")
 
+        if downloaded.package_kind == "portable":
+            self._apply_portable_update(downloaded)
+            return
+
         if not confirm_risky_action(
             self,
             "업데이트 설치",
@@ -1139,6 +1179,54 @@ class MainWindow(QMainWindow):
             self.state.update_service.launch_installer(downloaded.asset_path, expected_sha256=downloaded.sha256)
         except Exception as exc:
             QMessageBox.warning(self, "설치 프로그램 실행 실패", str(exc))
+            return
+
+        self._save_ui_state()
+        self.close()
+
+    def _apply_portable_update(self, downloaded: DownloadedUpdate) -> None:
+        target_dir = self.state.paths.root
+        if not confirm_risky_action(
+            self,
+            "포터블 업데이트 적용",
+            impact=(
+                f"현재 프로그램을 종료하고 {target_dir} 폴더의 실행 파일과 _internal 폴더를 "
+                f"{downloaded.version} 버전으로 바꾼 뒤 다시 실행합니다. data 폴더는 바꾸지 않습니다."
+            ),
+            reversibility=(
+                "교체 중 오류가 나면 이전 파일로 되돌리고 이전 버전을 다시 실행합니다. "
+                "교체가 끝날 때까지 USB를 뽑거나 프로그램을 다시 실행하지 마세요."
+            ),
+            output_location=f"다운로드한 zip 파일은 {downloaded.asset_path}에 남습니다.",
+            question="이 폴더에 새 버전을 적용할까요?",
+            confirm_text="업데이트 적용",
+        ):
+            return
+
+        self._update_busy = True
+        self.settings_tab.set_update_busy(True)
+        self.settings_tab.set_update_status("새 버전 파일을 준비하는 중입니다...")
+        self.statusBar().showMessage("포터블 업데이트 준비 중...")
+        self._start_worker(
+            self.state.update_service.prepare_portable_update,
+            downloaded,
+            on_result=lambda payload_dir, downloaded=downloaded: self._launch_portable_update(
+                downloaded, payload_dir
+            ),
+            on_finished=self._finish_update_check,
+            on_error=lambda text: self._handle_update_error(text, True, "포터블 업데이트 준비 실패"),
+        )
+
+    def _launch_portable_update(self, downloaded: DownloadedUpdate, payload_dir) -> None:
+        try:
+            self.state.update_service.launch_portable_update(
+                payload_dir,
+                self.state.paths.root,
+                version=downloaded.version,
+                result_file=self._portable_update_result_file(),
+            )
+        except Exception as exc:
+            self._handle_update_error(str(exc), True, "포터블 업데이트 실행 실패")
             return
 
         self._save_ui_state()

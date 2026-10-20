@@ -30,6 +30,14 @@ if sys.argv[1:2] == ["--legacy-ssh-worker"]:
     _run_legacy_ssh_worker()
     sys.exit(0)
 
+# A portable update starts the new executable from a temporary folder to swap
+# the program files of the unzipped copy. It must not open the UI or resolve
+# the data folder, so it runs before any other import.
+if sys.argv[1:2] == ["--apply-portable-update"]:
+    from app.portable_update import run_apply_cli
+
+    sys.exit(run_apply_cli(sys.argv[2:]))
+
 # Some modules resolve the data folder at import time. Point the release smoke
 # test at a throwaway folder before those imports, or a packaged build would
 # create a "data" folder inside the payload the installer ships.

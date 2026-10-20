@@ -16,6 +16,9 @@ DEFAULT_UPDATE_REPO = "nowthatscomedy/netops-suite"
 DEFAULT_UPDATE_ASSET_PATTERN = (
     r"^NetOpsSuite-setup-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\.exe$"
 )
+DEFAULT_PORTABLE_ASSET_PATTERN = (
+    r"^NetOpsSuite-portable-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\.zip$"
+)
 PROJECT_DATA_ENV = "NETOPS_SUITE_USE_PROJECT_DATA"
 DATA_ROOT_ENV = "NETOPS_SUITE_DATA_ROOT"
 PATH_SETTINGS_FILENAME = "path_settings.json"
@@ -104,6 +107,18 @@ def _is_installed_copy(root: Path) -> bool:
         return any(Path(root).glob("unins*.exe"))
     except OSError:
         return False
+
+
+def is_portable_copy(root: Path | None = None) -> bool:
+    """True for an unzipped release run outside Program Files.
+
+    Such a copy is often carried on a USB drive, so updates replace its own
+    program files instead of installing a second copy on the current PC.
+    """
+    if not is_packaged_runtime():
+        return False
+    root = Path(root) if root is not None else detect_root_path()
+    return not _is_installed_copy(root) and not _is_protected_install_root(root)
 
 
 def default_data_root() -> Path:

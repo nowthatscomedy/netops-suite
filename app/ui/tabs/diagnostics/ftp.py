@@ -333,9 +333,52 @@ class FtpDiagnosticsMixin:
             else:
                 options_form.addRow(field)
             section.watch(field, empty_value=empty_values.get(field))
+        self._compact_transfer_form(form)
         section.content_layout.addLayout(options_form)
         layout.addWidget(section)
         setattr(self, f"{key}_options_section", section)
+
+    @staticmethod
+    def _compact_transfer_form(form: QGridLayout) -> None:
+        """Re-pack label/field pairs so folded options leave no empty cells."""
+        cells: dict[tuple[int, int], tuple[QWidget, int]] = {}
+        for index in range(form.count()):
+            widget = form.itemAt(index).widget()
+            if widget is None:
+                return
+            row, column, _rows, columns = form.getItemPosition(index)
+            cells[(row, column)] = (widget, columns)
+
+        # A unit is one label/field pair: half width (columns 0-1 or 2-3) or full width.
+        units: list[tuple[list[tuple[QWidget, int, int]], bool]] = []
+        for row in sorted({row for row, _column in cells}):
+            for start in (0, 2):
+                parts = []
+                for column in (start, start + 1):
+                    if (row, column) in cells:
+                        widget, columns = cells[(row, column)]
+                        parts.append((widget, column - start, columns))
+                if parts:
+                    full = any(offset + columns > 2 for _widget, offset, columns in parts)
+                    units.append((parts, full))
+
+        for widget, _columns in cells.values():
+            form.removeWidget(widget)
+
+        row = column = 0
+        for index, (parts, full) in enumerate(units):
+            if full and column:
+                row, column = row + 1, 0
+            next_full = index + 1 >= len(units) or units[index + 1][1]
+            # A lone half pair before a full-width row takes the whole row.
+            stretch = not full and column == 0 and next_full
+            for widget, offset, columns in parts:
+                span = 4 - offset if stretch and offset + columns == 2 else columns
+                form.addWidget(widget, row, column + offset, 1, span)
+            if full or stretch or column:
+                row, column = row + 1, 0
+            else:
+                column = 2
 
     def _transfer_log_section(self, key: str, panel: QWidget) -> QWidget:
         section = CollapsibleSection("원문 로그")

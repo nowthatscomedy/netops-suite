@@ -37,10 +37,10 @@
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "8466b87ab7314b6691d971d7ff9e87b4a04ccde80dc1d19dec0259a7d7b912f4",
+        "value": "f4321540e74ece4a6017e896db6d11dbfcb8ad726361393a7c348b4dbec29a72",
         "contract_sha256": "28102dc753364702ae7ec90db2abdbfd67eaeb234c2fe000d1f539342640be49",
         "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
-        "sources_sha256": "ff1e848479e6e43dd0c9291722551837a37b5a971d08416151d6736ee1cb4f0c",
+        "sources_sha256": "8c8b67f94deec690f8551e9f4ef79218ff709288bfae230c1294629aaac0a36e",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -102,8 +102,8 @@
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 56315,
-            "sha256": "8bb6e09fe157ba20432ced1cc3c08506a5ad4708783757adefe7198f114a246d"
+            "size": 60331,
+            "sha256": "89ea4e36250c11e292f43892d0ca50ba2732d8471e4dd6e8808e23bcc8de4e50"
           },
           {
             "path": "app/ui/common/disclosure.py",
@@ -226,10 +226,10 @@
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "59c18e9ef6a4597fcd5473378db3d4706d3d51a3e0363d2609990837fc9b8154",
+        "value": "3ee944075051fc65edade5abfbdf0a5d479cf4eb4da88fd4b597f46855962969",
         "contract_sha256": "388101f3149abcc937642bbcb3d8949b8ad77d187f62dd1311529f44624c8670",
         "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
-        "sources_sha256": "e5eb4baa0a1debf9703ba8bbb5c74c33c9e6122eebc25e5ba845c95d0827a638",
+        "sources_sha256": "5528a6fec04c26445f4b06cb2c8fbde437adc0dfe414e0b88333dd468c6310b3",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -294,8 +294,8 @@
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 56315,
-            "sha256": "8bb6e09fe157ba20432ced1cc3c08506a5ad4708783757adefe7198f114a246d"
+            "size": 60331,
+            "sha256": "89ea4e36250c11e292f43892d0ca50ba2732d8471e4dd6e8808e23bcc8de4e50"
           },
           {
             "path": "app/ui/common/disclosure.py",
@@ -427,10 +427,10 @@
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "8134cfaf1b98ef44bb308508c6c4c3cd69e95adc3466b175e0447b3221e7f344",
+        "value": "2cc8e2f1bd9d07308022aca2b8b877d0be0b11ab6e9e791117db3d213f75b01a",
         "contract_sha256": "bc5d527095c6c726a5c385ca1328a8cba381eacb427b32e3a9cc7b1413e1d52e",
         "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
-        "sources_sha256": "77f02e32ccbbcff5bb7b285994ca3da7ebd4e88f6f666871ad1d43cf548f8604",
+        "sources_sha256": "871bfcef38f5a19381aa0ded84831b2fa467bb7bf7f47da29835169e06edbb19",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -493,8 +493,8 @@
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 56315,
-            "sha256": "8bb6e09fe157ba20432ced1cc3c08506a5ad4708783757adefe7198f114a246d"
+            "size": 60331,
+            "sha256": "89ea4e36250c11e292f43892d0ca50ba2732d8471e4dd6e8808e23bcc8de4e50"
           },
           {
             "path": "app/ui/common/disclosure.py",
@@ -611,14 +611,14 @@
         "assets/icons/lucide/folder-sync.svg",
         "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "a644a875f1e5b2dec52ec0cf8bb3dba08e0ed623a33144f1d2a1b594b5f5303a",
+      "png_sha256": "5cd7688038338f42dbcda59d10a8e5452a274aae2f9f35d5e48975cf724d3f62",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "1186bea3a27032193ba9ac93892b0187ba5eb6009a2183209034f6a19e9fd7b7",
+        "value": "98905a1ce9a87bf42c0ece52f931d8126833cde6ebc7ab0fce9dab8267adadfa",
         "contract_sha256": "dba6c52901a70cfa06450c59f649d6aa1613d0473012c8f97c10615883b387a7",
         "handler_sha256": "3931fc613d6ce32d77017938cbfe72541cb4c2d195b7a86f687e550284dedec2",
-        "sources_sha256": "65620ea63f6c4aab2d31ae6f83686cc74c5883b26092245ca5120b3e74fe7be4",
+        "sources_sha256": "fe8627a31af1a6f79886b30b500f69345aef7fece42008dc4658974bb40b7d88",
         "capture_handler": {
           "name": "wireless_expanded",
           "source": "qa/offscreen/harness.py",
@@ -680,8 +680,8 @@
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 56315,
-            "sha256": "8bb6e09fe157ba20432ced1cc3c08506a5ad4708783757adefe7198f114a246d"
+            "size": 60331,
+            "sha256": "89ea4e36250c11e292f43892d0ca50ba2732d8471e4dd6e8808e23bcc8de4e50"
           },
           {
             "path": "app/ui/common/disclosure.py",
@@ -957,10 +957,10 @@
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "b4e902b8ea24636df536cbc3ef1647a4ef886b4f1c279d982a8c4d0fc5fbc4d5",
+        "value": "0bf9e03ae036918a703a9c45988c38a64063814b844d632e9b6dff176c4c8744",
         "contract_sha256": "cd7b3b4e6f4ddfe69ffe2f007c7f69a67136c0050134f0e6b5ac9556c6ec82ed",
         "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
-        "sources_sha256": "a921f9dffba5ac1875fe3f68d0de223bfd2443ba760a3832be743743194c1c81",
+        "sources_sha256": "3985a2d5a74a7fb4ab5547ac525aaac2335408a3dc33c05bc5d4855bbdf1ab4d",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -1026,8 +1026,8 @@
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 56315,
-            "sha256": "8bb6e09fe157ba20432ced1cc3c08506a5ad4708783757adefe7198f114a246d"
+            "size": 60331,
+            "sha256": "89ea4e36250c11e292f43892d0ca50ba2732d8471e4dd6e8808e23bcc8de4e50"
           },
           {
             "path": "app/ui/common/disclosure.py",
@@ -1145,7 +1145,7 @@
         "netops_suite/modules/inspector/service.py",
         "netops_suite/modules/inspector_runtime/core/command_patterns.py"
       ],
-      "png_sha256": "8f5360f29dad06f4f8e552cb36b6859663e92ab9c190286400568d6833e9ce13",
+      "png_sha256": "40bab6952fbe47e874f8a13fb2ea9af9196be5c3e19f1de6e577817714f385f0",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
@@ -1801,10 +1801,10 @@
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "b29b8705691e4b0a8b0d481b89a335a4fe20aae02a26472c649f1cf4ed9d49fd",
+        "value": "c04f5b8269d8f5bcf0d70181643e1d96536b8349fee408e3f0fa8b5277a59660",
         "contract_sha256": "28e2ab76d4fd3f5292572ae4a801c59131e79e58c0b93bf77a47448306f85485",
         "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
-        "sources_sha256": "f2a4d6bf5af7a71202bfd01e8f5c7faafd5410ee75dd03f45d61a9c64c2146a4",
+        "sources_sha256": "effc4b399d61b53e98fb7421ae4a71523c14142be6a29144087b23f58ee0e49a",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -1869,8 +1869,8 @@
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 56315,
-            "sha256": "8bb6e09fe157ba20432ced1cc3c08506a5ad4708783757adefe7198f114a246d"
+            "size": 60331,
+            "sha256": "89ea4e36250c11e292f43892d0ca50ba2732d8471e4dd6e8808e23bcc8de4e50"
           },
           {
             "path": "app/ui/common/disclosure.py",
@@ -1994,14 +1994,14 @@
         "assets/icons/lucide/folder-sync.svg",
         "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "69ced288e89c3499e88b9815a40c7c25de89e2cb7b9725c044458455516e2044",
+      "png_sha256": "2637d2e3477f5747df07d242c5be4cbb815395ce25caac8b6392d57fa9dee94c",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "af410b04274fac294a8f6855d9c7b167f0a9fbfec63475c049ac83de9ef25bbd",
+        "value": "96e03b646659b2521bb117cc31df9fcab445e09df93cfc539e32af9f69c9d0e2",
         "contract_sha256": "c4bb5c84a454a4f2f74835c7718fa4ee387042f3cbcb38744c21b33d72601c43",
         "handler_sha256": "322c3562ccd21e0f326bf8c1f1f8e9d6856807351b3557142aa1dffbe4ca40de",
-        "sources_sha256": "7bc1d5c052c6c5ca8796dc39181ce030940ecb81c24cf2766ac03a8d713c5874",
+        "sources_sha256": "d84254d4564d3df204ba21d8266bf3cb41288dc5ace07ba036bb2e03d10b2558",
         "capture_handler": {
           "name": "settings_storage",
           "source": "qa/offscreen/harness.py",
@@ -2064,8 +2064,8 @@
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 56315,
-            "sha256": "8bb6e09fe157ba20432ced1cc3c08506a5ad4708783757adefe7198f114a246d"
+            "size": 60331,
+            "sha256": "89ea4e36250c11e292f43892d0ca50ba2732d8471e4dd6e8808e23bcc8de4e50"
           },
           {
             "path": "app/ui/common/disclosure.py",
@@ -2187,10 +2187,10 @@
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "79b9aaa3100ccc276739166b8851b5e2a61c705d74c558e5b195ff1413cc8ff9",
+        "value": "c652f26eb75085a671d0e10e6ce887b9d56abf0112a120f98bf6892a89fa59a9",
         "contract_sha256": "2a96152ccd67b615179630c8b5ba7b4ed6c26984cc9c457b8bc607d93ef6d3ef",
         "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
-        "sources_sha256": "fd8668e2618864c6c472142f8fe88dca119bd861f36fc1a2c60f70300109c15c",
+        "sources_sha256": "c739f687bcab8c2e77563f47406be1aa6ebe458d7e91e65e52e05db24e598c40",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -2250,8 +2250,8 @@
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 56315,
-            "sha256": "8bb6e09fe157ba20432ced1cc3c08506a5ad4708783757adefe7198f114a246d"
+            "size": 60331,
+            "sha256": "89ea4e36250c11e292f43892d0ca50ba2732d8471e4dd6e8808e23bcc8de4e50"
           },
           {
             "path": "app/ui/common/disclosure.py",
@@ -2358,14 +2358,14 @@
         "assets/icons/lucide/folder-sync.svg",
         "assets/icons/lucide/settings-2.svg"
       ],
-      "png_sha256": "a32a7c173170a01db9f8988df57081513fe0e1f691089afced3c0a8710f88434",
+      "png_sha256": "d9a1d3d932c645cddc09bb84d79d0c42b8d832f09379e058b3ae74c4b95cb0b7",
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "7fe690281b20d10d95efd2d44843daafa969f369aad540577c10644c2338b4dd",
+        "value": "35d7c1914f89de4ea98b2454ba261044fdb313fa5574d136755b4459e33047d8",
         "contract_sha256": "d340b6de95a717639cf573a7bdf9d129101a67157c37acf0521e2a58f5ece03c",
         "handler_sha256": "b0514d4ccf99990e23af247aa3597b012320594aeb06ac69fdef809676479d47",
-        "sources_sha256": "f9c3a50bb27fdb36f07a937db6ae092e486b02a720c06b3bd1421075a77ccd00",
+        "sources_sha256": "da5353c051f1d5135652cfd12fe04f16c0bcabb57ee2fd7a0d8ab2f0673d367a",
         "capture_handler": {
           "name": "guide_overview",
           "source": "qa/offscreen/harness.py",
@@ -2428,8 +2428,8 @@
         "source_files": [
           {
             "path": "app/main_window.py",
-            "size": 56315,
-            "sha256": "8bb6e09fe157ba20432ced1cc3c08506a5ad4708783757adefe7198f114a246d"
+            "size": 60331,
+            "sha256": "89ea4e36250c11e292f43892d0ca50ba2732d8471e4dd6e8808e23bcc8de4e50"
           },
           {
             "path": "app/ui/common/disclosure.py",
@@ -2443,8 +2443,8 @@
           },
           {
             "path": "app/ui/tabs/diagnostics/ftp.py",
-            "size": 75394,
-            "sha256": "e4c6c6611121ad5684cbc950ff42fc9650535d01e2293cf0146c581864cb30a1"
+            "size": 77382,
+            "sha256": "2d78dc31cbfb1f07c1563043199d20e2c437ff4459b81f99e29a874636f1aa88"
           },
           {
             "path": "app/ui/tabs/diagnostics/scp.py",
@@ -2553,10 +2553,10 @@
       "fingerprint": {
         "schema_version": 1,
         "algorithm": "sha256",
-        "value": "ac16d9ecb98c08ec2df806b794f808633a604990238682464ee76bf67ba88c5d",
+        "value": "53d9ed4d57a7aa566b0a298e414569f37e80a2cfeca936c95ae0408d6637d8a6",
         "contract_sha256": "d49b374db76ae18b79ff948a911719ad50b4b5835fefd803c7315da3544b0eb8",
         "handler_sha256": "5cddeb00bd5a88316a63d18fc1fd736cc15471ce83146b4f703ea2eb2bb568de",
-        "sources_sha256": "44a510d858bb1bf8867489bb2bc24529f43338776317ec727c2cf4e9c4741bdc",
+        "sources_sha256": "730d4d6221d7b2ad6bca2abfbaaf22b4adf9b4df6308f6bc3cccc96d6f666be6",
         "capture_handler": {
           "name": "context_help",
           "source": "qa/offscreen/harness.py",
@@ -2623,8 +2623,8 @@
           },
           {
             "path": "app/main_window.py",
-            "size": 56315,
-            "sha256": "8bb6e09fe157ba20432ced1cc3c08506a5ad4708783757adefe7198f114a246d"
+            "size": 60331,
+            "sha256": "89ea4e36250c11e292f43892d0ca50ba2732d8471e4dd6e8808e23bcc8de4e50"
           },
           {
             "path": "app/ui/common/theme.py",

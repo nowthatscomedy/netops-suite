@@ -72,7 +72,8 @@
       "source_paths": [
         "installer/netops-suite.iss",
         "scripts/run_dev.ps1",
-        "app/services/update_service.py"
+        "app/services/update_service.py",
+        "app/portable_update.py"
       ],
       "keywords": [
         "설치",
@@ -89,6 +90,8 @@
         "이전 버전 파일",
         "불필요한 파일 삭제",
         "사용자 데이터 보존",
+        "포터블 업데이트",
+        "USB 실행",
         "설치, 실행 및 업데이트"
       ],
       "risk": "medium",

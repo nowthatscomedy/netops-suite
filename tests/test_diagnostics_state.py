@@ -1331,3 +1331,45 @@ def test_tcp_table_sorts_port_and_loss_as_numbers(qapp, tmp_path):
 
     tab.tcp_table.sortItems(7, Qt.SortOrder.DescendingOrder)
     assert tab._cell(tab.tcp_table, 0, 7) == "100%"
+
+def _grid_holding(widget):
+    from PySide6.QtWidgets import QGridLayout
+
+    for grid in widget.parentWidget().findChildren(QGridLayout):
+        if grid.indexOf(widget) >= 0:
+            return grid
+    raise AssertionError("grid not found")
+
+
+def test_file_transfer_client_forms_leave_no_empty_cells_after_folding_options(qapp, tmp_path):
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+
+    for field in (tab.ftp_client_host_edit, tab.scp_client_host_edit, tab.tftp_client_host_edit):
+        grid = _grid_holding(field)
+        covered: dict[int, set[int]] = {}
+        for index in range(grid.count()):
+            row, column, _rows, columns = grid.getItemPosition(index)
+            covered.setdefault(row, set()).update(range(column, column + columns))
+        assert sorted(covered) == list(range(len(covered)))
+        assert all(columns == {0, 1, 2, 3} for columns in covered.values())
+
+    ftp_grid = _grid_holding(tab.ftp_client_username_edit)
+    username_row = ftp_grid.getItemPosition(ftp_grid.indexOf(tab.ftp_client_username_edit))[0]
+    password_row = ftp_grid.getItemPosition(ftp_grid.indexOf(tab.ftp_client_password_edit))[0]
+    assert username_row == password_row
+
+
+def test_arp_scan_page_scrolls_instead_of_clipping_results(qapp, tmp_path):
+    from PySide6.QtWidgets import QScrollArea
+
+    tab = DiagnosticsTab(build_fake_state(tmp_path))
+    tab.show()
+    tab.select_diagnostic_tab("arp")
+    tab.resize(800, 420)
+    qapp.processEvents()
+
+    scroll = tab.findChild(QScrollArea, "arpScrollArea")
+    assert scroll is not None
+    content = scroll.widget()
+    assert content.height() >= content.minimumSizeHint().height()
+    assert tab.arp_result_splitter.height() >= tab.arp_table.minimumHeight() + tab.arp_output.minimumHeight()

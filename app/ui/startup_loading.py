@@ -36,12 +36,14 @@ class StartupLoadingWindow(QWidget):
         self.setObjectName("startupLoadingWindow")
         self.setWindowTitle("NetOps Suite 시작 준비")
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
-        self.resize(640, 460)
-        self.setMinimumSize(560, 420)
+        self.setMinimumWidth(560)
 
         self._build_ui(version)
         self._apply_styles()
         self._sync_step_items()
+        self._fit_step_list()
+        # The layout sets the minimum height, so every step and the log stay visible.
+        self.resize(640, max(460, self.sizeHint().height()))
 
     def _build_ui(self, version: str) -> None:
         root = QVBoxLayout(self)
@@ -90,13 +92,14 @@ class StartupLoadingWindow(QWidget):
         self.progress_bar.setObjectName("startupProgress")
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
+        # The 12px bar is too thin for a percentage label; the step list shows progress.
+        self.progress_bar.setTextVisible(False)
 
         self.step_list = QListWidget()
         self.step_list.setObjectName("startupStepList")
         self.step_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.step_list.setSelectionMode(QListWidget.SelectionMode.NoSelection)
-        self.step_list.setMinimumHeight(150)
-        self.step_list.setMaximumHeight(180)
+        self.step_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         for step in self._steps:
             item = QListWidgetItem(step)
             item.setData(Qt.ItemDataRole.UserRole, step)
@@ -115,6 +118,11 @@ class StartupLoadingWindow(QWidget):
         body_layout.addWidget(self.step_list)
         body_layout.addWidget(self.log_view)
         root.addWidget(body, 1)
+
+    def _fit_step_list(self) -> None:
+        self.step_list.ensurePolished()
+        rows = sum(self.step_list.sizeHintForRow(row) for row in range(self.step_list.count()))
+        self.step_list.setFixedHeight(rows + 2 * self.step_list.frameWidth() + 4)
 
     def _apply_styles(self) -> None:
         self.setStyleSheet(

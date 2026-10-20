@@ -20,3 +20,21 @@ def test_startup_loading_window_tracks_progress(qapp):
         assert all("[완료]" in window.step_list.item(index).text() for index in range(window.step_list.count()))
     finally:
         window.close()
+
+def test_startup_loading_window_shows_every_step_without_clipping(qapp):
+    window = StartupLoadingWindow("1.2.3")
+    try:
+        window.show()
+        qapp.processEvents()
+
+        rows = sum(window.step_list.sizeHintForRow(row) for row in range(window.step_list.count()))
+        assert window.step_list.viewport().height() >= rows
+        assert not window.step_list.verticalScrollBar().isVisible()
+        assert not window.progress_bar.isTextVisible()
+        assert window.step_list.geometry().bottom() < window.log_view.geometry().top()
+
+        window.resize(window.minimumSize())
+        qapp.processEvents()
+        assert window.step_list.geometry().bottom() < window.log_view.geometry().top()
+    finally:
+        window.close()

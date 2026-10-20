@@ -3,15 +3,23 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
+import shutil
 import subprocess
 import tempfile
 import urllib.error
 import urllib.request
+import zipfile
 from pathlib import Path
 
+from app import portable_update
 from app.models.update_models import DownloadedUpdate, ReleaseAsset, UpdateCheckResult
-from app.utils.file_utils import DEFAULT_UPDATE_ASSET_PATTERN, DEFAULT_UPDATE_REPO
+from app.utils.file_utils import (
+    DEFAULT_PORTABLE_ASSET_PATTERN,
+    DEFAULT_UPDATE_ASSET_PATTERN,
+    DEFAULT_UPDATE_REPO,
+)
 from app.utils.process_utils import no_window_creationflags
 
 
@@ -27,6 +35,8 @@ class UpdateService:
         current_version: str,
         update_config: dict,
         progress_callback=None,
+        *,
+        portable: bool = False,
     ) -> UpdateCheckResult:
         repo = self._normalize_repo(DEFAULT_UPDATE_REPO)
         if not repo:
@@ -38,7 +48,19 @@ class UpdateService:
                 details="앱 내부 업데이트 저장소는 owner/repo 형식이어야 합니다.",
             )
 
-        asset_pattern = DEFAULT_UPDATE_ASSET_PATTERN
+        package_kind = "portable" if portable else "installer"
+        asset_pattern = DEFAULT_PORTABLE_ASSET_PATTERN if portable else DEFAULT_UPDATE_ASSET_PATTERN
+        package_label = "포터블 zip 파일" if portable else "설치 파일"
+        ready_message = (
+            "새 버전 {version}을 이 포터블 폴더에 적용할 수 있습니다."
+            if portable
+            else "새 버전 {version}을 설치할 수 있습니다."
+        )
+        publisher_note = (
+            "게시자 신뢰는 새 실행 파일의 Windows 코드서명 정보로 별도 확인해야 합니다."
+            if portable
+            else "게시자 신뢰는 설치 프로그램의 Windows 코드서명 정보로 별도 확인해야 합니다."
+        )
 
         if progress_callback is not None:
             progress_callback.emit({"stage": "check", "message": f"{repo} 릴리즈 정보를 확인하는 중..."})
@@ -57,6 +79,7 @@ class UpdateService:
                 latest_version=latest_version,
                 is_prerelease=bool(release.get("prerelease")),
                 update_available=False,
+                package_kind=package_kind,
                 install_ready=False,
                 message=f"이미 최신 버전입니다. (현재 {current_version})",
                 release_name=str(release.get("name", "") or ""),
@@ -66,7 +89,12 @@ class UpdateService:
             )
 
         assets = [self._asset_from_api(item) for item in release.get("assets", [])]
-        asset = self._select_asset(assets, asset_pattern, expected_version=latest_version)
+        asset = self._select_asset(
+            assets,
+            asset_pattern,
+            expected_version=latest_version,
+            portable=portable,
+        )
 
         verification_source = ""
         checksum_asset = None
@@ -75,26 +103,20 @@ class UpdateService:
         details = ""
 
         if not asset:
-            message = f"새 버전 {latest_version}이 있지만 설치 파일을 찾지 못했습니다."
-            details = f"릴리즈 자산 중 `{asset_pattern}` 패턴과 일치하는 `.exe` 파일이 필요합니다."
+            message = f"새 버전 {latest_version}이 있지만 {package_label}을 찾지 못했습니다."
+            details = f"릴리즈 자산 중 `{asset_pattern}` 패턴과 일치하는 파일이 필요합니다."
         elif asset.digest_sha256:
             install_ready = True
             verification_source = "github_release_digest"
-            message = f"새 버전 {latest_version}을 설치할 수 있습니다."
-            details = (
-                "GitHub Releases 자산 SHA-256 digest로 다운로드 파일의 무결성을 검증합니다. "
-                "게시자 신뢰는 설치 프로그램의 Windows 코드서명 정보로 별도 확인해야 합니다."
-            )
+            message = ready_message.format(version=latest_version)
+            details = "GitHub Releases 자산 SHA-256 digest로 다운로드 파일의 무결성을 검증합니다. " + publisher_note
         else:
             checksum_asset = self._select_checksum_asset(assets, asset.name)
             if checksum_asset:
                 install_ready = True
                 verification_source = "checksum_asset"
-                message = f"새 버전 {latest_version}을 설치할 수 있습니다."
-                details = (
-                    "릴리즈에 포함된 체크섬 파일로 다운로드 파일의 무결성을 검증합니다. "
-                    "게시자 신뢰는 설치 프로그램의 Windows 코드서명 정보로 별도 확인해야 합니다."
-                )
+                message = ready_message.format(version=latest_version)
+                details = "릴리즈에 포함된 체크섬 파일로 다운로드 파일의 무결성을 검증합니다. " + publisher_note
             else:
                 message = f"새 버전 {latest_version}이 있지만 검증 정보를 찾지 못했습니다."
                 details = (
@@ -118,6 +140,7 @@ class UpdateService:
             asset=asset,
             checksum_asset=checksum_asset,
             verification_source=verification_source,
+            package_kind=package_kind,
         )
 
     def download_update(
@@ -126,7 +149,7 @@ class UpdateService:
         progress_callback=None,
     ) -> DownloadedUpdate:
         if not check_result.asset:
-            raise ValueError("설치 파일 정보가 없습니다.")
+            raise ValueError("업데이트 파일 정보가 없습니다.")
 
         temp_dir = Path(tempfile.mkdtemp(prefix="netops_update_"))
         asset_path = temp_dir / check_result.asset.name
@@ -143,12 +166,12 @@ class UpdateService:
             expected_sha256 = self._parse_expected_sha256(checksum_path, check_result.asset.name)
             verification_source = "release checksum file SHA-256"
         else:
-            raise ValueError("검증 정보가 없어 다운로드한 설치 파일을 신뢰할 수 없습니다.")
+            raise ValueError("검증 정보가 없어 다운로드한 업데이트 파일을 신뢰할 수 없습니다.")
 
         actual_sha256 = self._sha256_file(asset_path)
         if actual_sha256.lower() != expected_sha256.lower():
             raise ValueError(
-                "다운로드한 설치 파일의 SHA-256 검증에 실패했습니다. 파일이 변조되었거나 릴리즈 자산 정보가 잘못되었습니다."
+                "다운로드한 업데이트 파일의 SHA-256 검증에 실패했습니다. 파일이 변조되었거나 릴리즈 자산 정보가 잘못되었습니다."
             )
 
         self.logger.info(
@@ -163,6 +186,7 @@ class UpdateService:
             checksum_path=checksum_path,
             sha256=actual_sha256,
             verification_source=verification_source,
+            package_kind=check_result.package_kind,
         )
 
     def launch_installer(self, installer_path: Path, expected_sha256: str = "") -> None:
@@ -182,6 +206,48 @@ class UpdateService:
             [str(installer_path)],
             cwd=str(installer_path.parent),
             creationflags=no_window_creationflags(),
+        )
+
+    def prepare_portable_update(self, downloaded: DownloadedUpdate) -> Path:
+        """Re-verify the downloaded zip and extract it next to the download."""
+
+        zip_path = downloaded.asset_path
+        if not zip_path.exists():
+            raise FileNotFoundError(f"포터블 zip 파일을 찾을 수 없습니다: {zip_path}")
+        actual_sha256 = self._sha256_file(zip_path)
+        if actual_sha256.lower() != downloaded.sha256.lower():
+            raise ValueError(
+                "적용 직전 SHA-256 재검증에 실패했습니다. "
+                "다운로드 이후 zip 파일이 변경되었을 수 있어 적용을 차단했습니다."
+            )
+        extract_dir = zip_path.parent / "portable"
+        if extract_dir.exists():
+            shutil.rmtree(extract_dir)
+        try:
+            portable_update.safe_extract_zip(zip_path, extract_dir)
+            payload_dir = portable_update.find_payload_root(extract_dir)
+        except (portable_update.PortableUpdateError, zipfile.BadZipFile) as exc:
+            raise ValueError(f"포터블 zip 파일을 풀지 못했습니다: {exc}") from exc
+        self.logger.info("Extracted portable update %s to %s", downloaded.asset_name, payload_dir)
+        return payload_dir
+
+    def launch_portable_update(
+        self,
+        payload_dir: Path,
+        target_dir: Path,
+        *,
+        version: str,
+        result_file: Path,
+    ) -> None:
+        if payload_dir.resolve() == target_dir.resolve():
+            raise ValueError("새 버전 폴더와 현재 프로그램 폴더가 같습니다.")
+        self.logger.info("Launching portable update from %s into %s", payload_dir, target_dir)
+        portable_update.launch_apply_process(
+            payload_dir,
+            target_dir,
+            wait_pid=os.getpid(),
+            version=version,
+            result_file=result_file,
         )
 
     def _fetch_release(self, repo: str) -> dict:
@@ -283,9 +349,11 @@ class UpdateService:
         pattern: str,
         *,
         expected_version: str = "",
+        portable: bool = False,
     ) -> ReleaseAsset | None:
         regex = re.compile(pattern, re.IGNORECASE)
-        expected_name = f"NetOpsSuite-setup-{expected_version}.exe" if expected_version else ""
+        expected_format = "NetOpsSuite-portable-{}.zip" if portable else "NetOpsSuite-setup-{}.exe"
+        expected_name = expected_format.format(expected_version) if expected_version else ""
         for asset in assets:
             if expected_name and asset.name.casefold() != expected_name.casefold():
                 continue

@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPlainTextEdit,
+    QScrollArea,
     QSizePolicy,
     QSplitter,
     QTableWidget,
@@ -180,8 +181,15 @@ class ToolsDiagnosticsMixin:
         return page
 
     def _build_arp_scan_page(self) -> QWidget:
-        page = QWidget()
-        layout = QVBoxLayout(page)
+        # Scrolls instead of clipping the result table and log in small windows.
+        page = QScrollArea()
+        page.setObjectName("arpScrollArea")
+        page.setWidgetResizable(True)
+        page.setFrameShape(QScrollArea.Shape.NoFrame)
+        page.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored)
+        content = QWidget()
+        content.setObjectName("arpPageContent")
+        layout = QVBoxLayout(content)
 
         group = QGroupBox("같은 대역 장비 찾기 (ARP 스캔)")
         form = QGridLayout(group)
@@ -261,6 +269,7 @@ class ToolsDiagnosticsMixin:
         self.arp_start_button.clicked.connect(self.start_arp_scan)
         self.arp_cancel_button.clicked.connect(self.cancel_arp_scan)
         self.arp_refresh_oui_button.clicked.connect(lambda: self.refresh_oui_cache(self.arp_output))
+        page.setWidget(content)
         return page
 
     def _build_oui_lookup_page(self) -> QWidget:
